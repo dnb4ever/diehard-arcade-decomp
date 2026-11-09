@@ -13,6 +13,7 @@ import shutil
 import subprocess
 import tarfile
 import urllib.request
+from p422_package_mods import package_mods
 
 ROOT = Path(__file__).resolve().parents[1]
 WORK = ROOT / 'work/p417'
@@ -48,6 +49,8 @@ def sha(path):
 
 def download(url, path, digest=None):
     if not path.exists():
+        if os.environ.get('DHA_OFFLINE') == '1':
+            raise SystemExit(f'Offline dependency missing: {path}')
         pending = path.with_name(path.name + '.part')
         urllib.request.urlretrieve(url, pending)
         pending.replace(path)
@@ -185,7 +188,7 @@ set(ENV{PKG_CONFIG_LIBDIR} "${CMAKE_SYSROOT}/usr/lib/x86_64-linux-gnu/pkgconfig:
 set(ENV{PKG_CONFIG_SYSROOT_DIR} "${CMAKE_SYSROOT}")
 '''
 
-README = '''Die Hard Arcade: Linux x86_64 release (P4.17)
+README = '''Die Hard Arcade: Linux x86_64 release (P4.19)
 Requires an x86-64-v2 CPU and glibc >= 2.31. No ROMs are included.
 
 Linux: chmod +x DieHardArcade-x86_64.AppImage, then double-click or run it.
@@ -229,7 +232,7 @@ No physical Deck, speakers, gamepad hardware or GPU was tested by P4.17.
 Save states require an exact source/compiler/ROM fingerprint.
 See licenses/ and package-manifest.json. Sources/build instructions are in
 notes/port/p417_linux_release.md in the project checkout.
-'''
+''' + '\n' + (ROOT / 'port/p419_netplay_help.txt').read_text()
 
 
 def package():
@@ -266,7 +269,8 @@ StartupWMClass=Die Hard Arcade
 ''')
     shutil.copy2(ROOT / 'port/assets/p413-icon.png', appdir / 'diehard-arcade.png')
     (appdir / '.DirIcon').symlink_to('diehard-arcade.png')
-    (appdir / 'README-linux.txt').write_text(README)
+    (appdir / 'README-linux.txt').write_text(README + '\nMod SDK and source examples: modding/README-package.txt\n')
+    package_mods(appdir / 'modding', WORK / 'build-linux/p421-target.txt')
     licenses = appdir / 'licenses'
     licenses.mkdir()
     rt = WORK / 'saturn-recomp/runtime'
@@ -309,7 +313,7 @@ StartupWMClass=Die Hard Arcade
     for path in sorted(appdir.rglob('*')):
         if path.is_file():
             relative = path.relative_to(appdir).as_posix()
-            if relative not in allowed and not relative.startswith('licenses/'):
+            if relative not in allowed and not relative.startswith(('licenses/', 'modding/')):
                 raise SystemExit(f'Unexpected package file: {relative}')
             manifest['sha256'][relative] = sha(path)
     (appdir / 'package-manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')

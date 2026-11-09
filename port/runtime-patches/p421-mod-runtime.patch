@@ -303,23 +303,23 @@
 +extern P421Bridge g_p421_bridge;
 --- a/runtime/runtime.cmake
 +++ b/runtime/runtime.cmake
-@@ -18,7 +18,7 @@
-     ${_src}/machine/machine.cpp ${_src}/machine/bios.cpp ${_src}/machine/mmio.cpp ${_src}/machine/tasks.cpp
+@@ -19,7 +19,7 @@
      ${_src}/machine/onchip.cpp ${_src}/machine/scu.cpp ${_src}/machine/scudsp.cpp ${_src}/machine/smpc.cpp
      ${_src}/machine/cdrom.cpp ${_src}/machine/cdblock.cpp ${_src}/machine/agent.cpp ${_src}/machine/state.cpp
+     ${_src}/machine/net_discovery.cpp ${_src}/machine/net_transport.cpp ${_src}/machine/net_setup.cpp
 -    ${_src}/machine/netplay.cpp ${_src}/machine/player.cpp ${_src}/machine/modem.cpp ${_src}/machine/modem_tcp.cpp
 +    ${_src}/machine/p421_mods.cpp ${_src}/machine/p421_codec.c ${_src}/machine/netplay.cpp ${_src}/machine/player.cpp ${_src}/machine/modem.cpp ${_src}/machine/modem_tcp.cpp
      ${_src}/video/video.cpp ${_src}/video/vdp1.cpp ${_src}/video/vdp2.cpp ${_src}/video/png.cpp ${_src}/video/movie.cpp
      ${_src}/sound/sound.cpp ${_src}/sound/scsp.cpp)
  option(SATURN_NO_SDL "build the headless host even if SDL3 is installed" OFF)
-@@ -70,7 +70,7 @@
+@@ -71,7 +71,7 @@
  target_include_directories(saturn_m68k PUBLIC ${_m68k})
  target_include_directories(saturn_machine PRIVATE ${_rt}/third_party/minicoro)
  target_compile_options(saturn_m68k PRIVATE -w)
 -target_link_libraries(saturn_machine PUBLIC saturn_m68k)
 +target_link_libraries(saturn_machine PUBLIC saturn_m68k ${CMAKE_DL_LIBS})
  if(WIN32)
-   target_link_libraries(saturn_machine PUBLIC ws2_32)   # the modem's TCP line
+   target_link_libraries(saturn_machine PUBLIC ws2_32 iphlpapi)   # the modem's TCP line
  endif()
 --- a/runtime/src/core/core.cpp
 +++ b/runtime/src/core/core.cpp
@@ -339,13 +339,14 @@
  #include "host_sdl.h"
  #include "pace.h"
  #include "pad_slots.h"
-@@ -1295,6 +1296,9 @@
+@@ -1299,6 +1300,10 @@
          if (menu_button_shown()) draw_menu_button();
      }
      std::string cheats = player_cheat_label();
 +    if (mods_active()) { if (!cheats.empty()) cheats += " | "; cheats += mods_label(); }
-+    float mod_y=68;
-+    for(auto& line:mods_overlay()) { ui_text(16,mod_y,16,line,rgba(.4f,1,.8f,1),true,UiAlign::Left); mod_y+=22; }
++    auto mod_lines=mods_overlay();
++    float mod_y=g_out_h-80.0f-22.0f*float(mod_lines.size()>0?mod_lines.size()-1:0);
++    for(auto& line:mod_lines) { ui_text(16,mod_y,16,line,rgba(.4f,1,.8f,1),true,UiAlign::Left); mod_y+=22; }
      std::string title = g_cfg.title.empty() ? "saturn-recomp" : g_cfg.title;
      if (!cheats.empty()) {
          title += " [" + cheats + "]";
@@ -359,7 +360,7 @@
  #include "state.h"
  #include "player.h"
  #include "netplay.h"
-@@ -22,6 +23,36 @@
+@@ -23,6 +24,40 @@
  #include <sstream>
  
  namespace {
@@ -383,7 +384,11 @@
 +    for(const auto& mod:inventory) {
 +        ImGui::PushID(mod.id.c_str());bool on=mod.enabled;
 +        ImGui::BeginDisabled(!mod.error.empty() && !on);
-+        if(ImGui::Checkbox(mod.name.empty()?mod.id.c_str():mod.name.c_str(),&on)) mods_enable(mod.id,on);
++        if(ImGui::Checkbox(mod.name.empty()?mod.id.c_str():mod.name.c_str(),&on)) {
++            mods_enable(mod.id,on);
++            g_cfg.netplay_build=mods_preview_fingerprint(g_cfg.netplay_base_build);
++            net_setup_close();
++        }
 +        ImGui::EndDisabled();
 +        ImGui::TextWrapped("%s %s - %s",mod.id.c_str(),mod.version.c_str(),mod.author.c_str());
 +        ImGui::TextWrapped("%s",mod.description.c_str());
@@ -396,7 +401,24 @@
  void internal_resolution() {
      auto& set = host_settings();
      int resolution = g_cfg.internal_resolution - 1;
-@@ -257,6 +288,7 @@
+@@ -129,6 +164,7 @@
+     return view.ready && net::decode_code(g_cfg.netplay_peer_code,peer,error) && net::decode_code(view.code,self,error) && peer.build==self.build && peer.nonce!=self.nonce;
+ }
+ void netplay_features() {
++    g_cfg.netplay_build=mods_preview_fingerprint(g_cfg.netplay_base_build);
+     int mode=g_cfg.netplay_code?3:g_cfg.netplay_host?1:!g_cfg.netplay_join.empty()?2:0;
+     const char* modes[]={"Offline","Host (player 1)","Join by IP (player 2)","Connect by code"};
+     static char address[128]="127.0.0.1:7845",remote[256]{};
+@@ -166,7 +202,7 @@
+         ImGui::InputText("Friend's code",remote,sizeof remote); ImGui::SameLine();
+         if(ImGui::Button("Paste code")) { char* text=SDL_GetClipboardText(); if(text) { std::snprintf(remote,sizeof remote,"%s",text); SDL_free(text); } }
+         g_cfg.netplay_peer_code=remote;
+-        if(*remote) { net::Code peer; std::string error; if(!net::decode_code(remote,peer,error)) ImGui::TextWrapped("%s",error.c_str()); else if(peer.build!=uint32_t(g_cfg.netplay_build)) ImGui::TextWrapped("Build mismatch: use the same game build.");
++        if(*remote) { net::Code peer; std::string error; if(!net::decode_code(remote,peer,error)) ImGui::TextWrapped("%s",error.c_str()); else if(peer.build!=uint32_t(g_cfg.netplay_build)) ImGui::TextWrapped("Game build or mod set/hash mismatch: use the same build and enabled mod files.");
+             else { net::Code self; if(net::decode_code(view.code,self,error) && self.nonce==peer.nonce) ImGui::TextWrapped("That is your own code. Paste your friend's code."); } }
+     }
+     if(mode==1 || mode==3) {
+@@ -308,6 +344,7 @@
                      going = false;
                  if (e.type == SDL_EVENT_KEY_DOWN && e.key.scancode == SDL_SCANCODE_F12) want_picture_ = true;
                  host_pad_event(e);
@@ -404,7 +426,7 @@
                  if (!listen(e)) ImGui_ImplSDL3_ProcessEvent(&e);
              }
              // a gamepad's press that was just bound must not also press the menu
-@@ -374,6 +406,9 @@
+@@ -427,6 +464,9 @@
              if (ImGui::BeginTabItem("Game / controls")) ImGui::EndTabItem();
              if (ImGui::BeginTabItem("Player features / training", nullptr, SDL_getenv("SATURN_LAUNCHER_FEATURES") ? ImGuiTabItemFlags_SetSelected : 0)) {
                  feature_tab = true; player_features(); ImGui::EndTabItem();
@@ -414,16 +436,27 @@
              }
              if (ImGui::BeginTabItem("Netplay", nullptr, SDL_getenv("SATURN_NETPLAY_SHOT") ? ImGuiTabItemFlags_SetSelected : 0)) {
                  feature_tab = true; netplay_features(); ImGui::EndTabItem();
+--- a/runtime/src/machine/net_setup.cpp
++++ b/runtime/src/machine/net_setup.cpp
+@@ -110,7 +110,7 @@
+     if(!net::decode_code(code,remote,error)) { status(error); return false; }
+     { std::lock_guard<std::mutex> lock(setup.mutex); self=setup.self; }
+     if(remote.nonce==self.nonce) { status("That is your own code. Paste the other player's code."); return false; }
+-    if(remote.build!=self.build) { status("Connection code build mismatch. Use the same game build."); return false; }
++    if(remote.build!=self.build) { status("Connection code game build or mod set/hash mismatch. Use the same build and enabled mod files."); return false; }
+     setup.other=remote;
+     host=self.nonce<remote.nonce; session=std::min(self.nonce,remote.nonce)^(std::max(self.nonce,remote.nonce)<<1); if(!session) session=1;
+     status("Punching all candidates. Both players must press Start...");
 --- a/runtime/src/machine/netplay.cpp
 +++ b/runtime/src/machine/netplay.cpp
 @@ -1,5 +1,6 @@
  #include "saturn.h"
  #include "netplay.h"
 +#include "p421_mods.h"
+ #include "net_traversal.h"
+ #include <fstream>
  #include "state.h"
- #include "host.h"
- #include "video.h"
-@@ -101,9 +102,10 @@
+@@ -105,9 +106,13 @@
          if(get(b,0,4)!=0x3631504e || get(b,4,4)!=1 || get(b,b.size()-4,4)!=crc(b.data(),b.size()-4)) continue;
          unsigned type=unsigned(get(b,16,4)); uint64_t id=get(b,8);
          if(locked && (from.sin_addr.s_addr!=peer.sin_addr.s_addr || from.sin_port!=peer.sin_port || id!=session)) continue;
@@ -432,17 +465,20 @@
 +        if(!locked && (!host || type!=1 || b.size()!=124)) continue;
 +        if(type==1 && host && b.size()==124) {
              if(!locked) { peer=from; session=id; locked=true; }
-+            if(std::string(b.begin()+56,b.begin()+120)!=mods_digest()) { fail("mod set/hash mismatch"); return; }
++            if(std::string(b.begin()+56,b.begin()+120)!=mods_digest()) {
++                std::string why="mod set/hash mismatch (local "+mods_digest().substr(0,12)+", peer "+std::string(b.begin()+56,b.begin()+68)+")";
++                Bytes e=packet(9); e.insert(e.end(),why.begin(),why.end()); send(e); fail(why); return;
++            }
              if(get(b,20)!=code_id || get(b,28)!=program_id || get(b,36)!=cart_id || get(b,44,4)!=uint64_t(g_cfg.input_delay) || get(b,48)!=g_cfg.stop_vblanks) {
                  Bytes e=packet(9); std::string why="protocol/source, ROM, delay or frame-limit mismatch"; e.insert(e.end(),why.begin(),why.end()); send(e); fail(why); return;
              }
-@@ -222,7 +224,7 @@
+@@ -249,7 +254,7 @@
      while(!failed && !(host?ready:go)) {
          receive();
          if(millis()-last_send>=50) {
 -            if(!host) { if(ready) message(4); else { Bytes b=packet(1); put(b,code); put(b,program); put(b,cartridge); put(b,g_cfg.input_delay,4); put(b,g_cfg.stop_vblanks); send(b); } }
 +            if(!host) { if(ready) message(4); else { Bytes b=packet(1); put(b,code); put(b,program); put(b,cartridge); put(b,g_cfg.input_delay,4); put(b,g_cfg.stop_vblanks); auto mod_hash=mods_digest(); b.insert(b.end(),mod_hash.begin(),mod_hash.end()); send(b); } }
-             else if(locked) for(int i=0;i<origin_parts;++i) if(!fragments[i]) {
+             else if(locked && hello_validated) for(int i=0;i<origin_parts;++i) if(!fragments[i]) {
                  if(!fragment_sent[i]) fragment_sent[i]=millis();
                  Bytes b=packet(2); put(b,i,4); put(b,origin_parts,4); put(b,origin.size(),4); put(b,origin_crc);
 --- /dev/null
@@ -798,7 +834,7 @@
 +{"copy_longs","0221326c|0601726c|copy_longs|copy_longs_raw_entry|func_0221326c",0x0221326cu,0x0601726Cu,false,false},
 --- /dev/null
 +++ b/runtime/src/machine/p421_mods.cpp
-@@ -0,0 +1,347 @@
+@@ -0,0 +1,370 @@
 +// Trusted native modules; the SDK memory API is bounded, native code is not sandboxed.
 +#include "p421_mods.h"
 +#include "saturn/p421_bridge.h"
@@ -809,6 +845,7 @@
 +#include <array>
 +#include <cctype>
 +#include <cstring>
++#include <cstdlib>
 +#include <filesystem>
 +#include <fstream>
 +#include <map>
@@ -975,7 +1012,22 @@
 +} // namespace
 +void mods_configure(const std::string& build,const std::string& dir,const std::string& selection) {
 +    if(opened)return; target=build;
-+    directory=dir.empty()?sat_data_dir()+"/saturn-recomp/mods":dir;
++    directory=dir;
++    if(directory.empty()) {
++#ifdef _WIN32
++        const char* base=std::getenv("APPDATA");
++        if(base && *base) directory=std::string(base)+"/Die Hard Arcade/mods";
++#elif defined(__APPLE__)
++        const char* base=std::getenv("HOME");
++        if(base && *base) directory=std::string(base)+"/Library/Application Support/Die Hard Arcade/mods";
++#else
++        const char* base=std::getenv("XDG_CONFIG_HOME");
++        if(base && *base) directory=std::string(base)+"/saturn-recomp/mods";
++        else { base=std::getenv("HOME"); if(base && *base) directory=std::string(base)+"/.config/saturn-recomp/mods"; }
++#endif
++    }
++    // An absent platform base must not resolve to /mods or a build directory.
++    if(directory.empty()) { status="Cannot locate user data folder; set --mods-dir"; return; }
 +    try {
 +        fs::create_directories(fs::u8path(directory));enabled.clear();
 +        if(!selection.empty()) { if(selection!="none")for(auto& id:split(selection))enabled.insert(id); }
@@ -1069,6 +1121,13 @@
 +bool mods_active(){return opened&&!enabled.empty();}
 +std::string mods_label(){return mods_active()?"MODDED ("+std::to_string(enabled.size())+")":"";}
 +std::vector<std::string> mods_overlay(){std::vector<std::string> r;for(auto& m:modules)if(m.descriptor&&!m.overlay.empty())r.push_back(m.overlay);return r;}
++uint64_t mods_preview_fingerprint(uint64_t base) {
++    if(enabled.empty())return base;
++    std::string description;
++    for(const auto& m:modules)if(enabled.count(m.info.id))description+=m.info.id+"@"+m.info.version+":"+m.info.hash+"\n";
++    for(unsigned char b:digest(description))base=(base^b)*1099511628211ull;
++    return base;
++}
 +uint64_t mods_fingerprint(uint64_t base){if(mods_active())for(unsigned char b:set_id)base=(base^b)*1099511628211ull;return base;}
 +void mods_state(State& s) {
 +    uint32_t n=uint32_t(set_description.size());s(n);
@@ -1148,7 +1207,7 @@
 +}
 --- /dev/null
 +++ b/runtime/src/machine/p421_mods.h
-@@ -0,0 +1,29 @@
+@@ -0,0 +1,30 @@
 +#pragma once
 +#include <string>
 +#include <vector>
@@ -1170,6 +1229,7 @@
 +bool mods_active();
 +std::string mods_label();
 +std::vector<std::string> mods_overlay();
++uint64_t mods_preview_fingerprint(uint64_t); // Selected manifest/library hashes; never loads native code.
 +uint64_t mods_fingerprint(uint64_t);
 +// Called only inside a qualified nonpoll convergence transaction.
 +uint32_t mods_dispatch(unsigned,uint32_t*,unsigned,uint32_t(*)(uint32_t*),
@@ -1178,6 +1238,16 @@
 +std::string mods_digest();
 +
 +void mods_after(unsigned,const uint32_t*,unsigned,uint32_t);
+--- a/runtime/src/machine/saturn.h
++++ b/runtime/src/machine/saturn.h
+@@ -40,6 +40,7 @@
+     bool netplay_stun_servers_override = false;
+     int netplay_map_override = -1, netplay_stun_override = -1;
+     uint16_t netplay_code_port = 7845;
++    uint64_t netplay_base_build = 0; // Portable source identity before mod-set mixing.
+     uint64_t netplay_build = 0;
+     std::string netplay_peer_code, netplay_code_out;
+     std::string netplay_stun_servers = "stun.l.google.com:19302,stun.cloudflare.com:3478";
 --- a/runtime/src/machine/state.cpp
 +++ b/runtime/src/machine/state.cpp
 @@ -13,6 +13,7 @@

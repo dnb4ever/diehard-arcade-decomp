@@ -2,7 +2,9 @@
 """Adversarial manifests/ZIPs, disabled constructor, memory/phase API and contracts."""
 import hashlib,json,os,shutil,subprocess,zipfile
 from pathlib import Path
-ROOT=next(p for p in Path(__file__).resolve().parents if (p/'STATE.md').is_file());os.chdir(ROOT);W=Path('work/p421');D=W/'loader-tests-final';D.mkdir(exist_ok=True)
+ROOT=next(p for p in Path(__file__).resolve().parents if (p/'STATE.md').is_file());os.chdir(ROOT);W=Path(os.environ.get('P421_WORK','work/p421'));D=W/'loader-tests-final'
+if D.exists():shutil.rmtree(D)
+D.mkdir()
 B=W/'build/saturn_stv';SDK=W/'port/mods/sdk';TARGET=(W/'build/p421-target.txt').read_text().strip()
 BASE=[str(B),'--cart',str(W/'snapshot/diehard_main.bin'),'--cartrom',str(W/'snapshot/cart.bin')]
 report={};env={k:v for k,v in os.environ.items() if not k.startswith(('STV_','SATURN_','P416_'))}

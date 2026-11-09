@@ -2,8 +2,8 @@
 """Mod hashes in saves and file-backed two-process netplay, including rollback."""
 import hashlib,json,os,re,shutil,struct,subprocess,time
 from pathlib import Path
-ROOT=next(p for p in Path(__file__).resolve().parents if (p/'STATE.md').is_file());os.chdir(ROOT);W=Path('work/p421');D=W/'sessions-delivery';D.mkdir(exist_ok=True)
-B=W/'build/saturn_stv';BASE=[str(B),'--cart',str(W/'snapshot/diehard_main.bin'),'--cartrom',str(W/'snapshot/cart.bin'),'--mods-dir',str(W/'data/mods')]
+ROOT=next(p for p in Path(__file__).resolve().parents if (p/'STATE.md').is_file());os.chdir(ROOT);W=Path(os.environ.get('P421_WORK','work/p421'));D=W/'sessions-delivery';D.mkdir(exist_ok=True)
+B=W/'build/saturn_stv';BASE=[str(B),'--cart',str(W/'snapshot/diehard_main.bin'),'--cartrom',str(W/'snapshot/cart.bin'),'--mods-dir',str(W/'data/mods'),'--netplay-no-map','--netplay-no-stun']
 ENV={k:v for k,v in os.environ.items() if not k.startswith(('STV_','SATURN_','P416_'))};ENV.update(LD_PRELOAD=str((W/'clock.so').resolve()),STV_SCENETRACE='1')
 report={}
 def run(name,args,mods='frame-hud,infinite-health',env=None):
@@ -38,7 +38,9 @@ print('save set, restore PNG, serialized HUD counter, mismatch and library mutat
 # Test-only file transport, never opens an Internet/UDP socket.
 shim=D/'datagram.so';subprocess.run(['cc','-shared','-fPIC','-O2',str(W/'snapshot/port/p416_datagram_shim.c'),'-ldl','-o',str(shim)],check=True)
 def peers(name,selections,frames=1200,latency=0,loss=0,jitter=0,changed_guest=False):
- d=D/name;d.mkdir(exist_ok=True);packets=d/'datagrams';packets.mkdir(exist_ok=True)
+ d=D/name;d.mkdir(exist_ok=True);packets=d/'datagrams'
+ if packets.exists():shutil.rmtree(packets)
+ packets.mkdir()
  env=dict(ENV,LD_PRELOAD=str(shim.resolve())+':'+str((W/'clock.so').resolve()),P416_DATAGRAM_DIR=str(packets.resolve()),P416_LATENCY_MS=str(latency),P416_LOSS_BP=str(loss*100),P416_JITTER_MS=str(jitter),STV_NETPLAY_DUMP='1')
  processes=[];start=time.monotonic()
  try:

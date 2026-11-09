@@ -2,6 +2,7 @@
 """Export only P4.21 additions and diffs against the one immutable snapshot."""
 import difflib,hashlib,json,shutil,subprocess
 from pathlib import Path
+raise SystemExit('Use port/p422_export_patches.py for the rebased live integration. Original patches are retained under work/p422/original-*.patch.')
 ROOT=next(p for p in Path(__file__).resolve().parents if (p/'STATE.md').is_file());W=ROOT/'work/p421';S=W/'snapshot'
 changed={};patches={}
 for name,old,new in [('runtime',S/'runtime',W/'runtime'),('convergence',S/'converge-generated',W/'generated'),('harness',S/'port',W/'port')]:

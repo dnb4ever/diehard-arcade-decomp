@@ -141,7 +141,7 @@ int main(int argc, char** argv) {
         fclose(log);
     }
     setvbuf(stderr, NULL, _IONBF, 0);
-    fprintf(stderr, "--- Die Hard Arcade 1.05, data folder %s\n", g_dir);
+    fprintf(stderr, "--- Die Hard Arcade 1.06, data folder %s\n", g_dir);
 
     // diehard.zip or the loose MAME files dropped into the data folder are prepared once.
     if (!roms_ready() && prepare_from(g_dir) != 1) {

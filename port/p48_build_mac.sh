@@ -19,6 +19,7 @@ if [ ! -f port/run/P41/recomp/CMakeLists.txt ] ||
 fi
 python3 port/p410_continuations.py port/run/P41/recomp
 python3 port/p415_idle_loops.py port/run/P41/recomp
+python3 port/p422_prepare.py
 PREFIX=()
 NO_SDL=ON
 REQUIRE_SDL=OFF
@@ -32,7 +33,7 @@ if [ "$MODE" = window ]; then
     NO_SDL=OFF
     REQUIRE_SDL=ON
 fi
-cmake -S port/run/P41/recomp -B "port/run/P48/build-$MODE" -G Ninja \
+cmake -S port/run/P422/recomp -B "port/run/P48/build-$MODE" -G Ninja \
     -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
     -DCMAKE_OSX_ARCHITECTURES=x86_64 -DSATURN_RUNTIME="$PWD/tools/saturn-recomp/runtime" \
     -DSATURN_EXTRA="$PWD/port/stv.cmake" -DSATURN_NO_SDL="$NO_SDL" \

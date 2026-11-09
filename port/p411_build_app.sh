@@ -14,13 +14,14 @@ if [ ! -f port/run/P41/recomp/CMakeLists.txt ] ||
 fi
 python3 port/p410_continuations.py port/run/P41/recomp
 python3 port/p415_idle_loops.py port/run/P41/recomp
+python3 port/p422_prepare.py
 SDL_PREFIX=${SDL3_PREFIX:-$(brew --prefix sdl3)}
 if [ ! -f "$SDL_PREFIX/lib/cmake/SDL3/SDL3Config.cmake" ]; then
     echo 'SDL3 development files missing; set SDL3_PREFIX to an existing SDL3 install.' >&2
     exit 2
 fi
 export MACOSX_DEPLOYMENT_TARGET=${MACOSX_DEPLOYMENT_TARGET:-14.0}
-cmake -S port/run/P41/recomp -B port/run/P411/build-app -G Ninja \
+cmake -S port/run/P422/recomp -B port/run/P411/build-app -G Ninja \
     -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
     -DCMAKE_OSX_ARCHITECTURES=x86_64 -DCMAKE_OSX_DEPLOYMENT_TARGET="$MACOSX_DEPLOYMENT_TARGET" \
     -DSATURN_RUNTIME="$PWD/tools/saturn-recomp/runtime" -DSATURN_EXTRA="$PWD/port/stv.cmake" \

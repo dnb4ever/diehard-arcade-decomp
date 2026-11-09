@@ -462,3 +462,13 @@ remain PM checks. No commit or publish action was performed.
 8. Save sets/counters restore correctly; mismatches reject; matching modded peers retain equal state/PNG/WAV under rollback.
 9. All 169 runtime tests, six existing convergence probes and 32 loader cases pass; Windows loader/launcher/DLL compilation passes, native platform runs remain open.
 10. Three snapshot-based patches reconstruct 17 files exactly; PM staging/merge steps and remaining ABI/platform limits are documented.
+
+## P4.22 supersedes the snapshot integration instructions
+
+The live tree now integrates these features over final P4.19. The three patch
+files have been re-exported against that base, so the historical snapshot
+staging commands and hashes above describe the original prototype only. Use
+`port/p422_prepare.py`, the normal build/package scripts and
+[the P4.22 integration note](p422_mods_integration.md) for current instructions,
+default per-platform folders, the corrected HUD placement and release evidence.
+The original patch copies remain under `work/p422/original-*.patch` for audit.

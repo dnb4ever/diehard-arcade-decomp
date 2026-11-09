@@ -2,7 +2,7 @@
 """Link an independent probe against the already built, unchanged application objects."""
 import shlex,subprocess,os
 from pathlib import Path
-w=next(p for p in Path(__file__).resolve().parents if (p/'STATE.md').is_file())/'work/p421';build=w/'build'
+w=next(p for p in Path(__file__).resolve().parents if (p/'STATE.md').is_file())/os.environ.get('P421_WORK','work/p421');build=w/'build'
 obj=(w/'abi-probe.o').resolve();out=(w/'abi-probe').resolve()
 subprocess.run(['c++','-std=c++20','-O2','-I'+str(w/'generated'),'-I'+str(w/'runtime/include'),'-I'+str(w/'runtime/src/machine'),'-I'+str(build),'-c',str(w/'port/p421_abi_probe.cpp'),'-o',str(obj)],check=True)
 cmd=shlex.split((build/'CMakeFiles/saturn_stv.dir/link.txt').read_text())

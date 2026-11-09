@@ -3,7 +3,7 @@
 import concurrent.futures,hashlib,json,os,re,subprocess,time
 from pathlib import Path
 ROOT=next(p for p in Path(__file__).resolve().parents if (p/'STATE.md').is_file());os.chdir(ROOT)
-W=Path('work/p421');B=W/'build/saturn_stv';STOCK=W/'build-stock/saturn_stv'
+W=Path(os.environ.get('P421_WORK','work/p421'));B=W/'build/saturn_stv';STOCK=W/'build-stock/saturn_stv'
 BASE=['--cart',str(W/'snapshot/diehard_main.bin'),'--cartrom',str(W/'snapshot/cart.bin')]
 def environment(**extra):
  e={k:v for k,v in os.environ.items() if not k.startswith(('STV_','SATURN_','P416_'))};e.update(extra);return e
@@ -21,7 +21,7 @@ def hashes(d,log):
  guest='\n'.join(line for line in log.splitlines() if re.search(r'SCENETRACE|ST-V coin:|FATAL|stopped after',line))+'\n'
  return dict(png={p.name:sha(p) for p in sorted(d.glob('shot-*.png'))},trace_sha256=hashlib.sha256(trace.encode()).hexdigest(),guest_trace_sha256=hashlib.sha256(guest.encode()).hexdigest(),wav_sha256=sha(d/'audio.wav'))
 def main():
- subprocess.run(['cc','-shared','-fPIC','work/p421/snapshot/port/converge/clock_input.c','-o',str(W/'clock.so')],check=True)
+ subprocess.run(['cc','-shared','-fPIC',str(W/'snapshot/port/converge/clock_input.c'),'-o',str(W/'clock.so')],check=True)
  for name in ('identity','infinite_health','frame_hud'):
   subprocess.run([str(W/'port/mods/build_mod.sh'),str(W/'port/mods/examples'/name),str(W/'data/mods'/name.replace('_','-')),str(W/'build/p421-target.txt')],check=True)
  report={'target':(W/'build/p421-target.txt').read_text().strip(),'smoke':{},'regression':{}}
@@ -43,6 +43,9 @@ def main():
   # run() adds its own identical --out after the copied original.
   args+=['--mods-dir',str(W/'data/mods'),'--mods','identity' if mode=='identity' else 'none']
   env=dict(ENV,**ref['env'])
+  # --shots already requests the reference fields; raw VRAM/frame dumps add no
+  # coverage to the PNG/trace/WAV oracle and consume shared disk unnecessarily.
+  env.pop('STV_CAPTURE_FIELDS',None)
   if mode=='identity':env.update(CONVERGE_AUDIT='1',CONVERGE_COUNTS='1')
   d,log,record=run(label,B,args,env);got=hashes(d,log)
   for key in got:assert got[key]==ref[key],(mode,name,key,got[key],ref[key])
@@ -55,7 +58,7 @@ def main():
  for mode in ('none','infinite-health','frame-hud'):
   label='example-'+mode;d=W/'verify-final'/label;d.mkdir(parents=True,exist_ok=True)
   env=dict(ENV,STV_AUTOPLAY='100',STV_SCENETRACE='1',SATURN_WINDOW_SHOT=str((d/'window.png').resolve()),SATURN_WINDOW_SHOT_VB='1900')
-  args=['--window','--no-launcher','--unpaced','--settings','-','--scale','3','--vblanks','2000','--shots','1800,1900','--dump','1900','--stvinput','99999:COIN','--mods-dir',str(W/'data/mods'),'--mods',mode]
+  args=['--window','--no-launcher','--unpaced','--settings','-','--scale','3','--vblanks','2000','--shots','1800,1900','--stvinput','99999:COIN','--mods-dir',str(W/'data/mods'),'--mods',mode]
   d,log,record=run(label,B,args,env)
   assert (d/'window.png').is_file(),label
   if mode!='none':assert 'MODDED' in log and 'mods: enabled '+mode in log

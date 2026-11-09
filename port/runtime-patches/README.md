@@ -567,3 +567,82 @@ in `work/win`. `port/p418_verify_patches.py` reconstructs both patch chains
 byte for byte with zero fuzz/offsets. Pins and release usage remain in
 [P4.17](../../notes/port/p417_linux_release.md); current verification and artifact
 hashes are in [P4.18 integration](../../notes/port/p418_integration.md).
+
+## P4.19 speculative netplay audio (2026-11-09)
+
+Apply `p419-speculative-audio.patch` after P4.17, inside `tools/saturn-recomp`.
+Low latency is the saved default; Glitch-free retains confirmed-only playout.
+A mutex-protected absolute PCM timeline feeds SDL on demand, replaces only
+unsubmitted rollback differences and crossfades for 3 ms without clearing or
+restarting the device. The ordinary WAV remains the confirmed stream; optional
+`STV_NETPLAY_PLAYED` captures device-input PCM separately. Offline output is
+unchanged. Harness CLI/test drivers live in `port/`. Design and evidence:
+[P4.19 netplay polish](../../notes/port/p419_netplay_polish.md).
+
+Then apply `p419-nat-traversal.patch`: portable built-in PCP/NAT-PMP and UPnP
+IGD leased UDP mappings, configurable STUN, compact connection codes and
+simultaneous UDP punching on the game socket. The launcher has Host / Join by
+IP / Connect by code, SDL clipboard controls and discovery/error status.
+Mapping renewals use a separate socket; exit removes the lease. Windows adds
+only the system `iphlpapi` link for gateway discovery. Discovery runs only when
+requested by netplay. Runtime tests include published STUN vectors and injected
+router responders; `port/p419_verify_traversal.py` also exercises production
+socket I/O and complete code/direct game pairs using local file-backed fixtures.
+Live-router/public-STUN/internet and native Windows/macOS checks remain PM work.
+
+P4.19 also repairs `p416_verify_netplay.py --transport udp`: zero impairment
+uses direct kernel loopback; nonzero cases automatically own a
+`p416_udp_proxy.py` process. UDP never builds/loads a shim. Explicit
+`--transport files-proxy` verifies that same proxy through file-backed sockets
+when the sandbox blocks UDP. Final evidence, 181 runtime tests, seven audio
+edge-case tests, the 9,000-field audio/state matrix, refreshed owner artifacts
+and exact real-socket PM commands are in the P4.19 note linked above.
+
+## P4.22 live integration of P4.21 mods (2026-11-09)
+
+The three `p421-mod-*.patch` files are now **rebased onto the final P4.19
+sources**, superseding their original snapshot-only versions. Runtime order:
+
+```sh
+# Inside tools/saturn-recomp, after p419-nat-traversal.patch:
+patch --batch --fuzz=0 -p1 < ../../port/runtime-patches/p421-mod-runtime.patch
+# From the repository root, on the P4.19 harness:
+patch --batch --fuzz=0 -p1 < port/runtime-patches/p421-mod-harness.patch
+```
+
+The loader preserves P4.19 speculative audio, traversal and the validated-Hello
+origin gate. HELLO now carries the complete mod-set SHA-256; both direct peers
+receive an explicit mod-set/hash mismatch before origin transfer. The selected
+set joins the P4.19 portable fingerprint used by connection codes and probes,
+even before native libraries load. Changing selection closes discovery and
+invalidates old codes. Saves retain the exact set description and SDK state.
+Host overlay lines now sit bottom-left above MODDED, clear of the health HUD.
+
+A shipping hook target needs all **216 qualified adapters**. The reviewable
+`port/mods/qualified-base.patch` plus `.json` preserve P4.21's qualified generated
+output as a pinned deployment delta against stock P4.19 generated code. This
+avoids a build dependency on `work/p421/` or modification of the separate
+convergence job. `port/p422_prepare.py` checks every changed stock input, applies
+that payload, then applies `p421-mod-convergence.patch`, with zero fuzz/offsets,
+into `port/run/P422/recomp`. The latter patch contains the loader bridge, full
+C/recipe/catalogue hashing, a portable standard `uintptr_t` prelude for LLP64,
+and Linux-only exit wrapping. Neither generated program is instrumented twice.
+
+The ordinary Linux/window/macOS/Windows wrappers all run this deployment step;
+Linux and Windows stage the resulting current program. Do not apply the
+convergence patch against stock generated code or reapply any runtime patch to
+the already integrated live tree. The isolated Windows portability patch is
+rebased again and applied **after** the mod runtime/harness in `work/win` only.
+
+Releases ship `modding/` with the SDK, three example sources, build script and
+their own `p421-target.txt`; no compiled examples or enabled selections. The
+macOS bundle places it in `Contents/Resources/modding`. Build native libraries
+on the target platform, including `.dylib` on the PM's Mac. Default mod folders
+are Linux `$XDG_CONFIG_HOME/saturn-recomp/mods` (otherwise
+`~/.config/saturn-recomp/mods`), macOS
+`~/Library/Application Support/Die Hard Arcade/mods`, and Windows
+`%APPDATA%/Die Hard Arcade/mods`. `--mods-dir` is the explicit override.
+
+Reconstruction: `python3 port/p422_verify_patches.py`. Complete evidence,
+artifact hashes, reproduction commands and platform limits:
+[P4.22 integration](../../notes/port/p422_mods_integration.md).

@@ -1,6 +1,6 @@
 --- a/runtime/runtime.cmake
 +++ b/runtime/runtime.cmake
-@@ -60,7 +60,12 @@
+@@ -61,7 +61,12 @@
    add_library(saturn_host OBJECT ${_src}/host/host_null.cpp ${_src}/host/settings.cpp)
  endif()
  if(WIN32)
@@ -42,7 +42,7 @@
  #include "m68k.h"
 --- a/port/main_stv.cpp
 +++ b/port/main_stv.cpp
-@@ -53,6 +53,9 @@
+@@ -55,6 +55,9 @@
  #include <cstring>
  #include <string>
  #include <vector>
@@ -52,7 +52,7 @@
  
  // The runtime services this harness calls directly (declared in saturn.h / video.h):
  void video_init();
-@@ -151,6 +154,17 @@
+@@ -153,6 +156,17 @@
      if (!p417::arguments(argc, argv)) return 0;
  #endif
      std::string cart, cartrom, out = ".", peek, shots, dump, watch, input, stvinput, wav;
@@ -70,7 +70,7 @@
      bool no_sound = false;          // --no-sound: leave the 68000 held (the old render-only behaviour)
      bool spoof_sound_done = false;  // EXPERIMENT (--spoof-sound-done): NOP the 3 frame_sync_loop spins on 0x060E0DD8 bit7
      uint32_t base = 0x06004000u, entry = 0x06005020u, sp = 0x06100000u;
-@@ -159,6 +173,9 @@
+@@ -162,6 +176,9 @@
      bool trace = false;
      bool window = false, fullscreen = false, unpaced = false;  // --window: real time, for a player
      bool launcher = false;
@@ -78,9 +78,9 @@
 +    if (packaged) window = launcher = true;
 +#endif
      int scale = 0, stats = 0, internal_resolution = 0;
-     int net_host = 0, input_delay = 3; std::string net_join;
-     auto net_number = [](const char* text, int lo, int hi) {
-@@ -172,6 +189,10 @@
+     int net_host = 0, input_delay = 3, net_audio = -1, net_code_port = -1; std::string net_join, net_peer_code, net_code_out, net_stun_servers;
+     bool net_no_map=false, net_no_stun=false;
+@@ -176,6 +193,10 @@
      for (int i = 1; i < argc; ++i) {
          const char* a = argv[i];
          bool more = i + 1 < argc;
@@ -91,9 +91,9 @@
          if (!std::strcmp(a, "--cart") && more) cart = argv[++i];
          else if (!std::strcmp(a, "--base") && more) base = hx(argv[++i]);
          else if (!std::strcmp(a, "--entry") && more) entry = hx(argv[++i]);
-@@ -213,6 +234,13 @@
+@@ -233,6 +254,13 @@
          else if (!std::strcmp(a, "--virtual-input") && more) virtual_input = argv[++i]; // with --window, tests: VB:BUTTONS,... on virtual gamepads (host.cpp)
-         else { std::fprintf(stderr, "usage: saturn_stv --cart FILE [--cartrom cart.bin] [--base H] [--entry H] [--sp H] [--vblanks N] [--trace] [--out DIR] [--peek A[:W],...] [--shots N,...] [--dump N,...] [--watch LO:HI] [--input VBLANK:BUTTONS,...] [--stvinput VB:START1,...] [--internal-resolution 1|2|3] [--netplay-host PORT | --netplay-join IPv4:PORT] [--input-delay 0..3] [--window [--launcher | --no-launcher] [--fullscreen] [--scale N] [--settings FILE] [--unpaced] [--stats S]]\n"); return 2; }
+         else { std::fprintf(stderr, "usage: saturn_stv --cart FILE [--cartrom cart.bin] [--base H] [--entry H] [--sp H] [--vblanks N] [--trace] [--out DIR] [--peek A[:W],...] [--shots N,...] [--dump N,...] [--watch LO:HI] [--input VBLANK:BUTTONS,...] [--stvinput VB:START1,...] [--mods-dir DIR] [--mods none|ID,...] [--mods-list | --mods-check | --mods-install ZIP] [--internal-resolution 1|2|3] [--netplay-host PORT | --netplay-join IPv4:PORT] [--netplay-code PORT --netplay-peer-code CODE|@FILE] [--netplay-code-out FILE] [--netplay-no-map] [--netplay-no-stun] [--netplay-stun-servers HOST:PORT,HOST:PORT] [--netplay-audio low-latency|glitch-free] [--input-delay 0..3] [--window [--launcher | --no-launcher] [--fullscreen] [--scale N] [--settings FILE] [--unpaced] [--stats S]]\n"); return 2; }
      }
 +#ifdef _WIN32
 +    if (window) {
@@ -105,7 +105,7 @@
      if (cart.empty()) { std::fprintf(stderr, "saturn_stv: --cart is required\n"); return 2; }
  
      // Config the reused runtime reads: headless (host_open returns true), virtual time,
-@@ -236,6 +264,9 @@
+@@ -265,6 +293,9 @@
      g_cfg.launch_info = "Program: " + cart + "\nCartridge: " + cartrom;
      g_cfg.virtual_input = virtual_input;
      g_cfg.settings = !settings.empty() || !window || sat_data_dir().empty() ? settings : sat_data_dir() + "/saturn-recomp/stv.ini";

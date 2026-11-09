@@ -6,10 +6,12 @@ W=$PWD/work/p417
 mkdir -p "$W/opt"
 # P4.18: snapshot the integrated current tree, including final P4.16 netplay.
 # P4.17 repo/runtime changes are already applied; never patch a stale copy.
+python3 port/p410_continuations.py port/run/P41/recomp
+python3 port/p415_idle_loops.py port/run/P41/recomp
+python3 port/p422_prepare.py
 python3 port/p418_stage_linux.py
 python3 port/p417_package_appimage.py --fetch
-python3 "$W/saturn-recomp/port/p410_continuations.py" "$W/recomp"
-python3 "$W/saturn-recomp/port/p415_idle_loops.py" "$W/recomp"
+# P4.22: qualified deployment already contains the original continuations and idle pass.
 cmake --fresh -S "$W/opt/SDL3-3.4.20" -B "$W/build-sdl" \
     -DCMAKE_TOOLCHAIN_FILE="$W/toolchain.cmake" -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX="$W/opt/sdl" -DSDL_SHARED=ON -DSDL_STATIC=OFF \

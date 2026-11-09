@@ -7,6 +7,7 @@ adds the native ROM/settings launcher and third-party licenses, signs, then
 checks that nothing references /usr/local, /opt/homebrew or other outside paths.
 No ROM data is copied; ROMs live in ~/Library/Application Support/Die Hard Arcade/.
 """
+from p422_package_mods import package_mods
 import argparse
 import plistlib
 import re
@@ -108,11 +109,13 @@ with (contents / 'Info.plist').open('wb') as f:
                       CFBundleDisplayName='Die Hard Arcade',
                       CFBundleIdentifier='org.saturn-recomp.diehard-arcade',
                       CFBundleIconFile='DieHardArcade.icns',
-                      CFBundlePackageType='APPL', CFBundleShortVersionString='1.05',
-                      CFBundleVersion='105', CFBundleInfoDictionaryVersion='6.0',
+                      CFBundlePackageType='APPL', CFBundleShortVersionString='1.06',
+                      CFBundleVersion='106', CFBundleInfoDictionaryVersion='6.0',
                       CFBundleSupportedPlatforms=['MacOSX'], LSMinimumSystemVersion=args.min_macos,
                       LSApplicationCategoryType='public.app-category.arcade-games',
                       NSHighResolutionCapable=True), f)
+
+package_mods(resources / 'modding', (root / args.binary).parent / 'p421-target.txt')
 
 run('codesign', '--force', '--deep', '--sign', '-', str(app))
 run('codesign', '--verify', '--deep', '--strict', str(app))

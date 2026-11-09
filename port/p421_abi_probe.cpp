@@ -10,7 +10,10 @@ static uint32_t seed=0x421c31;
 static uint32_t next(){seed^=seed<<13;seed^=seed>>17;seed^=seed<<5;return seed;}
 int main(int argc,char** argv) {
     if(argc!=2 || !std::getenv("CONVERGE_AUDIT"))return 2;
-    mods_configure(STV_MOD_TARGET,argv[1],"identity");if(!mods_open())return 3;
+    mods_configure(STV_MOD_TARGET,argv[1],"identity");
+    const uint64_t preview=mods_preview_fingerprint(STV_NETPLAY_CODE);
+    if(!mods_open())return 3;
+    if(preview!=mods_fingerprint(STV_NETPLAY_CODE))return 4;
     const uint32_t edge[]={0,1,0xffffffffu,0x80000000u,0x7fffffffu,0xfffffff8u,0x7ffffff8u,0x8000,0x10000,0xffff};
     for(unsigned i=0;i<0x100000;++i){g_wram_h[i]=uint8_t(next());g_wram_l[i]=uint8_t(next());}
     std::vector<uint8_t> high(g_wram_h,g_wram_h+0x100000),low(g_wram_l,g_wram_l+0x100000);

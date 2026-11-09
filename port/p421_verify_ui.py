@@ -2,7 +2,7 @@
 """Actual SDL mouse toggles, open-folder URI and dropped ZIP installation."""
 import json,os,shutil,subprocess
 from pathlib import Path
-ROOT=next(p for p in Path(__file__).resolve().parents if (p/'STATE.md').is_file());os.chdir(ROOT);W=Path('work/p421');D=W/'ui-delivery';D.mkdir(exist_ok=True)
+ROOT=next(p for p in Path(__file__).resolve().parents if (p/'STATE.md').is_file());os.chdir(ROOT);W=Path(os.environ.get('P421_WORK','work/p421'));D=W/'ui-delivery';D.mkdir(exist_ok=True)
 mods=D/'mods space ü';shutil.copytree(W/'data/mods',mods,dirs_exist_ok=True)
 # Every initial mod is disabled; the driver enables only the first checkbox.
 (mods/'enabled.txt').unlink(missing_ok=True)

@@ -2,6 +2,7 @@
 """Reproduce integration from the retained snapshot without touching shared sources."""
 import argparse,json,hashlib,shutil,subprocess
 from pathlib import Path
+raise SystemExit('P4.22 rebased the patches onto live P4.19. Use port/p422_prepare.py and the normal build wrappers; see notes/port/p422_mods_integration.md. Historical patches: work/p422/original-*.patch.')
 ROOT=next(p for p in Path(__file__).resolve().parents if (p/'STATE.md').is_file())
 p=argparse.ArgumentParser(description=__doc__);p.add_argument('--snapshot',default='work/p421/snapshot');p.add_argument('--destination',required=True);a=p.parse_args()
 s=ROOT/a.snapshot;d=ROOT/a.destination

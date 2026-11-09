@@ -24,6 +24,8 @@ assets = [
 for base, name, digest, directory in assets:
     archive = root / name
     if not archive.exists():
+        if os.environ.get('DHA_OFFLINE') == '1':
+            raise SystemExit(f'Offline dependency missing: {archive}')
         pending = archive.with_suffix(archive.suffix + '.part')
         urllib.request.urlretrieve(base + name, pending)
         pending.replace(archive)
@@ -39,6 +41,9 @@ for base, name, digest, directory in assets:
 PY
 # P4.13: refresh the isolated sources when runtime/harness/portability inputs change.
 # Historical P4.12 baseline and its snapshot.json remain intact for audit.
+python3 port/p410_continuations.py port/run/P41/recomp
+python3 port/p415_idle_loops.py port/run/P41/recomp
+python3 port/p422_prepare.py
 python3 port/p413_stage_win.py
 PATCH=$ROOT/port/runtime-patches/p412-windows-portability.patch
 if patch --batch --force --dry-run -R -p1 -d "$WIN/saturn-recomp" < "$PATCH" >/dev/null 2>&1; then
@@ -46,9 +51,7 @@ if patch --batch --force --dry-run -R -p1 -d "$WIN/saturn-recomp" < "$PATCH" >/d
 else
     patch --batch --forward -p1 -d "$WIN/saturn-recomp" < "$PATCH"
 fi
-# Run the idempotent continuation pass only on our copied generated C++.
-python3 "$WIN/saturn-recomp/port/p410_continuations.py" "$WIN/recomp"
-python3 "$WIN/saturn-recomp/port/p415_idle_loops.py" "$WIN/recomp"
+# P4.22 deploys already instrumented qualified code; never instrument it twice.
 TOOLCHAIN=$WIN/opt/llvm-mingw-20261104-ucrt-ubuntu-22.04-x86_64
 SDL=$WIN/opt/SDL3-3.4.20/x86_64-w64-mingw32
 cmake -S "$WIN/recomp" -B "$WIN/build-windows" -G 'Unix Makefiles' \

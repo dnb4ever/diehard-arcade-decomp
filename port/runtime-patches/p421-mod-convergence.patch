@@ -1,6 +1,6 @@
 --- a/generated/CMakeLists.txt
 +++ b/generated/CMakeLists.txt
-@@ -259,7 +259,9 @@
+@@ -259,13 +259,16 @@
      converge_06017D90.cpp converge_06017D90.c
  )
  target_compile_options(recomp PRIVATE $<$<COMPILE_LANGUAGE:C>:-fwrapv;-fno-strict-aliasing>)
@@ -10,7 +10,14 @@
  add_executable(converge_abi_probe abi_probe.cpp)
  target_link_libraries(converge_abi_probe saturn_core saturn_stub recomp Threads::Threads)
  target_link_options(converge_abi_probe PRIVATE -Wl,--wrap=_Exit)
-@@ -298,3 +300,24 @@
+ file(GLOB _converge_identity_sources CONFIGURE_DEPENDS
+     "${CMAKE_CURRENT_SOURCE_DIR}/converge_*.c" "${CMAKE_CURRENT_SOURCE_DIR}/converge_*.cpp"
+     "${CMAKE_CURRENT_SOURCE_DIR}/bridge.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/bridge.h" "${CMAKE_CURRENT_SOURCE_DIR}/round4_small_vector.h"
++    "${CMAKE_CURRENT_SOURCE_DIR}/overrides.json"
+     "${CMAKE_CURRENT_SOURCE_DIR}/continuations.*" "${CMAKE_CURRENT_SOURCE_DIR}/round3_pulse.*" "${CMAKE_CURRENT_SOURCE_DIR}/round4_compute.*")
+ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${_converge_identity_sources})
+ set(_converge_hashes "${_state_identity}")
+@@ -298,3 +301,24 @@
  add_executable(round4_compute_probe round4_compute_probe.cpp)
  target_link_libraries(round4_compute_probe saturn_core saturn_stub recomp Threads::Threads)
  target_link_options(round4_compute_probe PRIVATE -Wl,--wrap=_Exit -Wl,--wrap=_Z8sh2_pollR10SH2Context -Wl,--wrap=_Z11sh2_io_readji)
@@ -109,3 +116,2291 @@
  }
 +
 +#endif
+--- a/generated/converge_06005B8E.c
++++ b/generated/converge_06005B8E.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06006DDA.c
++++ b/generated/converge_06006DDA.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06006DFA.c
++++ b/generated/converge_06006DFA.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_060081D4.c
++++ b/generated/converge_060081D4.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06008258.c
++++ b/generated/converge_06008258.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06008308.c
++++ b/generated/converge_06008308.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0600A86A.c
++++ b/generated/converge_0600A86A.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0600B2CE.c
++++ b/generated/converge_0600B2CE.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0600B884.c
++++ b/generated/converge_0600B884.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0600F098.c
++++ b/generated/converge_0600F098.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0600F0C6.c
++++ b/generated/converge_0600F0C6.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0600F0FC.c
++++ b/generated/converge_0600F0FC.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06010858.c
++++ b/generated/converge_06010858.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06010AB0.c
++++ b/generated/converge_06010AB0.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06011188.c
++++ b/generated/converge_06011188.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06011204.c
++++ b/generated/converge_06011204.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_060118D0.c
++++ b/generated/converge_060118D0.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0601198E.c
++++ b/generated/converge_0601198E.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_060120AA.c
++++ b/generated/converge_060120AA.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_060121E2.c
++++ b/generated/converge_060121E2.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0601229E.c
++++ b/generated/converge_0601229E.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06012978.c
++++ b/generated/converge_06012978.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_060130EC.c
++++ b/generated/converge_060130EC.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_060130EE.c
++++ b/generated/converge_060130EE.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0601315E.c
++++ b/generated/converge_0601315E.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06013816.c
++++ b/generated/converge_06013816.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06013B98.c
++++ b/generated/converge_06013B98.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06013E98.c
++++ b/generated/converge_06013E98.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06014020.c
++++ b/generated/converge_06014020.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_060140F8.c
++++ b/generated/converge_060140F8.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_060141CE.c
++++ b/generated/converge_060141CE.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0601447C.c
++++ b/generated/converge_0601447C.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06014858.c
++++ b/generated/converge_06014858.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06017190.c
++++ b/generated/converge_06017190.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_060171A8.c
++++ b/generated/converge_060171A8.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_060171C8.c
++++ b/generated/converge_060171C8.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_060171D4.c
++++ b/generated/converge_060171D4.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_060171FC.c
++++ b/generated/converge_060171FC.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_060172D4.c
++++ b/generated/converge_060172D4.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0601730C.c
++++ b/generated/converge_0601730C.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06017354.c
++++ b/generated/converge_06017354.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06017434.c
++++ b/generated/converge_06017434.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06017D24.c
++++ b/generated/converge_06017D24.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06017D90.c
++++ b/generated/converge_06017D90.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06017F90.c
++++ b/generated/converge_06017F90.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06017FB4.c
++++ b/generated/converge_06017FB4.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0601800C.c
++++ b/generated/converge_0601800C.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06018194.c
++++ b/generated/converge_06018194.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06018284.c
++++ b/generated/converge_06018284.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_060183B8.c
++++ b/generated/converge_060183B8.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_060187CC.c
++++ b/generated/converge_060187CC.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06018818.c
++++ b/generated/converge_06018818.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_060189A0.c
++++ b/generated/converge_060189A0.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_060189AA.c
++++ b/generated/converge_060189AA.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06018A2E.c
++++ b/generated/converge_06018A2E.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06018A40.c
++++ b/generated/converge_06018A40.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06018A50.c
++++ b/generated/converge_06018A50.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06018A60.c
++++ b/generated/converge_06018A60.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06019000.c
++++ b/generated/converge_06019000.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06019386.c
++++ b/generated/converge_06019386.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06019630.c
++++ b/generated/converge_06019630.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0601966E.c
++++ b/generated/converge_0601966E.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06019F24.c
++++ b/generated/converge_06019F24.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06019F6C.c
++++ b/generated/converge_06019F6C.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0601A1C8.c
++++ b/generated/converge_0601A1C8.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0601A2FC.c
++++ b/generated/converge_0601A2FC.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0601A36C.c
++++ b/generated/converge_0601A36C.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0601B07C.c
++++ b/generated/converge_0601B07C.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0601BC10.c
++++ b/generated/converge_0601BC10.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0601BCA2.c
++++ b/generated/converge_0601BCA2.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0601D984.c
++++ b/generated/converge_0601D984.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0601DBA4.c
++++ b/generated/converge_0601DBA4.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0601DC22.c
++++ b/generated/converge_0601DC22.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0601E5F6.c
++++ b/generated/converge_0601E5F6.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0601F080.c
++++ b/generated/converge_0601F080.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_060202AA.c
++++ b/generated/converge_060202AA.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06020E1C.c
++++ b/generated/converge_06020E1C.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06021B6E.c
++++ b/generated/converge_06021B6E.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06022AC0.c
++++ b/generated/converge_06022AC0.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06023240.c
++++ b/generated/converge_06023240.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06023952.c
++++ b/generated/converge_06023952.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_060246AE.c
++++ b/generated/converge_060246AE.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0602478C.c
++++ b/generated/converge_0602478C.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_060253A8.c
++++ b/generated/converge_060253A8.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0602542C.c
++++ b/generated/converge_0602542C.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06025800.c
++++ b/generated/converge_06025800.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06025FFA.c
++++ b/generated/converge_06025FFA.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_060260B0.c
++++ b/generated/converge_060260B0.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_060263B2.c
++++ b/generated/converge_060263B2.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06026574.c
++++ b/generated/converge_06026574.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06026ECC.c
++++ b/generated/converge_06026ECC.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06027780.c
++++ b/generated/converge_06027780.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06029FAC.c
++++ b/generated/converge_06029FAC.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0602A134.c
++++ b/generated/converge_0602A134.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0602A144.c
++++ b/generated/converge_0602A144.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0602B5E4.c
++++ b/generated/converge_0602B5E4.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0602B602.c
++++ b/generated/converge_0602B602.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0602BC22.c
++++ b/generated/converge_0602BC22.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0602BC5C.c
++++ b/generated/converge_0602BC5C.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0602C134.c
++++ b/generated/converge_0602C134.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0602D640.c
++++ b/generated/converge_0602D640.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0602E04E.c
++++ b/generated/converge_0602E04E.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0602E0EC.c
++++ b/generated/converge_0602E0EC.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0602E5CA.c
++++ b/generated/converge_0602E5CA.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0602E8D8.c
++++ b/generated/converge_0602E8D8.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0602E91A.c
++++ b/generated/converge_0602E91A.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0602ED7A.c
++++ b/generated/converge_0602ED7A.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0602FD90.c
++++ b/generated/converge_0602FD90.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0602FDF2.c
++++ b/generated/converge_0602FDF2.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06030220.c
++++ b/generated/converge_06030220.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06032B72.c
++++ b/generated/converge_06032B72.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06032B84.c
++++ b/generated/converge_06032B84.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06032BA8.c
++++ b/generated/converge_06032BA8.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06032C3C.c
++++ b/generated/converge_06032C3C.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06032EA2.c
++++ b/generated/converge_06032EA2.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06032EE4.c
++++ b/generated/converge_06032EE4.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_060333C0.c
++++ b/generated/converge_060333C0.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_060333EA.c
++++ b/generated/converge_060333EA.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0603340E.c
++++ b/generated/converge_0603340E.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06033432.c
++++ b/generated/converge_06033432.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06033456.c
++++ b/generated/converge_06033456.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06033470.c
++++ b/generated/converge_06033470.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06033640.c
++++ b/generated/converge_06033640.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0603384E.c
++++ b/generated/converge_0603384E.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_060341AC.c
++++ b/generated/converge_060341AC.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0603594A.c
++++ b/generated/converge_0603594A.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_060359B2.c
++++ b/generated/converge_060359B2.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06035A1C.c
++++ b/generated/converge_06035A1C.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06035B0E.c
++++ b/generated/converge_06035B0E.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06035D72.c
++++ b/generated/converge_06035D72.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_060364DA.c
++++ b/generated/converge_060364DA.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06037178.c
++++ b/generated/converge_06037178.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0603C6C6.c
++++ b/generated/converge_0603C6C6.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0603C6FC.c
++++ b/generated/converge_0603C6FC.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0603C75C.c
++++ b/generated/converge_0603C75C.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0603CBA4.c
++++ b/generated/converge_0603CBA4.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0603CC4E.c
++++ b/generated/converge_0603CC4E.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0603CCD2.c
++++ b/generated/converge_0603CCD2.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0603CD5E.c
++++ b/generated/converge_0603CD5E.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0603CDDE.c
++++ b/generated/converge_0603CDDE.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0603CDF4.c
++++ b/generated/converge_0603CDF4.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0603CF46.c
++++ b/generated/converge_0603CF46.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0603CFDC.c
++++ b/generated/converge_0603CFDC.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0603D462.c
++++ b/generated/converge_0603D462.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0603D64E.c
++++ b/generated/converge_0603D64E.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0603D6E8.c
++++ b/generated/converge_0603D6E8.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0603D7C2.c
++++ b/generated/converge_0603D7C2.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0603DF78.c
++++ b/generated/converge_0603DF78.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0603E394.c
++++ b/generated/converge_0603E394.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0603E6DC.c
++++ b/generated/converge_0603E6DC.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0603EC50.c
++++ b/generated/converge_0603EC50.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0603F1C0.c
++++ b/generated/converge_0603F1C0.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0603F254.c
++++ b/generated/converge_0603F254.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0604074A.c
++++ b/generated/converge_0604074A.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_060407BA.c
++++ b/generated/converge_060407BA.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_060410C6.c
++++ b/generated/converge_060410C6.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06041CC2.c
++++ b/generated/converge_06041CC2.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06041D28.c
++++ b/generated/converge_06041D28.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_060425BC.c
++++ b/generated/converge_060425BC.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06042EF0.c
++++ b/generated/converge_06042EF0.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06042F5A.c
++++ b/generated/converge_06042F5A.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06042FA0.c
++++ b/generated/converge_06042FA0.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06042FEC.c
++++ b/generated/converge_06042FEC.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_060454EE.c
++++ b/generated/converge_060454EE.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06045556.c
++++ b/generated/converge_06045556.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0604558C.c
++++ b/generated/converge_0604558C.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_060456C4.c
++++ b/generated/converge_060456C4.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0604574E.c
++++ b/generated/converge_0604574E.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_060457A4.c
++++ b/generated/converge_060457A4.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_060457EA.c
++++ b/generated/converge_060457EA.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06045B2C.c
++++ b/generated/converge_06045B2C.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06045D18.c
++++ b/generated/converge_06045D18.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06045D6E.c
++++ b/generated/converge_06045D6E.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06045E06.c
++++ b/generated/converge_06045E06.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06046F9C.c
++++ b/generated/converge_06046F9C.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06046FB0.c
++++ b/generated/converge_06046FB0.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06047FBA.c
++++ b/generated/converge_06047FBA.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06048AA8.c
++++ b/generated/converge_06048AA8.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06048ABC.c
++++ b/generated/converge_06048ABC.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06048C4E.c
++++ b/generated/converge_06048C4E.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06048D0A.c
++++ b/generated/converge_06048D0A.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06048D40.c
++++ b/generated/converge_06048D40.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06048D6A.c
++++ b/generated/converge_06048D6A.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06048DC8.c
++++ b/generated/converge_06048DC8.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06049382.c
++++ b/generated/converge_06049382.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06049A6A.c
++++ b/generated/converge_06049A6A.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06049AEC.c
++++ b/generated/converge_06049AEC.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06049B48.c
++++ b/generated/converge_06049B48.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06049BCC.c
++++ b/generated/converge_06049BCC.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06049C88.c
++++ b/generated/converge_06049C88.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06049DCC.c
++++ b/generated/converge_06049DCC.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06049E58.c
++++ b/generated/converge_06049E58.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_06049E80.c
++++ b/generated/converge_06049E80.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0604A026.c
++++ b/generated/converge_0604A026.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0604A052.c
++++ b/generated/converge_0604A052.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0604A0C8.c
++++ b/generated/converge_0604A0C8.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0604A17A.c
++++ b/generated/converge_0604A17A.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0604A1D8.c
++++ b/generated/converge_0604A1D8.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0604A254.c
++++ b/generated/converge_0604A254.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0604A27E.c
++++ b/generated/converge_0604A27E.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0604A2BC.c
++++ b/generated/converge_0604A2BC.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0604B064.c
++++ b/generated/converge_0604B064.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0604B0A2.c
++++ b/generated/converge_0604B0A2.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0604B0DA.c
++++ b/generated/converge_0604B0DA.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0604C40A.c
++++ b/generated/converge_0604C40A.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0604D214.c
++++ b/generated/converge_0604D214.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0604DF08.c
++++ b/generated/converge_0604DF08.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;
+--- a/generated/converge_0604DFB0.c
++++ b/generated/converge_0604DFB0.c
+@@ -1,7 +1,7 @@
+ typedef signed char s8; typedef unsigned char u8;
+ typedef short s16; typedef unsigned short u16; typedef int s32;
+ typedef unsigned int u32; typedef long long s64; typedef unsigned long long u64;
+-typedef float f32; typedef double f64; typedef unsigned long uintptr_t;
++typedef float f32; typedef double f64; // uintptr_t comes from <stdint.h> on LP64 and LLP64.
+ typedef unsigned int uint32_t; typedef int int32_t;
+ typedef unsigned short uint16_t; typedef short int16_t;
+ typedef unsigned char uint8_t; typedef signed char int8_t;

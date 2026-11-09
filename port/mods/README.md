@@ -1,3 +1,30 @@
+P4.22 live integration: the normal Linux/macOS/Windows builds now include this
+loader. Release packages contain this SDK, all three example sources, the build
+script and their own `p421-target.txt` under `modding/` (macOS: Contents/Resources).
+No compiled examples or enabled selections are packaged.
+
+Default install folders:
+- Linux: `$XDG_CONFIG_HOME/saturn-recomp/mods`, otherwise `~/.config/saturn-recomp/mods`.
+- macOS: `~/Library/Application Support/Die Hard Arcade/mods`.
+- Windows: `%APPDATA%/Die Hard Arcade/mods`.
+
+`--mods-dir DIR` overrides this explicitly; custom settings paths do not relocate
+mods. Use the Mods tab to open the exact folder. Build, for example:
+
+```sh
+./build_mod.sh examples/frame_hud /path/to/mods/frame-hud p421-target.txt
+```
+
+The script runs on Linux, macOS and an MSYS2/MinGW shell. Build on the app's
+platform/architecture. Enabling/disabling mods invalidates exchanged connection
+codes; generate and exchange fresh codes after choosing the mod set. The complete
+native file set must match for netplay. Frame HUD text appears bottom-left above
+the MODDED badge, clear of the game's health bar.
+
+The `qualified-base.patch` and `.json` files in the source checkout pin the
+reviewed 216-adapter deployment used by `port/p422_prepare.py`. They are build
+inputs, not mod-installation files, and are omitted from release packages.
+
 # Readable C mods, prototype ABI 1
 
 A mod is a flat folder containing `manifest.ini` and a native library. ZIPs use

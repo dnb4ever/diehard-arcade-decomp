@@ -20,14 +20,14 @@ def inventory(directory):
             and p.suffix not in ('.orig', '.rej')}
 
 
-if not (ROOT / 'port/run/P41/recomp/CMakeLists.txt').is_file():
-    raise SystemExit('Generate port/run/P41/recomp separately first.')
+if not (ROOT / 'port/run/P422/recomp/CMakeLists.txt').is_file():
+    raise SystemExit('Generate port/run/P422/recomp separately first.')
 files = {'saturn-recomp/' + name: digest
          for name, digest in inventory(ROOT / 'tools/saturn-recomp').items()}
 files.update({'saturn-recomp/port/' + name: hashlib.sha256((ROOT / 'port' / name).read_bytes()).hexdigest()
               for name in NAMES})
 files.update({'recomp/' + name: digest
-              for name, digest in inventory(ROOT / 'port/run/P41/recomp').items()})
+              for name, digest in inventory(ROOT / 'port/run/P422/recomp').items()})
 record = dict(schema=2, head=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
               files=files)
 marker = WORK / 'snapshot.json'
@@ -47,7 +47,7 @@ if previous != record or inventory(BASE) != files:
         elif name.startswith('saturn-recomp/'):
             source = ROOT / 'tools' / name
         else:
-            source = ROOT / 'port/run/P41' / name
+            source = ROOT / 'port/run/P422' / name
         destination = BASE / name
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, destination)

@@ -1,0 +1,316 @@
+--- a/runtime/src/host/host.cpp
++++ b/runtime/src/host/host.cpp
+@@ -37,7 +37,7 @@
+ #include "host.h"
+ #include "host_sdl.h"
+ #include "pace.h"
+-#include "p420_options.h"
++#include "p423_options.h"
+ #include "pad_slots.h"
+ #include "settings.h"
+ #include "touch_pad.h"
+@@ -1440,7 +1440,7 @@
+     SDL_GetCurrentRenderOutputSize(g_ren, &ww, &wh);
+     // the TV's 4:3 screen, as large as the window allows, centred; a PAL TV
+     // shows 256 lines, and a 224-line picture has a border above and below
+-    int an=p420_width()==940 ? 16 : p420_width()==1232 ? 21 : 4, ad=p420_width()==704 ? 3 : 9;
++    int an=p423_width()==940 ? 16 : p423_width()==1232 ? 21 : 4, ad=p423_width()==704 ? 3 : 9;
+     int sw = ww, sh = ww * ad / an;
+     if (sh > wh) { sh = wh; sw = wh * an / ad; }
+     int original_h = f.h / std::clamp(g_cfg.internal_resolution, 1, 3);
+--- a/runtime/src/video/vdp1.cpp
++++ b/runtime/src/video/vdp1.cpp
+@@ -35,7 +35,7 @@
+ #include "perf.h"
+ #include "state.h"
+ #include "video.h"
+-#include "p420_options.h"
++#include "p423_options.h"
+ #include <algorithm>
+ #include <array>
+ #include <atomic>
+@@ -78,8 +78,8 @@
+     bool fb8 = false;
+     uint64_t steps = 0;
+ };
+-static uint16_t* p420_target;
+-static int p420_stride;
++static uint16_t* p423_target;
++static int p423_stride;
+ static RasterState g_hardware_raster;
+ static thread_local RasterState* g_raster = &g_hardware_raster;
+ #define g_target (g_raster->target)
+@@ -181,9 +181,9 @@
+ 
+ // A pixel already inside the clipping, or the framebuffer's edge.
+ static void plot_clipped(const Cmd& c, int x, int y, uint16_t pix, const Rgb* g) {
+-    if (p420_target) {
+-        if (x<0 || x>=p420_stride || y<0 || y>=256 || (c.mesh && ((x ^ y) & 1))) return;
+-        auto& d=p420_target[size_t(y)*p420_stride+x];
++    if (p423_target) {
++        if (x<0 || x>=p423_stride || y<0 || y>=256 || (c.mesh && ((x ^ y) & 1))) return;
++        auto& d=p423_target[size_t(y)*p423_stride+x];
+         if(g_fb8) {if(!c.mon) d=pix&255;} else put(d,c,pix,g);
+         return;
+     }
+@@ -357,7 +357,7 @@
+     std::vector<uint8_t> vram;                  // as the frame was drawn: the next one's textures come before its change
+ };
+ static RecFrame g_rec_cur, g_rec_last, g_rec_prev;
+-#include "p420_video.inc"
++#include "p423_video.inc"
+ static uint16_t g_ifb[512 * 256];               // the frame in between
+ static bool g_show_ifb;
+ static uint64_t g_fields;
+@@ -429,11 +429,11 @@
+     g_hi_on[g_draw_fb] = g_reg[FBCR] & 8;
+     g_hi_target = g_hi_on[g_draw_fb] ? g_hi[g_draw_fb] : nullptr;
+     g_dil = g_reg[FBCR] >> 2 & 1;
+-    P420Draw* p420_rec=nullptr;
+-    if(p420_active()) {
+-        auto& f=p420_buffers[g_draw_fb];
++    P423Draw* p423_rec=nullptr;
++    if(p423_active()) {
++        auto& f=p423_buffers[g_draw_fb];
+         f.draws.push_back({g_hardware_raster,{},std::vector<uint8_t>(g_vdp1_vram,g_vdp1_vram+sizeof g_vdp1_vram)});
+-        p420_rec=&f.draws.back();
++        p423_rec=&f.draws.back();
+     }
+     RecDraw* rec = nullptr;
+     if (g_cfg.interp) {
+@@ -500,7 +500,7 @@
+                 }
+             }
+             if (rec) rec->cmds.push_back(rc);
+-            if (p420_rec) p420_rec->commands.push_back(rc);
++            if (p423_rec) p423_rec->commands.push_back(rc);
+             ++n;
+         }
+         uint32_t link = (uint32_t)vw(a + 2) * 8 & 0x7FFFF;
+@@ -520,7 +520,7 @@
+     g_reg[LOPR] = (uint16_t)(last >> 3);
+     g_reg[COPR] = (uint16_t)(last >> 3);
+     ++g_draws;
+-    if(p420_active()) p420_buffers[g_draw_fb].serial=g_draws;
++    if(p423_active()) p423_buffers[g_draw_fb].serial=g_draws;
+     g_drawing = true;
+     g_draw_end = sat_now() + 1000000;           // 1 ms
+     sat_trace("VDP1 draw %llu: %d commands", (unsigned long long)g_draws, n);
+@@ -767,7 +767,7 @@
+ 
+ // ---- frames -------------------------------------------------------------------------------
+ static void erase(int which) {
+-    if(p420_active()) p420_buffers[which]={};
++    if(p423_active()) p423_buffers[which]={};
+     g_present_revision[which] = ++g_present_serial;
+     int x0 = (g_reg[EWLR] >> 9 & 0x7F) * 8, y0 = g_reg[EWLR] & 0x1FF;
+     int x1 = (g_reg[EWRR] >> 9 & 0x7F) * 8, y1 = g_reg[EWRR] & 0x1FF;
+@@ -901,7 +901,7 @@
+         if (n) s.raw(b.data(), n * sizeof(uint16_t));
+     }
+     if (s.loading) {
+-        p420_reset();
++        p423_reset();
+         for (auto& revision : g_present_revision) revision = ++g_present_serial;
+         g_show_ifb = false; g_rec_cur = {}; g_rec_last = {}; g_rec_prev = {}; }
+     s(g_dil), s(g_draw_fb), s(g_reg), s(g_change_pending), s(g_erase_pending), s(g_erase_field), s(g_drawing);
+--- a/runtime/src/video/vdp1_raster.inc
++++ b/runtime/src/video/vdp1_raster.inc
+@@ -82,7 +82,7 @@
+         x1 /= g_raster_scale; y1 /= g_raster_scale;
+     }
+     if (g_present_pass && (y1 < g_present_y0 || y0 >= g_present_y1)) return true;
+-    if (x1 < 0 || y1 < 0 || x0 > std::min(g_sys_x, p420_target ? p420_stride-1 : g_fb8 ? 1023 : 511) || y0 > std::min(g_sys_y, g_hi_target ? 511 : 255)) return true;
++    if (x1 < 0 || y1 < 0 || x0 > std::min(g_sys_x, p423_target ? p423_stride-1 : g_fb8 ? 1023 : 511) || y0 > std::min(g_sys_y, g_hi_target ? 511 : 255)) return true;
+     return c.clip && !c.outside && (x1 < g_ux0 || y1 < g_uy0 || x0 > g_ux1 || y0 > g_uy1);
+ }
+ 
+--- a/runtime/src/video/vdp2.cpp
++++ b/runtime/src/video/vdp2.cpp
+@@ -38,10 +38,11 @@
+ #include "band_pool.h"
+ #include "state.h"
+ #include "video.h"
+-#include "p420_options.h"
++#include "p423_options.h"
+ #include <algorithm>
+ #include <array>
+ #include <cmath>
++#include <cstdio>
+ #include <cstdlib>
+ #include <cstring>
+ #include <thread>
+@@ -49,9 +50,11 @@
+ 
+ uint8_t g_vdp2_vram[0x80000], g_vdp2_cram[0x1000], g_vdp2_regs[0x200];
+ 
+-static uint16_t reg(uint32_t off) { return (uint16_t)(g_vdp2_regs[off] << 8 | g_vdp2_regs[off + 1]); }
+-static uint8_t vb(uint32_t a) { return g_vdp2_vram[a & 0x7FFFF]; }
+-static uint16_t vw(uint32_t a) { a &= 0x7FFFE; return (uint16_t)(g_vdp2_vram[a] << 8 | g_vdp2_vram[a + 1]); }
++#include "p423_vdp2.inc"
++
++static uint16_t reg(uint32_t off) { const auto* p=p423_regs?p423_regs:g_vdp2_regs; return (uint16_t)(p[off] << 8 | p[off + 1]); }
++static uint8_t vb(uint32_t a) { return (p423_ram?p423_ram:g_vdp2_vram)[a & 0x7FFFF]; }
++static uint16_t vw(uint32_t a) { a &= 0x7FFFE; const auto* p=p423_ram?p423_ram:g_vdp2_vram; return (uint16_t)(p[a] << 8 | p[a + 1]); }
+ 
+ static int32_t signed_bits(uint32_t value, int bits) {
+     uint32_t sign = 1u << (bits - 1);
+@@ -59,9 +62,9 @@
+ }
+ 
+ static uint16_t sprite_dot(int x, int y, bool dd, int scale = 1) {
+-    if(p420_background_only) return 0;
++    if(p423_background_only) return 0;
+     uint16_t experimental;
+-    if(p420_active() && vdp1_p420_dot(x,y,experimental)) return experimental;
++    if(p423_active() && vdp1_p423_dot(x,y,experimental)) return experimental;
+     if (!(vdp1_reg_read(0, 2) & 2)) return scale == 1 ? vdp1_dot(x, y, dd) : vdp1_present_dot(x, y, dd, scale);
+     uint32_t table = (((uint32_t)(reg(0xBC) & 7) << 16 | reg(0xBE)) & ~0x41u) * 2;
+     auto parameter = [&](uint32_t off, int bits, int shift) {
+@@ -102,15 +105,16 @@
+ struct Colour { uint32_t rgb; bool msb; };
+ static thread_local const Colour* g_palette;
+ static uint32_t cram(uint32_t i, bool* msb) {
++    const auto* p423_cram=p423_regs?p423_bg_new.palette.data():g_vdp2_cram;
+     if (g_palette) { const auto& c=g_palette[i & 0x7ff]; if (msb) *msb=c.msb; return c.rgb; }
+     if (cram_mode() == 2) {
+         uint32_t a = (i & 0x3FF) * 4;
+-        uint32_t v = (uint32_t)g_vdp2_cram[a] << 24 | g_vdp2_cram[a + 1] << 16 | g_vdp2_cram[a + 2] << 8 | g_vdp2_cram[a + 3];
++        uint32_t v = (uint32_t)p423_cram[a] << 24 | p423_cram[a + 1] << 16 | p423_cram[a + 2] << 8 | p423_cram[a + 3];
+         if (msb) *msb = v >> 31;
+         return (v & 0xFF) << 16 | (v & 0xFF00) | (v >> 16 & 0xFF);
+     }
+     uint32_t a = (i & (cram_mode() == 1 ? 0x7FF : 0x3FF)) * 2;
+-    uint16_t v = (uint16_t)(g_vdp2_cram[a] << 8 | g_vdp2_cram[a + 1]);
++    uint16_t v = (uint16_t)(p423_cram[a] << 8 | p423_cram[a + 1]);
+     if (msb) *msb = v >> 15;
+     // Match the reference palette's full-range 5-bit expansion (MAME pal5bit).
+     auto expand = [](unsigned c) { return (c << 3) | (c >> 2); };
+@@ -279,9 +283,9 @@
+ }
+ 
+ static bool nbg_pixel(const Nbg& s, int x, int y, Pix& p, int scale = 1) {
+-    if(p420_width()!=704) {
+-        int pad=(p420_width()-704)/2;
+-        if(s.layer==3 && p420_edges()) x-=x<p420_width()*scale/2 ? 0 : 2*pad*scale;
++    if(p423_width()!=704) {
++        int pad=(p423_width()-704)/2;
++        if(s.layer==3 && p423_edges()) x-=x<p423_width()*scale/2 ? 0 : 2*pad*scale;
+         else x-=pad*scale;
+         if(s.layer==3 && (x<0 || x>=704*scale)) return false;
+     }
+@@ -603,7 +607,7 @@
+ 
+ // a rotation screen dot at display column dx, line dy: false if transparent / off the map.
+ static bool rbg_pixel(const Rbg& s, double dx, double dy, Pix& p) {
+-    double x = (dx-(p420_width()-704)/2) * s.xscale, y = dy * s.yscale;
++    double x = (dx-(p423_width()-704)/2) * s.xscale, y = dy * s.yscale;
+     // the screen-space pre-transform at this line, and the per-dot increments (through the matrix)
+     double Xstv = s.Xst + s.dXst * y, Ystv = s.Yst + s.dYst * y;
+     double Xsp = s.row_cached ? s.row_xsp : s.A * (Xstv - s.Px) + s.B * (Ystv - s.Py) + s.C * (s.Zst - s.Pz);
+@@ -766,7 +770,7 @@
+ // Whether a layer's window control byte (WCTLA-D) makes dot x transparent: each enabled window's
+ // area (bit 0 or 2: inside when clear, outside when set), joined by OR or by AND (bit 7).
+ static bool windowed(uint8_t ctl, const Win w[2], int x) {
+-    x-=(p420_width()-704)/2;
++    x-=(p423_width()-704)/2;
+     bool any = false, all = true, used = false;
+     for (int i = 0; i < 2; ++i) {
+         if (!(ctl >> (i * 2 + 1) & 1)) continue;
+@@ -842,7 +846,7 @@
+     int hreso = tvmd & 7;
+     int scale = std::clamp(g_cfg.internal_resolution, 1, 3);
+     vdp1_present_sync();
+-    f.w = (p420_width()!=704 ? p420_width() : kWidths[hreso < 4 ? hreso : hreso & 1]) * scale;
++    f.w = (p423_width()!=704 ? p423_width() : kWidths[hreso < 4 ? hreso : hreso & 1]) * scale;
+     bool dd = (tvmd >> 6 & 3) == 3;              // double-density interlace
+     f.h = vdp2_lines() * (dd ? 2 : 1) * scale;
+     f.px.assign((size_t)f.w * f.h, 0);
+@@ -907,7 +911,7 @@
+     // Each line is composed from the setup above, which nothing changes from here on, and the video
+     // memories, which nothing writes while the machine waits for the picture; so bands of lines go to a
+     // few threads at once. Each band has its own back and line colour screens (the lambda's copies).
+-    bool cacheable = !g_cfg.interp && !p420_active();
++    bool cacheable = !g_cfg.interp && !p423_active();
+     std::array<uint8_t,0x200> render_regs;
+     uint64_t sprite_revision = vdp1_present_revision();
+     if (cacheable) {
+@@ -976,7 +980,7 @@
+                 for (int n=0;n<4;++n) {
+                     row_nbg[n]=nbg_line(nbg[n],hardware_y);
+                     const auto& s=row_nbg[n];
+-                    cached_normal[n]=!p420_active() && scale>1 && s.on && s.prio && s.dx==256 && s.dy==256 && !(s.sx&255) && !(s.sy&255);
++                    cached_normal[n]=!p423_active() && scale>1 && s.on && s.prio && s.dx==256 && s.dy==256 && !(s.sx&255) && !(s.sy&255);
+                     if (cached_normal[n]) {
+                         normal[n].resize(f.w/scale);
+                         for(int x=0;x<f.w/scale;++x) {
+@@ -1149,4 +1153,4 @@
+     }
+ }
+ 
+-void vdp2_state(State& s) { s(g_vdp2_vram), s(g_vdp2_cram), s(g_vdp2_regs); }
++void vdp2_state(State& s) { s(g_vdp2_vram), s(g_vdp2_cram), s(g_vdp2_regs); if(s.loading) vdp2_p423_reset(); }
+--- a/runtime/src/video/video.cpp
++++ b/runtime/src/video/video.cpp
+@@ -16,7 +16,7 @@
+ #include "state.h"
+ #include "netplay.h"
+ #include "video.h"
+-#include "p420_options.h"
++#include "p423_options.h"
+ #include "host.h"
+ #include <algorithm>
+ #include <cstdio>
+@@ -147,7 +147,7 @@
+     if (std::fflush(f)) { std::perror("scenario capture flush"); std::exit(2); }
+ }
+ 
+-#include "p420_present.inc"
++#include "p423_present.inc"
+ 
+ static void vblank_in(uint64_t now) {
+     ++g_vblanks;
+@@ -181,9 +181,9 @@
+         }
+     }
+     bool shot = listed(g_cfg.shots, n) || capture;
+-    bool compose = p420_active() || shot || host_wants_frame() || movie_on() || scenario_video();
+-    if (p420_active() && compose) {
+-        p420_video_field(now,shot);
++    bool compose = p423_active() || shot || host_wants_frame() || movie_on() || scenario_video();
++    if (p423_active() && compose) {
++        p423_video_field(now,shot);
+     } else if (vdp1_interp_field(compose) && compose) {
+         uint8_t saved[0x30];
+         std::copy(g_vdp2_regs + 0x70, g_vdp2_regs + 0xA0, saved);
+--- a/runtime/src/video/video.h
++++ b/runtime/src/video/video.h
+@@ -47,9 +47,22 @@
+ void movie_finish();                                 // after sound_close: join the sound to the pictures
+ 
+ // P4.20 experimental snapshot presentation; never used by guest framebuffer reads.
+-void vdp1_p420_field();
+-bool vdp1_p420_render(float alpha);
+-bool vdp1_p420_dot(int x,int y,uint16_t& value);
+-uint64_t vdp1_p420_age();
+-uint64_t vdp1_p420_interval();
+-void vdp1_p420_stats();
++void vdp1_p423_field();
++bool vdp1_p423_render(float alpha);
++bool vdp1_p423_dot(int x,int y,uint16_t& value);
++uint64_t vdp1_p423_age();
++uint64_t vdp1_p423_interval();
++void vdp1_p423_stats();
++
++void vdp2_p423_field();
++bool vdp2_p423_prepare(float alpha);
++void vdp2_p423_enable(bool on);
++unsigned vdp2_p423_reason();
++uint64_t vdp2_p423_changes();
++void vdp2_p423_reset();
++void vdp1_p423_hide();
++uint64_t vdp1_p423_moved();
++unsigned vdp1_p423_reason();
++
++void vdp2_p423_dump(const std::string& path);
++void vdp1_p423_dump(const std::string& path);

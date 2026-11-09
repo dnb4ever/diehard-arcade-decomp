@@ -2,7 +2,7 @@
 """Read-only native observer measures the actual joined actor health after mods."""
 import json,os,re,shutil,subprocess
 from pathlib import Path
-ROOT=next(p for p in Path(__file__).resolve().parents if (p/'STATE.md').is_file());os.chdir(ROOT);W=Path('work/p421');D=W/'health-delivery';D.mkdir(exist_ok=True)
+ROOT=next(p for p in Path(__file__).resolve().parents if (p/'STATE.md').is_file());os.chdir(ROOT);W=Path(os.environ.get('P421_WORK','work/p421'));D=W/'health-delivery';D.mkdir(exist_ok=True)
 mods=D/'mods';shutil.copytree(W/'data/mods',mods,dirs_exist_ok=True);probe=mods/'zz-health-observer';probe.mkdir(exist_ok=True)
 (probe/'mod.c').write_text(r'''
 #include "dh_mod.h"

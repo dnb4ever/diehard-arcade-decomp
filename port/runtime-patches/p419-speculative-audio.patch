@@ -1,0 +1,377 @@
+--- a/runtime/src/host/host.cpp
++++ b/runtime/src/host/host.cpp
+@@ -42,6 +42,8 @@
+ #include "touch_pad.h"
+ #include "state.h"
+ #include "netplay.h"
++#include "net_audio.h"
++#include <mutex>
+ #include "player.h"
+ #include "uinput_pad.h"
+ #include "unplugs.h"
+@@ -103,6 +105,7 @@
+         }
+     }
+     player_settings(g_settings);
++    g_cfg.netplay_glitch_free = g_cfg.netplay_audio_override < 0 ? g_settings.flag("netplay", "glitch_free") : g_cfg.netplay_audio_override != 0;
+     g_cfg.internal_resolution = g_settings.number("display", "internal_resolution");
+     bind_keyboard();
+ }
+@@ -218,22 +221,66 @@
+ 
+ // ---- sound ------------------------------------------------------------------------------------
+ static SDL_AudioStream* g_audio;
++static void audio_silence(int);
++static bool g_audio_started;
++static uint64_t audio_now_ns() { return uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()); }
++static NetAudio g_net_audio;
++static std::mutex g_net_audio_mutex;
++static FILE* g_played;
++static bool g_net_audio_ended=false;
++void host_net_audio_end() { std::lock_guard<std::mutex> lock(g_net_audio_mutex); g_net_audio_ended=true; }
++static uint64_t g_net_callbacks=0, g_net_queued_sum=0, g_net_queued_max=0;
++static bool speculative_audio() { return netplay_active() && !g_cfg.netplay_glitch_free; }
++// SDL asks for one device block at a time. Everything before this callback
++// remains replaceable; SDL/device-owned samples have passed the commit cursor.
++static void net_audio_callback(void*, SDL_AudioStream* stream, int additional, int) {
++    if(additional<=0) return;
++    int frames=(additional+3)/4;
++    std::vector<int16_t> pcm(size_t(frames)*2);
++    {
++        std::lock_guard<std::mutex> lock(g_net_audio_mutex);
++        auto queued=g_net_audio.queued(); ++g_net_callbacks;
++        g_net_queued_sum+=queued; g_net_queued_max=std::max(g_net_queued_max,queued);
++        g_net_audio.consume(pcm.data(),frames,!g_net_audio_ended,audio_now_ns());
++        if(g_played) {
++            for(auto sample:pcm) { uint8_t le[2]={uint8_t(sample),uint8_t(sample>>8)}; std::fwrite(le,1,2,g_played); }
++        }
++    }
++    SDL_PutAudioStreamData(stream,pcm.data(),frames*4);
++}
++void host_net_audio(const int16_t* pcm, int frames, uint64_t end) {
++    if(!g_audio) return;
++    { std::lock_guard<std::mutex> lock(g_net_audio_mutex); g_net_audio.submit(pcm,frames,end,audio_now_ns()); }
++    if(!g_audio_started) {
++        // Same initial 30 ms lead as offline. The device block adds its normal
++        // host latency; there is no confirmation or rollback-window delay.
++        audio_silence(1323);
++        g_audio_started=true;
++        SDL_ResumeAudioStreamDevice(g_audio);
++    }
++}
++void host_net_audio_rollback(bool begin) {
++    std::lock_guard<std::mutex> lock(g_net_audio_mutex);
++    if(begin) g_net_audio.rollback(); else g_net_audio.recovered();
++}
++
+ static const int kLead = 1323, kMax = 3308;     // 30 ms lead, 75 ms discontinuity guard
+ static int g_underruns, g_dropped, g_resyncs;
+-static bool g_audio_started;
+ static float g_audio_level = kLead;
+ static int audio_lead() { return netplay_active() ? 2646 : kLead; } // 60 ms during netplay
+ 
+ static void audio_silence(int frames) {
+     std::vector<int16_t> z((size_t)frames * 2);
+     SDL_PutAudioStreamData(g_audio, z.data(), (int)(z.size() * sizeof(int16_t)));
++    if(speculative_audio() && g_played) { std::lock_guard<std::mutex> lock(g_net_audio_mutex); std::fwrite(z.data(),sizeof(int16_t),z.size(),g_played); }
+ }
+ 
+ bool host_audio_open() {
+     if (!g_win) return false;
+     SDL_AudioSpec spec = {SDL_AUDIO_S16, 2, 44100};
+-    g_audio = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, nullptr, nullptr);
++    g_audio = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, speculative_audio() ? net_audio_callback : nullptr, nullptr);
+     if (!g_audio) { sat_note("SDL audio: %s (no sound)", SDL_GetError()); return false; }
++    if(speculative_audio()) if(const char* path=std::getenv("STV_NETPLAY_PLAYED")) g_played=std::fopen(path,"wb");
+     SDL_SetAudioStreamGain(g_audio, g_settings.number("audio", "volume") / 100.0f);
+     SDL_AudioSpec device{};
+     int block = 0;
+@@ -268,6 +315,16 @@
+ }
+ 
+ void host_audio_report() {
++    if(g_audio && speculative_audio()) {
++        SDL_PauseAudioStreamDevice(g_audio);
++        std::lock_guard<std::mutex> lock(g_net_audio_mutex);
++        std::fprintf(stderr,"  netplay audio: speculative delay=0 fields; corrections=%llu corrected=%llu submitted-differences=%llu discontinuities=%llu max-step=%d empty-blocks=%llu; queue mean=%.2f max=%.2f ms; generation-to-submit mean=%.2f max=%.2f ms\n",
++            (unsigned long long)g_net_audio.corrections,(unsigned long long)g_net_audio.corrected,(unsigned long long)g_net_audio.missed,
++            (unsigned long long)g_net_audio.seams,g_net_audio.max_step,(unsigned long long)g_net_audio.underruns,
++            g_net_callbacks?double(g_net_queued_sum)*1000/(44100*g_net_callbacks):0,double(g_net_queued_max)*1000/44100,
++            g_net_audio.age_count?double(g_net_audio.age_sum)/g_net_audio.age_count/1e6:0,double(g_net_audio.age_max)/1e6);
++        if(g_played) { std::fclose(g_played); g_played=nullptr; }
++    }
+     if (g_audio) std::fprintf(stderr, "  audio stream: %d times empty, %d chunks dropped, %d resyncs\n", g_underruns, g_dropped, g_resyncs);
+ }
+ 
+@@ -1429,8 +1486,9 @@
+         // some drivers), and correct only host playback. Guest samples/WAV/timing
+         // remain identical. +/-2% also accommodates SDL dummy's rounded sleep.
+         float queued = SDL_GetAudioStreamQueued(g_audio) / 4.0f;
++        if(speculative_audio()) { std::lock_guard<std::mutex> lock(g_net_audio_mutex); queued=float(g_net_audio.queued()); }
+         g_audio_level += 0.05f * (queued - g_audio_level);
+-        float ratio = std::clamp(1.0f + (g_audio_level - audio_lead()) / (44100.0f * 2), 0.98f, 1.02f);
++        float ratio = std::clamp(1.0f + (g_audio_level - (speculative_audio() ? kLead : audio_lead())) / (44100.0f * 2), 0.98f, 1.02f);
+         SDL_SetAudioStreamFrequencyRatio(g_audio, ratio);
+     }
+ }
+--- a/runtime/src/host/host.h
++++ b/runtime/src/host/host.h
+@@ -37,3 +37,8 @@
+ void host_quick_reset(); // discard queued host audio and rebase pacing after a state load
+ 
+ void host_player_error(const std::string& message);
++
++// P4.19: mutable netplay playout; absolute guest sample positions.
++void host_net_audio(const int16_t*, int, uint64_t);
++void host_net_audio_rollback(bool);
++void host_net_audio_end();
+--- a/runtime/src/host/host_null.cpp
++++ b/runtime/src/host/host_null.cpp
+@@ -30,3 +30,7 @@
+ void host_net_wait() {}
+ 
+ void host_player_error(const std::string&) {}
++
++void host_net_audio(const int16_t*, int, uint64_t) {}
++void host_net_audio_rollback(bool) {}
++void host_net_audio_end() {}
+--- a/runtime/src/host/launcher.cpp
++++ b/runtime/src/host/launcher.cpp
+@@ -132,11 +132,15 @@
+     ImGui::Combo("Connection", &mode, modes, 3);
+     if (mode == 1) { ImGui::InputInt("UDP port", &port); port = std::clamp(port, 1, 65535); }
+     if (mode == 2) ImGui::InputText("Host IPv4:port", address, sizeof address);
++    int audio = g_cfg.netplay_glitch_free ? 1 : 0;
++    if(ImGui::Combo("Netplay audio", &audio, "Low latency (default)\0Glitch-free\0")) {
++        g_cfg.netplay_glitch_free = audio != 0; host_settings().set("netplay", "glitch_free", audio ? "true" : "false"); host_settings_save();
++    }
+     ImGui::SliderInt("Input delay", &g_cfg.input_delay, 0, 3, "%d fields");
+     g_cfg.netplay_host = mode == 1 ? port : 0;
+     g_cfg.netplay_join = mode == 2 ? address : "";
+     ImGui::TextWrapped("Press Start on both machines. Forward the host UDP port (default 7845). No NAT traversal or relay. Both players use their local P1 controls; the guest drives P2.");
+-    ImGui::TextWrapped("Requires matching source/ROMs and input delay. Uses host settings, 1x, an 8-field rollback cap and confirmed audio. Rewind, quick states, movies, pause, turbo and cheats are disabled.");
++    ImGui::TextWrapped("Requires matching source/ROMs and input delay. Uses host settings, 1x, an 8-field rollback cap and selectable audio. Rewind, quick states, movies, pause, turbo and cheats are disabled.");
+ }
+ void player_features(bool running = false) {
+     if (running && netplay_active()) { ImGui::TextWrapped("Netplay locks gameplay settings until the session ends."); return; }
+--- /dev/null
++++ b/runtime/src/host/net_audio.h
+@@ -0,0 +1,81 @@
++// P4.19: host-only mutable stereo timeline. Caller serializes producer/consumer.
++#pragma once
++#include <algorithm>
++#include <array>
++#include <cstdint>
++#include <cstdlib>
++#include <deque>
++
++class NetAudio {
++    struct Sample { std::array<int16_t,2> source{}, output{}; uint64_t made=0; };
++    std::deque<Sample> data;
++    uint64_t base=0, read=0, end=0;
++    bool changed=false, pending_change=false;
++    std::array<int16_t,2> tail{};
++    unsigned fade=132; // 3 ms at 44.1 kHz, shared by both channels
++public:
++    uint64_t age_sum=0, age_count=0, age_max=0;
++    uint64_t corrections=0, corrected=0, missed=0, seams=0, underruns=0;
++    int max_step=0;
++    std::array<int16_t,2> previous{};
++    bool have_previous=false;
++    void rollback() { changed=false; pending_change=false; fade=132; if(!data.empty()) tail=data.back().output; }
++    void recovered() {}
++    uint64_t queued() const { return end>read ? end-read : 0; }
++    void submit(const int16_t* pcm, int frames, uint64_t last, uint64_t now_ns=0) {
++        uint64_t first=last-uint64_t(frames);
++        for(int i=0;i<frames;++i) {
++            uint64_t pos=first+uint64_t(i);
++            std::array<int16_t,2> now{pcm[i*2],pcm[i*2+1]};
++            if(pos<base) continue;
++            if(pos>=end) {
++                while(end<pos) { data.push_back({}); ++end; }
++                auto output=now;
++                if(changed && !pending_change) { pending_change=true; fade=0; }
++                if(pending_change && fade<132) {
++                    ++fade;
++                    for(int ch=0;ch<2;++ch) output[ch]=int16_t((int(tail[ch])*(132-int(fade))+int(now[ch])*int(fade))/132);
++                }
++                data.push_back({now,output,now_ns}); ++end;
++            } else {
++                auto& s=data[size_t(pos-base)];
++                bool different=s.source!=now;
++                if(different) {
++                    if(!changed) { ++corrections; changed=true; }
++                    if(pos<read) ++missed;
++                    else { ++corrected; if(!pending_change) { pending_change=true; fade=0; } }
++                }
++                if(pos>=read) {
++                    if(pending_change && fade<132) {
++                        ++fade;
++                        for(int ch=0;ch<2;++ch) s.output[ch]=int16_t((int(s.output[ch])*(132-int(fade))+int(now[ch])*int(fade))/132);
++                    } else if(pending_change || different) s.output=now;
++                }
++                s.source=now;
++            }
++        }
++        // Retain already-submitted PCM only for comparing subsequent rollbacks.
++        while(read>base+44100 && !data.empty()) { data.pop_front(); ++base; }
++    }
++    void consume(int16_t* pcm, int frames, bool count_empty=true, uint64_t now_ns=0) {
++        bool empty=false;
++        for(int i=0;i<frames;++i) {
++            std::array<int16_t,2> s{};
++            if(read<end) {
++                auto& sample=data[size_t(read++-base)]; s=sample.output;
++                if(count_empty && sample.made && now_ns>=sample.made) {
++                    uint64_t age=now_ns-sample.made; age_sum+=age; ++age_count; age_max=std::max(age_max,age);
++                }
++            }
++            else empty=true; // silence does not advance the guest sample cursor
++            for(int ch=0;ch<2;++ch) {
++                pcm[2*i+ch]=s[ch];
++                if(have_previous) max_step=std::max(max_step,std::abs(int(s[ch])-int(previous[ch])));
++            }
++            // A conservative signal discontinuity counter, not a listening test.
++            if(have_previous && std::max(std::abs(int(s[0])-int(previous[0])),std::abs(int(s[1])-int(previous[1])))>16384) ++seams;
++            previous=s; have_previous=true;
++        }
++        if(empty && count_empty) ++underruns;
++    }
++};
+--- a/runtime/src/host/settings.cpp
++++ b/runtime/src/host/settings.cpp
+@@ -61,6 +61,10 @@
+ turbo_p2_a = 0
+ turbo_p2_b = 0
+ turbo_p2_c = 0
++
++[netplay]
++; false: speculative, mutable playback; true: eight-field confirmed lead
++glitch_free = false
+ 
+ [audio]
+ ; percent
+--- a/runtime/src/machine/netplay.cpp
++++ b/runtime/src/machine/netplay.cpp
+@@ -289,7 +289,7 @@
+         auto t=Clock::now(); quick_net_capture(s.data); capture_ms+=std::chrono::duration<double,std::milli>(Clock::now()-t).count(); ++captures;
+         s.hash=(frame%60==0 || frame==g_cfg.stop_vblanks) ? state_crc() : 0; snapshots.push_back(std::move(s)); seen=frame; ++resim_fields; return;
+     }
+-    if(target) { ++resim_fields; double ms=std::chrono::duration<double,std::milli>(Clock::now()-resim_start).count(); resim_ms+=ms; max_resim_ms=std::max(max_resim_ms,ms); target=0; }
++    if(target) { ++resim_fields; double ms=std::chrono::duration<double,std::milli>(Clock::now()-resim_start).count(); resim_ms+=ms; max_resim_ms=std::max(max_resim_ms,ms); target=0; host_net_audio_rollback(false); }
+     receive(); send_inputs();
+     bool final=g_cfg.stop_vblanks && frame>=g_cfg.stop_vblanks;
+     while(!failed && mismatch==~0ull && (frame>=remote_through+window || (final && remote_through<frame))) wait_network();
+@@ -300,6 +300,7 @@
+         if(it==snapshots.end()) { fail("input arrived outside retained rollback window"); sat_stop("netplay window"); }
+         uint64_t depth=frame-it->frame; ++rollbacks; max_depth=std::max(max_depth,depth); target=frame;
+         while(!audio.empty() && audio.back().end>it->samples) audio.pop_back();
++        host_net_audio_rollback(true);
+         restoring=true; resim_start=Clock::now(); auto t=Clock::now(); quick_net_load(it->data);
+         load_start=t; ++loads;
+         seen=it->frame; snapshots.erase(std::next(it),snapshots.end());
+@@ -324,10 +325,12 @@
+ void netplay_restored() { restoring=false; load_ms+=std::chrono::duration<double,std::milli>(Clock::now()-load_start).count(); }
+ bool netplay_audio(const int16_t* samples, int frames, uint64_t end) {
+     if(!running) return false;
++    if(!g_cfg.netplay_glitch_free) host_net_audio(samples,frames,end);
+     audio.push_back({end,std::vector<int16_t>(samples,samples+frames*2)}); return true;
+ }
+ bool netplay_finish() {
+     if(!netplay_active()) return true;
++    host_net_audio_end();
+     if(failed && locked && sock!=none) {
+         // A peer may detect a CRC mismatch before sending its own checkpoint.
+         // Repeat the stop reason so the other end need not wait for a timeout.
+--- a/runtime/src/machine/saturn.h
++++ b/runtime/src/machine/saturn.h
+@@ -34,6 +34,8 @@
+ struct SaturnConfig {
+     int netplay_host = 0, input_delay = 3;
+     std::string netplay_join;
++    bool netplay_glitch_free = false;
++    int netplay_audio_override = -1;
+     std::string cue;                // the disc
+     std::string out = ".";          // logs, pictures and dumps go here
+     std::string save;               // the backup memory's file; "-": none; empty: one per game in the user's data directory
+--- a/runtime/src/sound/sound.cpp
++++ b/runtime/src/sound/sound.cpp
+@@ -173,7 +173,7 @@
+ 
+ uint64_t sound_sample_cursor() { return g_samples; }
+ void sound_output(const int16_t* pcm, int frames) {
+-    if (g_audio) host_audio_push(pcm, frames);
++    if (g_audio && (!netplay_active() || g_cfg.netplay_glitch_free)) host_audio_push(pcm, frames);
+     if (g_wav) {
+         std::vector<uint8_t> le(size_t(frames)*4);
+         for (size_t i=0;i<size_t(frames)*2;++i) { le[2*i]=uint8_t(pcm[i]); le[2*i+1]=uint8_t(pcm[i]>>8); }
+--- a/runtime/tests/CMakeLists.txt
++++ b/runtime/tests/CMakeLists.txt
+@@ -8,5 +8,5 @@
+   set(CMAKE_BUILD_TYPE Release)
+ endif()
+ include(${CMAKE_CURRENT_LIST_DIR}/../runtime.cmake)
+-add_executable(runtime_tests main.cpp no_modules.cpp perf_test.cpp hires_test.cpp player_test.cpp player_training_test.cpp stv_bios_test.cpp vdp2_test.cpp onchip_test.cpp bup_test.cpp pads_test.cpp settings_test.cpp touch_test.cpp pace_test.cpp frame_change_test.cpp modem_test.cpp scu_test.cpp cdrom_test.cpp cdblock_test.cpp clock_test.cpp tasks_test.cpp scsp_test.cpp)
++add_executable(runtime_tests main.cpp net_audio_test.cpp no_modules.cpp perf_test.cpp hires_test.cpp player_test.cpp player_training_test.cpp stv_bios_test.cpp vdp2_test.cpp onchip_test.cpp bup_test.cpp pads_test.cpp settings_test.cpp touch_test.cpp pace_test.cpp frame_change_test.cpp modem_test.cpp scu_test.cpp cdrom_test.cpp cdblock_test.cpp clock_test.cpp tasks_test.cpp scsp_test.cpp)
+ target_link_libraries(runtime_tests saturn_core saturn_machine saturn_host Threads::Threads)
+--- /dev/null
++++ b/runtime/tests/net_audio_test.cpp
+@@ -0,0 +1,58 @@
++#include "net_audio.h"
++#include "test.h"
++#include <vector>
++TEST(net_audio_corrects_only_unsubmitted_samples_with_three_ms_fade) {
++    NetAudio a; std::vector<int16_t> old(800,1000), now(800,-1000), played(400);
++    a.submit(old.data(),400,400); a.consume(played.data(),100);
++    a.rollback(); a.submit(now.data(),400,400); a.recovered();
++    CHECK_EQ(a.corrections,1); CHECK_EQ(a.missed,100); CHECK_EQ(a.corrected,300);
++    a.consume(played.data(),200);
++    CHECK_EQ(played[0],984); CHECK_EQ(played[2*131],-1000);
++    CHECK_EQ(a.queued(),100); CHECK_EQ(a.seams,0);
++}
++TEST(net_audio_identical_replay_does_not_touch_playback) {
++    NetAudio a; int16_t s[]={10,20,30,40}, out[4];
++    a.submit(s,2,2); a.rollback(); a.submit(s,2,2); a.recovered(); a.consume(out,2);
++    CHECK_EQ(a.corrections,0); CHECK_EQ(out[0],10); CHECK_EQ(out[3],40);
++}
++TEST(net_audio_crossfade_spans_small_sound_polls_and_new_tail_is_once_only) {
++    NetAudio a; std::vector<int16_t> old(600,1000), now(600,0), out(600);
++    a.submit(old.data(),300,300); a.rollback();
++    for(int i=0;i<300;i+=4) a.submit(now.data()+i*2,4,i+4);
++    a.recovered(); a.consume(out.data(),300);
++    CHECK_EQ(a.corrections,1); CHECK_EQ(out[0],992); CHECK_EQ(out[264],0); CHECK_EQ(a.queued(),0);
++    a.submit(old.data(),4,304); a.consume(out.data(),4); CHECK_EQ(out[0],1000);
++}
++
++TEST(net_audio_fades_into_new_tail_when_wrong_audio_was_all_submitted) {
++    NetAudio a; std::vector<int16_t> old(400,1000), now(400,-1000), out(400);
++    a.submit(old.data(),200,200); a.consume(out.data(),200);
++    a.rollback(); a.submit(now.data(),200,200); a.recovered();
++    a.submit(now.data(),200,400); a.consume(out.data(),200);
++    CHECK_EQ(a.corrected,0); CHECK_EQ(a.missed,200); CHECK_EQ(out[0],984); CHECK_EQ(out[262],-1000);
++}
++TEST(net_audio_trims_submitted_history_and_preserves_absolute_positions) {
++    NetAudio a; std::vector<int16_t> s(2000,100), out(2000);
++    for(unsigned end=1000;end<=100000;end+=1000) { a.submit(s.data(),1000,end,1000000); a.consume(out.data(),1000,true,2000000); }
++    CHECK_EQ(a.queued(),0); CHECK_EQ(a.age_count,100000); CHECK_EQ(a.age_sum/a.age_count,1000000);
++    a.rollback(); s.assign(2000,200); a.submit(s.data(),1000,100000); a.recovered();
++    CHECK_EQ(a.missed,1000); a.submit(s.data(),1000,101000); a.consume(out.data(),1000);
++    CHECK_EQ(out[0],100); CHECK_EQ(out[264],200); CHECK_EQ(a.queued(),0);
++}
++
++TEST(net_audio_defers_the_fade_until_the_first_changed_unsubmitted_sample) {
++    NetAudio a; std::vector<int16_t> old(800,1000), corrected=old, out(600);
++    a.submit(old.data(),400,400); a.consume(out.data(),100);
++    std::fill(corrected.begin(),corrected.begin()+200,-1000);
++    std::fill(corrected.begin()+400,corrected.end(),-1000);
++    a.rollback(); a.submit(corrected.data(),400,400); a.recovered(); a.consume(out.data(),300);
++    CHECK_EQ(a.corrections,1); CHECK_EQ(a.missed,100); CHECK_EQ(a.corrected,200);
++    CHECK_EQ(out[198],1000); CHECK_EQ(out[200],984); CHECK_EQ(out[462],-1000); CHECK_EQ(a.seams,0);
++}
++
++TEST(net_audio_identical_second_rollback_preserves_a_pending_crossfade) {
++    NetAudio a; std::vector<int16_t> old(800,1000), corrected(800,0), out(800);
++    a.submit(old.data(),400,400); a.rollback(); a.submit(corrected.data(),400,400); a.recovered();
++    a.rollback(); a.submit(corrected.data(),400,400); a.recovered(); a.consume(out.data(),400);
++    CHECK_EQ(a.corrections,1); CHECK_EQ(out[0],992); CHECK_EQ(out[262],0); CHECK_EQ(a.seams,0);
++}

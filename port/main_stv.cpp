@@ -44,9 +44,11 @@
 #include "host.h"
 #include "state.h"
 #include "netplay.h"
+#include "net_traversal.h"
 #include "player.h"
 #include <algorithm>
 #include "p410_identity.h"
+#include "p421_mods.h"
 extern bool stv_continue(SH2Context&, uint32_t);
 #include <cstdio>
 #include <cstdlib>
@@ -156,11 +158,13 @@ int main(int argc, char** argv) {
     uint32_t base = 0x06004000u, entry = 0x06005020u, sp = 0x06100000u;
     uint64_t vblanks = 600;
     bool vblanks_given = false;
+    std::string mods_dir,mods_selection,mods_zip;bool mods_inspect=false,mods_check=false;
     bool trace = false;
     bool window = false, fullscreen = false, unpaced = false;  // --window: real time, for a player
     bool launcher = false;
     int scale = 0, stats = 0, internal_resolution = 0;
-    int net_host = 0, input_delay = 3; std::string net_join;
+    int net_host = 0, input_delay = 3, net_audio = -1, net_code_port = -1; std::string net_join, net_peer_code, net_code_out, net_stun_servers;
+    bool net_no_map=false, net_no_stun=false;
     auto net_number = [](const char* text, int lo, int hi) {
         char* end = nullptr; long n = std::strtol(text, &end, 10);
         if (!*text || *end || n < lo || n > hi) { std::fprintf(stderr, "Invalid netplay number: %s\n", text); std::exit(2); }
@@ -176,6 +180,11 @@ int main(int argc, char** argv) {
         else if (!std::strcmp(a, "--base") && more) base = hx(argv[++i]);
         else if (!std::strcmp(a, "--entry") && more) entry = hx(argv[++i]);
         else if (!std::strcmp(a, "--sp") && more) sp = hx(argv[++i]);
+        else if (!std::strcmp(a,"--mods-dir") && more) mods_dir=argv[++i];
+        else if (!std::strcmp(a,"--mods") && more) mods_selection=argv[++i];
+        else if (!std::strcmp(a,"--mods-install") && more) mods_zip=argv[++i];
+        else if (!std::strcmp(a,"--mods-check")) mods_check=true;
+        else if (!std::strcmp(a,"--mods-list")) mods_inspect=true;
         else if (!std::strcmp(a, "--vblanks") && more) { vblanks = std::strtoull(argv[++i], nullptr, 10); vblanks_given = true; }
         else if (!std::strcmp(a, "--out") && more) out = argv[++i];
         else if (!std::strcmp(a, "--peek") && more) peek = argv[++i];
@@ -198,6 +207,17 @@ int main(int argc, char** argv) {
         else if (!std::strcmp(a, "--load-state")) quick_start = true;
         else if (!std::strcmp(a, "--save-at") && more) save_at = std::strtoull(argv[++i], nullptr, 10);
         else if (!std::strcmp(a, "--load-at") && more) load_at = std::strtoull(argv[++i], nullptr, 10);
+        else if (!std::strcmp(a, "--netplay-audio") && more) {
+            std::string mode=argv[++i];
+            if(mode!="low-latency" && mode!="glitch-free") { std::fprintf(stderr,"Invalid netplay audio mode\n"); return 2; }
+            net_audio=mode=="glitch-free" ? 1 : 0;
+        }
+        else if (!std::strcmp(a, "--netplay-code") && more) net_code_port=net_number(argv[++i],0,65535);
+        else if (!std::strcmp(a, "--netplay-peer-code") && more) net_peer_code=argv[++i];
+        else if (!std::strcmp(a, "--netplay-code-out") && more) net_code_out=argv[++i];
+        else if (!std::strcmp(a, "--netplay-stun-servers") && more) net_stun_servers=argv[++i];
+        else if (!std::strcmp(a, "--netplay-no-map")) net_no_map=true;
+        else if (!std::strcmp(a, "--netplay-no-stun")) net_no_stun=true;
         else if (!std::strcmp(a, "--netplay-host") && more) net_host = net_number(argv[++i], 1, 65535);
         else if (!std::strcmp(a, "--netplay-join") && more) net_join = argv[++i];
         else if (!std::strcmp(a, "--input-delay") && more) input_delay = net_number(argv[++i], 0, 3);
@@ -211,15 +231,24 @@ int main(int argc, char** argv) {
         else if (!std::strcmp(a, "--unpaced")) unpaced = true;             // with --window: as fast as the host can (measuring)
         else if (!std::strcmp(a, "--stats") && more) stats = std::atoi(argv[++i]);    // with --window: speed + audio queue every N s
         else if (!std::strcmp(a, "--virtual-input") && more) virtual_input = argv[++i]; // with --window, tests: VB:BUTTONS,... on virtual gamepads (host.cpp)
-        else { std::fprintf(stderr, "usage: saturn_stv --cart FILE [--cartrom cart.bin] [--base H] [--entry H] [--sp H] [--vblanks N] [--trace] [--out DIR] [--peek A[:W],...] [--shots N,...] [--dump N,...] [--watch LO:HI] [--input VBLANK:BUTTONS,...] [--stvinput VB:START1,...] [--internal-resolution 1|2|3] [--netplay-host PORT | --netplay-join IPv4:PORT] [--input-delay 0..3] [--window [--launcher | --no-launcher] [--fullscreen] [--scale N] [--settings FILE] [--unpaced] [--stats S]]\n"); return 2; }
+        else { std::fprintf(stderr, "usage: saturn_stv --cart FILE [--cartrom cart.bin] [--base H] [--entry H] [--sp H] [--vblanks N] [--trace] [--out DIR] [--peek A[:W],...] [--shots N,...] [--dump N,...] [--watch LO:HI] [--input VBLANK:BUTTONS,...] [--stvinput VB:START1,...] [--mods-dir DIR] [--mods none|ID,...] [--mods-list | --mods-check | --mods-install ZIP] [--internal-resolution 1|2|3] [--netplay-host PORT | --netplay-join IPv4:PORT] [--netplay-code PORT --netplay-peer-code CODE|@FILE] [--netplay-code-out FILE] [--netplay-no-map] [--netplay-no-stun] [--netplay-stun-servers HOST:PORT,HOST:PORT] [--netplay-audio low-latency|glitch-free] [--input-delay 0..3] [--window [--launcher | --no-launcher] [--fullscreen] [--scale N] [--settings FILE] [--unpaced] [--stats S]]\n"); return 2; }
     }
     if (cart.empty()) { std::fprintf(stderr, "saturn_stv: --cart is required\n"); return 2; }
 
     // Config the reused runtime reads: headless (host_open returns true), virtual time,
     // the VBlank stop, the log directory and tracing. --shots/--dump drive video.cpp's
     // VBlank-IN frame capture (PNG) and memory dump straight out of the reused runtime.
-    if (net_host && !net_join.empty()) { std::fprintf(stderr, "Choose netplay host or join\n"); return 2; }
+    if ((int(net_host!=0)+int(!net_join.empty())+int(net_code_port>=0))>1) { std::fprintf(stderr, "Choose netplay host or join\n"); return 2; }
     g_cfg = SaturnConfig{};
+    g_cfg.netplay_base_build=STV_NETPLAY_CODE;
+    g_cfg.netplay_build=STV_NETPLAY_CODE;
+    g_cfg.netplay_code=net_code_port>=0; g_cfg.netplay_code_port=uint16_t(std::max(0,net_code_port));
+    g_cfg.netplay_peer_code=net_peer_code; g_cfg.netplay_code_out=net_code_out;
+    g_cfg.netplay_auto_map=!net_no_map; g_cfg.netplay_stun=!net_no_stun;
+    if(net_no_map) g_cfg.netplay_map_override=0;
+    if(net_no_stun) g_cfg.netplay_stun_override=0;
+    if(!net_stun_servers.empty()) { g_cfg.netplay_stun_servers=net_stun_servers; g_cfg.netplay_stun_servers_override=true; }
+    g_cfg.netplay_audio_override=net_audio; g_cfg.netplay_glitch_free=net_audio==1;
     g_cfg.netplay_host = net_host; g_cfg.netplay_join = net_join; g_cfg.input_delay = input_delay;
     g_cfg.headless = !window;
     g_cfg.out = out;
@@ -245,7 +274,14 @@ int main(int argc, char** argv) {
     g_cfg.dump = dump;
     g_cfg.input = input;
     g_cfg.wav = wav;       // sound_init reads this; with --wav the whole run's SCSP output is written
-    if (launcher && !host_launch(g_cfg)) return 0;
+    mods_configure(STV_MOD_TARGET,mods_dir,mods_selection);
+    g_cfg.netplay_build=mods_preview_fingerprint(STV_NETPLAY_CODE);
+    if(!mods_zip.empty()) { bool ok=mods_install(mods_zip);std::fprintf(stderr,"%s\n",mods_status().c_str());return ok?0:2; }
+    if(mods_inspect) { std::printf("target=%s\nmods=%s\n",mods_target().c_str(),mods_directory().c_str());for(auto& m:mods_list())std::printf("%s enabled=%d %s %s\n",m.id.c_str(),m.enabled,m.hash.c_str(),m.error.c_str());return 0; }
+    if (launcher && !host_launch(g_cfg)) { net_setup_close(); return 0; }
+    if(!mods_open()) { net_setup_close();host_player_error(mods_status());return 2; }
+    g_cfg.netplay_build=mods_fingerprint(STV_NETPLAY_CODE);
+    if(mods_check) {std::printf("%s\n%s",mods_status().c_str(),mods_set().c_str());net_setup_close();return 0;}
 
     // --input "VBLANK:BUTTON+BUTTON,...": scripted pad presses, exactly as the runtime's own
     // saturn_main installs them (machine.cpp). smpc.cpp reports these through the SMPC peripheral
@@ -444,6 +480,10 @@ int main(int argc, char** argv) {
             for (auto& p : problems) sat_note("%s", p.c_str());
         }
         if (g_cfg.headless) {
+            g_cfg.netplay_auto_map = net_no_map ? false : game.flag("netplay", "auto_map");
+            g_cfg.netplay_stun = net_no_stun ? false : game.flag("netplay", "stun");
+            if(net_stun_servers.empty()) g_cfg.netplay_stun_servers=game.get("netplay", "stun_servers");
+            g_cfg.netplay_glitch_free = net_audio < 0 ? game.flag("netplay", "glitch_free") : net_audio != 0;
             player_settings(game);
             g_cfg.internal_resolution = game.number("display", "internal_resolution");
         }
@@ -505,7 +545,8 @@ int main(int argc, char** argv) {
     uint64_t identity = STV_STATE_BUILD;
     for (uint8_t b : img) identity = (identity ^ b) * 1099511628211ull;
     for (uint8_t b : g_cart_rom_buf) identity = (identity ^ b) * 1099511628211ull;
-    quick_init(g_cfg.quick_path, identity, stv_continue);
+    quick_init(g_cfg.quick_path, mods_fingerprint(identity), stv_continue);
+    mods_start();
     if (netplay_active() && (g_cfg.quick_start || !g_cfg.movie_play.empty() || !g_cfg.movie_record.empty() ||
         no_sound || spoof_sound_done || base != 0x06004000u || entry != 0x06005020u || sp != 0x06100000u)) {
         host_player_error("Netplay requires normal power-on, sound and no input movies or quick loads."); return 2;
@@ -514,7 +555,7 @@ int main(int argc, char** argv) {
     for (uint8_t b : img) rom_program = (rom_program ^ b) * 1099511628211ull;
     for (uint8_t b : g_cart_rom_buf) rom_cart = (rom_cart ^ b) * 1099511628211ull;
     try {
-        if (!netplay_open(STV_NETPLAY_CODE, rom_program, rom_cart)) { netplay_finish(); return 2; }
+        if (!netplay_open(mods_fingerprint(STV_NETPLAY_CODE), rom_program, rom_cart)) { netplay_finish(); return 2; }
     } catch (...) { netplay_finish(); return 0; } // Window closed while connecting.
     bool resumed = g_cfg.quick_start && quick_restore();
     if (g_cfg.quick_start && !resumed) sat_note("Quick load rejected; starting normally");

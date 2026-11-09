@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Make a small in-tree launcher app; ROMs and Homebrew SDL3 stay external."""
+from p422_package_mods import package_mods
 from pathlib import Path
 import plistlib
 import subprocess
@@ -18,3 +19,5 @@ play = macos / 'play'
 subprocess.run(['clang', '-Os', '-arch', 'x86_64', '-Wall', '-Wextra',
                 str(root / 'port/p48_app_mac.c'), '-o', str(play)], check=True)
 print('App: port/run/P48/Die Hard Arcade.app')
+
+package_mods(contents / 'Resources/modding', root / 'port/run/P48/build-window/p421-target.txt')

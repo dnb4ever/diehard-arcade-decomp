@@ -1,0 +1,1197 @@
+--- a/runtime/runtime.cmake
++++ b/runtime/runtime.cmake
+@@ -18,6 +18,7 @@
+     ${_src}/machine/machine.cpp ${_src}/machine/bios.cpp ${_src}/machine/mmio.cpp ${_src}/machine/tasks.cpp
+     ${_src}/machine/onchip.cpp ${_src}/machine/scu.cpp ${_src}/machine/scudsp.cpp ${_src}/machine/smpc.cpp
+     ${_src}/machine/cdrom.cpp ${_src}/machine/cdblock.cpp ${_src}/machine/agent.cpp ${_src}/machine/state.cpp
++    ${_src}/machine/net_discovery.cpp ${_src}/machine/net_transport.cpp ${_src}/machine/net_setup.cpp
+     ${_src}/machine/netplay.cpp ${_src}/machine/player.cpp ${_src}/machine/modem.cpp ${_src}/machine/modem_tcp.cpp
+     ${_src}/video/video.cpp ${_src}/video/vdp1.cpp ${_src}/video/vdp2.cpp ${_src}/video/png.cpp ${_src}/video/movie.cpp
+     ${_src}/sound/sound.cpp ${_src}/sound/scsp.cpp)
+@@ -72,7 +73,7 @@
+ target_compile_options(saturn_m68k PRIVATE -w)
+ target_link_libraries(saturn_machine PUBLIC saturn_m68k)
+ if(WIN32)
+-  target_link_libraries(saturn_machine PUBLIC ws2_32)   # the modem's TCP line
++  target_link_libraries(saturn_machine PUBLIC ws2_32 iphlpapi)   # the modem's TCP line
+ endif()
+ foreach(t saturn_core saturn_stub saturn_machine saturn_host)
+   target_include_directories(${t} PUBLIC ${_rt}/include)
+--- a/runtime/src/host/host.cpp
++++ b/runtime/src/host/host.cpp
+@@ -105,6 +105,9 @@
+         }
+     }
+     player_settings(g_settings);
++    g_cfg.netplay_auto_map = g_cfg.netplay_map_override < 0 ? g_settings.flag("netplay", "auto_map") : g_cfg.netplay_map_override!=0;
++    g_cfg.netplay_stun = g_cfg.netplay_stun_override < 0 ? g_settings.flag("netplay", "stun") : g_cfg.netplay_stun_override!=0;
++    if(!g_cfg.netplay_stun_servers_override) g_cfg.netplay_stun_servers=g_settings.get("netplay", "stun_servers");
+     g_cfg.netplay_glitch_free = g_cfg.netplay_audio_override < 0 ? g_settings.flag("netplay", "glitch_free") : g_cfg.netplay_audio_override != 0;
+     g_cfg.internal_resolution = g_settings.number("display", "internal_resolution");
+     bind_keyboard();
+--- a/runtime/src/host/launcher.cpp
++++ b/runtime/src/host/launcher.cpp
+@@ -9,6 +9,7 @@
+ #include "state.h"
+ #include "player.h"
+ #include "netplay.h"
++#include "net_traversal.h"
+ #include "host_sdl.h"
+ #include "video.h"
+ #include "imgui.h"
+@@ -122,26 +123,76 @@
+     ImGui::EndDisabled();
+     ImGui::TextWrapped("These buttons start play. Record ends and writes the file when you quit. Rewind replaces the abandoned future. Quick load is unavailable while an input file is active.");
+ }
++bool code_ready() {
++    if(!g_cfg.netplay_code) return true;
++    auto view=net_setup_view(); net::Code peer,self; std::string error;
++    return view.ready && net::decode_code(g_cfg.netplay_peer_code,peer,error) && net::decode_code(view.code,self,error) && peer.build==self.build && peer.nonce!=self.nonce;
++}
+ void netplay_features() {
+-    int mode = g_cfg.netplay_host ? 1 : !g_cfg.netplay_join.empty() ? 2 : 0;
+-    const char* modes[] = {"Offline", "Host (player 1)", "Join (player 2)"};
+-    static char address[128] = "127.0.0.1:7845";
+-    static int port = 7845;
+-    if (!g_cfg.netplay_join.empty()) std::snprintf(address, sizeof address, "%s", g_cfg.netplay_join.c_str());
+-    if (g_cfg.netplay_host) port = g_cfg.netplay_host;
+-    ImGui::Combo("Connection", &mode, modes, 3);
+-    if (mode == 1) { ImGui::InputInt("UDP port", &port); port = std::clamp(port, 1, 65535); }
+-    if (mode == 2) ImGui::InputText("Host IPv4:port", address, sizeof address);
+-    int audio = g_cfg.netplay_glitch_free ? 1 : 0;
+-    if(ImGui::Combo("Netplay audio", &audio, "Low latency (default)\0Glitch-free\0")) {
+-        g_cfg.netplay_glitch_free = audio != 0; host_settings().set("netplay", "glitch_free", audio ? "true" : "false"); host_settings_save();
+-    }
+-    ImGui::SliderInt("Input delay", &g_cfg.input_delay, 0, 3, "%d fields");
+-    g_cfg.netplay_host = mode == 1 ? port : 0;
+-    g_cfg.netplay_join = mode == 2 ? address : "";
+-    ImGui::TextWrapped("Press Start on both machines. Forward the host UDP port (default 7845). No NAT traversal or relay. Both players use their local P1 controls; the guest drives P2.");
+-    ImGui::TextWrapped("Requires matching source/ROMs and input delay. Uses host settings, 1x, an 8-field rollback cap and selectable audio. Rewind, quick states, movies, pause, turbo and cheats are disabled.");
+-}
++    int mode=g_cfg.netplay_code?3:g_cfg.netplay_host?1:!g_cfg.netplay_join.empty()?2:0;
++    const char* modes[]={"Offline","Host (player 1)","Join by IP (player 2)","Connect by code"};
++    static char address[128]="127.0.0.1:7845",remote[256]{};
++    static int port=7845;
++    if(!g_cfg.netplay_join.empty() && mode!=3) std::snprintf(address,sizeof address,"%s",g_cfg.netplay_join.c_str());
++    if(g_cfg.netplay_host && mode==1) port=g_cfg.netplay_host;
++    if(mode==3) port=g_cfg.netplay_code_port;
++    if(ImGui::Combo("Connection",&mode,modes,4)) net_setup_close();
++    bool changed=false;
++    if(mode==1 || mode==3) {
++        changed=ImGui::InputInt("Local UDP port",&port); port=std::clamp(port,mode==3?0:1,65535);
++    }
++    if(changed) net_setup_close();
++    g_cfg.netplay_code=mode==3; g_cfg.netplay_code_port=uint16_t(port);
++    g_cfg.netplay_host=mode==1?port:0; g_cfg.netplay_join=mode==2?address:"";
++    if(mode==1) {
++        net_setup_begin(uint16_t(port),false);
++        ImGui::TextWrapped("Share the external endpoint below (or your LAN IPv4:port). Your friend chooses Join by IP. Press Start on both machines.");
++    }
++    if(mode==2) {
++        ImGui::InputText("Host IPv4:port",address,sizeof address); ImGui::SameLine();
++        if(ImGui::Button("Paste IP")) { char* text=SDL_GetClipboardText(); if(text) { std::snprintf(address,sizeof address,"%s",text); SDL_free(text); } }
++        g_cfg.netplay_join=address;
++        ImGui::TextWrapped("Use the host's external IPv4:port over the internet, or LAN IPv4:port on the same network. Direct IP join remains available.");
++    }
++    if(mode==3) {
++        ImGui::TextWrapped("1. Generate and copy your code. 2. Exchange codes and paste your friend's. 3. Both press Start. Player 1 / 2 is assigned automatically.");
++        if(ImGui::Button("Generate / refresh my code")) { net_setup_close(); net_setup_begin(uint16_t(port),true); }
++        auto view=net_setup_view();
++        ImGui::BeginDisabled(!view.ready);
++        ImGui::SameLine(); if(ImGui::Button("Copy my code")) SDL_SetClipboardText(view.code.c_str());
++        ImGui::EndDisabled();
++        char local[128]; std::snprintf(local,sizeof local,"%s",view.code.c_str());
++        ImGui::InputText("My code",local,sizeof local,ImGuiInputTextFlags_ReadOnly);
++        ImGui::InputText("Friend's code",remote,sizeof remote); ImGui::SameLine();
++        if(ImGui::Button("Paste code")) { char* text=SDL_GetClipboardText(); if(text) { std::snprintf(remote,sizeof remote,"%s",text); SDL_free(text); } }
++        g_cfg.netplay_peer_code=remote;
++        if(*remote) { net::Code peer; std::string error; if(!net::decode_code(remote,peer,error)) ImGui::TextWrapped("%s",error.c_str()); else if(peer.build!=uint32_t(g_cfg.netplay_build)) ImGui::TextWrapped("Build mismatch: use the same game build.");
++            else { net::Code self; if(net::decode_code(view.code,self,error) && self.nonce==peer.nonce) ImGui::TextWrapped("That is your own code. Paste your friend's code."); } }
++    }
++    if(mode==1 || mode==3) {
++        auto view=net_setup_view();
++        if(!view.lan.empty()) ImGui::Text("LAN: %s",view.lan.c_str());
++        if(!view.external.empty()) { ImGui::Text("External: %s",view.external.c_str()); ImGui::SameLine(); if(ImGui::Button("Copy endpoint")) SDL_SetClipboardText(view.external.c_str()); }
++        if(!view.status.empty()) ImGui::TextWrapped("%s",view.status.c_str());
++    }
++    ImGui::SliderInt("Input delay",&g_cfg.input_delay,0,3,"%d fields");
++    int audio=g_cfg.netplay_glitch_free?1:0;
++    if(ImGui::Combo("Netplay audio",&audio,"Low latency (default)\0Glitch-free\0")) {
++        g_cfg.netplay_glitch_free=audio!=0; host_settings().set("netplay","glitch_free",audio?"true":"false"); host_settings_save();
++    }
++    if(ImGui::TreeNode("Connection settings")) {
++        auto& set=host_settings(); bool reset=false;
++        if(ImGui::Checkbox("Automatic router mapping",&g_cfg.netplay_auto_map)) { set.set("netplay","auto_map",g_cfg.netplay_auto_map?"true":"false"); reset=true; }
++        if(ImGui::Checkbox("Use STUN for public codes",&g_cfg.netplay_stun)) { set.set("netplay","stun",g_cfg.netplay_stun?"true":"false"); reset=true; }
++        char servers[256]; std::snprintf(servers,sizeof servers,"%s",g_cfg.netplay_stun_servers.c_str());
++        if(ImGui::InputText("STUN servers (two, comma separated)",servers,sizeof servers,ImGuiInputTextFlags_EnterReturnsTrue)) { g_cfg.netplay_stun_servers=servers; set.set("netplay","stun_servers",servers); reset=true; }
++        if(reset) { host_settings_save(); net_setup_close(); }
++        ImGui::TextWrapped("Mapping uses renewable 600-second UDP leases, removed on exit. STUN can be disabled for LAN-only codes. Symmetric NAT / CGNAT can require forwarding; no relay is provided.");
++        ImGui::TreePop();
++    }
++    ImGui::TextWrapped("Both players use their local P1 controls. Matching builds / ROMs / delay are required. Host settings and 1x apply; rewind, quick states, movies, pause, turbo and cheats are disabled.");
++}
++
+ void player_features(bool running = false) {
+     if (running && netplay_active()) { ImGui::TextWrapped("Netplay locks gameplay settings until the session ends."); return; }
+     if (ImGui::BeginTabBar("feature-kind")) {
+@@ -347,12 +398,14 @@
+         ImGui::SetNextWindowSize(vp->WorkSize);
+         ImGui::Begin("launcher", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
+                                               ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBringToFrontOnFocus);
++        ImGui::BeginDisabled(!code_ready());
+         if (ImGui::Button("  Start  ")) {
+             set_.set("launcher", "multitap", std::to_string(taps_));
+             save();
+             start_options_chosen();
+             started_ = true;
+         }
++        ImGui::EndDisabled();
+         if (ImGui::IsWindowAppearing()) ImGui::SetItemDefaultFocus();
+         if (cfg_.arcade && !cfg_.quick_path.empty()) {
+             ImGui::SameLine();
+--- a/runtime/src/host/settings.cpp
++++ b/runtime/src/host/settings.cpp
+@@ -65,6 +65,11 @@
+ [netplay]
+ ; false: speculative, mutable playback; true: eight-field confirmed lead
+ glitch_free = false
++; Best-effort 600-second PCP/NAT-PMP/UPnP UDP lease, renewed while open.
++auto_map = true
++; STUN is used for connection codes. Disable for LAN-only codes.
++stun = true
++stun_servers = stun.l.google.com:19302,stun.cloudflare.com:3478
+ 
+ [audio]
+ ; percent
+--- /dev/null
++++ b/runtime/src/machine/net_discovery.cpp
+@@ -0,0 +1,209 @@
++#include "net_traversal.h"
++#include <algorithm>
++#include <cctype>
++#include <cstring>
++#include <sstream>
++namespace net {
++namespace {
++void put(Bytes& b,uint64_t v,int n) { for(int i=n-1;i>=0;--i) b.push_back(uint8_t(v>>(i*8))); }
++uint64_t get(const Bytes& b,size_t p,int n) { uint64_t v=0; for(int i=0;i<n;++i) v=(v<<8)|b.at(p+i); return v; }
++bool valid(Endpoint e) { return e && (e.ip>>24)<224 && e.ip!=0xffffffff; }
++std::string lower(std::string s) { for(char& c:s) c=char(std::tolower(static_cast<unsigned char>(c))); return s; }
++std::string trim(const std::string& s) { auto a=s.find_first_not_of(" \t\r\n"),b=s.find_last_not_of(" \t\r\n"); return a==std::string::npos?"":s.substr(a,b-a+1); }
++std::string escape(const std::string& s) {
++    std::string out; for(char c:s) { if(c=='&') out+="&amp;"; else if(c=='<') out+="&lt;"; else if(c=='>') out+="&gt;"; else if(c=='\"') out+="&quot;"; else out+=c; } return out;
++}
++std::string unescape(std::string s) {
++    for(auto pair:{std::pair{"&lt;","<"},std::pair{"&gt;",">"},std::pair{"&quot;","\""},std::pair{"&apos;","'"},std::pair{"&amp;","&"}}) {
++        size_t pos=0; while((pos=s.find(pair.first,pos))!=std::string::npos) { s.replace(pos,std::strlen(pair.first),pair.second); pos+=std::strlen(pair.second); }
++    } return s;
++}
++bool element(const std::string& xml,const std::string& name,size_t& pos,std::string& inner) {
++    while((pos=xml.find('<',pos))!=std::string::npos) {
++        size_t begin=++pos,stop=xml.find_first_of(" \t\r\n>/",begin); if(stop==std::string::npos) return false;
++        std::string tag=xml.substr(begin,stop-begin); auto colon=tag.rfind(':');
++        if(tag.substr(colon==std::string::npos?0:colon+1)!=name) continue;
++        auto body=xml.find('>',stop); if(body==std::string::npos) return false;
++        auto end=xml.find("</"+tag+">",body+1); if(end==std::string::npos) return false;
++        inner=xml.substr(body+1,end-body-1); pos=end+tag.size()+3; return true;
++    } return false;
++}
++std::string absolute_url(const std::string& base,const std::string& path) {
++    if(path.rfind("http://",0)==0) return path;
++    URL u; if(!parse_url(base,u) || path.empty()) return "";
++    std::string origin="http://"+u.host+":"+std::to_string(u.port);
++    if(path[0]=='/') return origin+path;
++    auto slash=u.path.rfind('/'); return origin+u.path.substr(0,slash==std::string::npos?0:slash+1)+path;
++}
++}
++uint32_t checksum(const uint8_t* p,size_t n) {
++    uint32_t crc=0xffffffff; for(size_t i=0;i<n;++i) { crc^=p[i]; for(int bit=0;bit<8;++bit) crc=(crc>>1)^((crc&1)?0xedb88320u:0); } return ~crc;
++}
++Bytes stun_request(const Transaction& id) {
++    Bytes b; put(b,1,2); put(b,0,2); put(b,0x2112a442,4); b.insert(b.end(),id.begin(),id.end()); return b;
++}
++bool stun_response(const Bytes& b,const Transaction& id,Endpoint& out) {
++    if(b.size()<20 || b.size()>2048 || get(b,0,2)!=0x101 || get(b,2,2)!=b.size()-20 || (get(b,2,2)&3) || get(b,4,4)!=0x2112a442 || !std::equal(id.begin(),id.end(),b.begin()+8)) return false;
++    Endpoint mapped{},xored{};
++    for(size_t pos=20;pos<b.size();) {
++        if(pos+4>b.size()) return false;
++        unsigned type=unsigned(get(b,pos,2)),len=unsigned(get(b,pos+2,2)); size_t value=pos+4;
++        if(value+len>b.size() || value+((len+3)&~3u)>b.size()) return false;
++        if(type==0x20 || type==1) {
++            if(len!=8 || b[value]!=0 || b[value+1]!=1) return false;
++            Endpoint e{uint32_t(get(b,value+4,4)),uint16_t(get(b,value+2,2))};
++            if(type==0x20) { e.ip^=0x2112a442; e.port^=0x2112; xored=e; } else mapped=e;
++        } else if(type==0x8028) {
++            if(len!=4 || value+len!=b.size() || uint32_t(get(b,value,4))!=(checksum(b.data(),pos)^0x5354554e)) return false;
++        }
++        pos=value+((len+3)&~3u);
++    }
++    out=xored?xored:mapped; return valid(out);
++}
++Bytes pmp_request(uint16_t inside,uint16_t outside,uint32_t lifetime) {
++    Bytes b{0,1,0,0}; put(b,inside,2); put(b,outside,2); put(b,lifetime,4); return b;
++}
++bool pmp_address(const Bytes& b,uint32_t& ip) {
++    if(b.size()!=12 || b[0] || b[1]!=128 || get(b,2,2)) return false;
++    ip=uint32_t(get(b,8,4)); return valid({ip,1});
++}
++bool pmp_response(const Bytes& b,uint16_t inside,Endpoint& external,uint32_t& lifetime) {
++    if(b.size()!=16 || b[0] || b[1]!=129 || get(b,2,2) || get(b,8,2)!=inside) return false;
++    external.port=uint16_t(get(b,10,2)); lifetime=uint32_t(get(b,12,4)); return external.port!=0 || lifetime==0;
++}
++Bytes pcp_request(Endpoint local,Endpoint wanted,const Transaction& nonce,uint32_t lifetime) {
++    Bytes b{2,1,0,0}; put(b,lifetime,4); b.resize(18); b.push_back(255); b.push_back(255); put(b,local.ip,4);
++    b.insert(b.end(),nonce.begin(),nonce.end()); b.push_back(17); b.resize(40); put(b,local.port,2); put(b,wanted.port,2);
++    b.resize(54); b.push_back(255); b.push_back(255); put(b,wanted.ip,4); return b;
++}
++bool pcp_response(const Bytes& b,uint16_t inside,const Transaction& nonce,Endpoint& external,uint32_t& lifetime) {
++    if(b.size()<60 || b.size()>1100 || b[0]!=2 || b[1]!=129 || b[3] || b[36]!=17 || get(b,40,2)!=inside || !std::equal(nonce.begin(),nonce.end(),b.begin()+24)) return false;
++    for(size_t i=44;i<54;++i) if(b[i]) return false;
++    if(b[54]!=255 || b[55]!=255) return false;
++    external={uint32_t(get(b,56,4)),uint16_t(get(b,42,2))}; lifetime=uint32_t(get(b,4,4)); return valid(external);
++}
++std::string encode_code(const Code& code) {
++    if(!code.nonce || code.candidates.empty() || code.candidates.size()>4) return "";
++    Bytes b{'D','H',1,uint8_t(code.candidates.size())}; put(b,code.build,4); put(b,code.nonce,8);
++    for(auto e:code.candidates) { if(!valid(e)) return ""; put(b,e.ip,4); put(b,e.port,2); }
++    put(b,checksum(b.data(),b.size()),4);
++    constexpr char table[]="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
++    std::string out="DHA1-"; unsigned bits=0,value=0;
++    for(uint8_t c:b) { value=(value<<8)|c; bits+=8; while(bits>=6) { bits-=6; out+=table[(value>>bits)&63]; } }
++    if(bits) out+=table[(value<<(6-bits))&63]; return out;
++}
++bool decode_code(const std::string& text,Code& out,std::string& error) {
++    auto fail=[&](const char* why){error=why;return false;};
++    std::string code; for(char c:text) if(!std::isspace(static_cast<unsigned char>(c))) code+=c;
++    if(code.size()<5 || code.size()>64 || code.substr(0,5)!="DHA1-") return fail("Invalid connection code prefix/length");
++    constexpr char table[]="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
++    Bytes b; unsigned value=0,bits=0;
++    for(size_t i=5;i<code.size();++i) { const char* c=std::strchr(table,code[i]); if(!c || !code[i]) return fail("Invalid connection code alphabet"); value=(value<<6)|unsigned(c-table); bits+=6; if(bits>=8) { bits-=8; b.push_back(uint8_t(value>>bits)); } }
++    if(bits && (value&((1u<<bits)-1))) return fail("Noncanonical connection code padding");
++    if(b.size()<26 || b[0]!='D' || b[1]!='H' || b[2]!=1 || b[3]<1 || b[3]>4 || b.size()!=20+size_t(b[3])*6 || get(b,b.size()-4,4)!=checksum(b.data(),b.size()-4)) return fail("Invalid connection code checksum/version");
++    Code decoded; decoded.build=uint32_t(get(b,4,4)); decoded.nonce=get(b,8,8); if(!decoded.nonce) return fail("Invalid connection nonce");
++    for(unsigned i=0;i<b[3];++i) { Endpoint e{uint32_t(get(b,16+i*6,4)),uint16_t(get(b,20+i*6,2))}; if(!valid(e)) return fail("Invalid connection address"); decoded.candidates.push_back(e); }
++    if(encode_code(decoded)!=code) return fail("Noncanonical connection code");
++    out=decoded; error.clear(); return true;
++}
++Bytes punch_packet(const Code& self,const Code& other,bool reply) {
++    Bytes b{'D','H','P','1',uint8_t(reply?2:1)}; put(b,self.build,4); put(b,self.nonce,8); put(b,other.nonce,8); put(b,checksum(b.data(),b.size()),4); return b;
++}
++bool punch_packet_valid(const Bytes& b,const Code& self,const Code& other,bool& reply) {
++    if(b.size()!=29 || other.build!=self.build || std::memcmp(b.data(),"DHP1",4) || (b[4]!=1 && b[4]!=2) || get(b,5,4)!=self.build || get(b,9,8)!=other.nonce || get(b,17,8)!=self.nonce || get(b,25,4)!=checksum(b.data(),25)) return false;
++    reply=b[4]==2; return true;
++}
++bool parse_url(const std::string& text,URL& out) {
++    if(text.size()>2048 || text.rfind("http://",0)!=0 || text.find_first_of("\r\n\t @#")!=std::string::npos) return false;
++    size_t slash=text.find('/',7); std::string authority=text.substr(7,slash==std::string::npos?std::string::npos:slash-7);
++    if(authority.empty()) return false;
++    URL u; auto colon=authority.find(':'); u.host=authority.substr(0,colon);
++    if(colon!=std::string::npos) { std::string port=authority.substr(colon+1); Endpoint e; if(!parse("127.0.0.1:"+port,e)) return false; u.port=e.port; }
++    if(u.host.empty() || u.host.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-")!=std::string::npos) return false;
++    u.path=slash==std::string::npos?"/":text.substr(slash); out=u; return true;
++}
++std::string xml_value(const std::string& xml,const std::string& tag) {
++    size_t pos=0; std::string value; if(!element(xml,tag,pos,value) || value.find('<')!=std::string::npos) return ""; return unescape(trim(value));
++}
++bool igd_service(const std::string& xml,const std::string& location,std::string& control,std::string& service) {
++    if(xml.size()>262144) return false;
++    std::string base=xml_value(xml,"URLBase"); if(base.empty()) base=location;
++    size_t pos=0; std::string block;
++    while(element(xml,"service",pos,block)) {
++        auto type=xml_value(block,"serviceType");
++        if(type!="urn:schemas-upnp-org:service:WANIPConnection:1" && type!="urn:schemas-upnp-org:service:WANIPConnection:2" && type!="urn:schemas-upnp-org:service:WANPPPConnection:1") continue;
++        auto url=absolute_url(base,xml_value(block,"controlURL")); URL parsed;
++        if(!parse_url(url,parsed)) continue;
++        control=url; service=type; return true;
++    } return false;
++}
++std::string ssdp_request() {
++    return "M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\nMAN: \"ssdp:discover\"\r\nMX: 1\r\nST: urn:schemas-upnp-org:device:InternetGatewayDevice:1\r\n\r\n";
++}
++std::string ssdp_location(const std::string& response) {
++    if(response.size()<12 || response.size()>8192 || response.rfind("HTTP/1.",0)!=0 || response.substr(9,3)!="200") return "";
++    std::istringstream lines(response); std::string line;
++    while(std::getline(lines,line)) { auto colon=line.find(':'); if(colon!=std::string::npos && lower(trim(line.substr(0,colon)))=="location") { auto location=trim(line.substr(colon+1)); URL u; return parse_url(location,u)?location:""; } }
++    return "";
++}
++std::string soap(const std::string& service,const std::string& action,uint16_t inside,uint16_t outside,const std::string& lan,uint32_t lease) {
++    if(action!="AddPortMapping" && action!="DeletePortMapping" && action!="GetExternalIPAddress") return "";
++    std::string args;
++    auto arg=[&](const char* name,const std::string& value) { args+="<"+std::string(name)+">"+escape(value)+"</"+name+">"; };
++    if(action!="GetExternalIPAddress") { arg("NewRemoteHost",""); arg("NewExternalPort",std::to_string(outside)); arg("NewProtocol","UDP"); }
++    if(action=="AddPortMapping") { arg("NewInternalPort",std::to_string(inside)); arg("NewInternalClient",lan); arg("NewEnabled","1"); arg("NewPortMappingDescription","Die Hard Arcade"); arg("NewLeaseDuration",std::to_string(lease)); }
++    return "<?xml version=\"1.0\"?><s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\" s:encodingStyle=\"http://schemas.xmlsoap.org/soap/encoding/\"><s:Body><u:"+action+" xmlns:u=\""+escape(service)+"\">"+args+"</u:"+action+"></s:Body></s:Envelope>";
++}
++Mapping map_port(IO& io,Endpoint gateway,Endpoint local,const Transaction& nonce) {
++    Mapping m; m.gateway=gateway; m.local=local; m.nonce=nonce;
++    if(!valid(local)) return m;
++    if(gateway) {
++        auto b=io.exchange(gateway,pcp_request(local,{0,local.port},nonce,600),900);
++        if(pcp_response(b,local.port,nonce,m.external,m.lease) && m.lease>0 && m.lease<=86400) { m.kind=Mapping::PCP; return m; }
++        uint32_t ip=0;
++        if(pmp_address(io.exchange(gateway,Bytes{0,0},900),ip)) {
++            m.external.ip=ip;
++            b=io.exchange(gateway,pmp_request(local.port,local.port,600),900);
++            if(pmp_response(b,local.port,m.external,m.lease) && m.lease>0 && m.lease<=86400) { m.kind=Mapping::PMP; return m; }
++        }
++    }
++    auto location=ssdp_location(io.discover(ssdp_request(),1400));
++    if(location.empty() || !igd_service(io.http(location,"",""),location,m.control,m.service)) return Mapping{};
++    auto body=io.http(m.control,m.service+"#GetExternalIPAddress",soap(m.service,"GetExternalIPAddress",local.port,local.port,"",600));
++    Endpoint external; if(!parse(xml_value(body,"NewExternalIPAddress")+":"+std::to_string(local.port),external)) return Mapping{};
++    m.external=external; m.kind=Mapping::IGD; m.lease=600;
++    if(!renew_mapping(io,m)) return Mapping{};
++    return m;
++}
++bool renew_mapping(IO& io,Mapping& m,bool remove) {
++    uint32_t lease=remove?0:600,granted=0; Endpoint external=m.external;
++    if(m.kind==Mapping::PCP) {
++        auto b=io.exchange(m.gateway,pcp_request(m.local,m.external,m.nonce,lease),600);
++        if(!pcp_response(b,m.local.port,m.nonce,external,granted) || (remove?granted!=0:(!granted || granted>86400))) return false;
++    } else if(m.kind==Mapping::PMP) {
++        auto b=io.exchange(m.gateway,pmp_request(m.local.port,remove?0:m.external.port,lease),600);
++        if(!pmp_response(b,m.local.port,external,granted) || (remove?granted!=0:(!granted || granted>86400))) return false;
++    } else if(m.kind==Mapping::IGD) {
++        auto ip=text(m.local); ip=ip.substr(0,ip.find(':'));
++        auto action=remove?"DeletePortMapping":"AddPortMapping";
++        auto b=io.http(m.control,m.service+"#"+action,soap(m.service,action,m.local.port,m.external.port,ip,lease));
++        // HTTP implementation returns a body only for 2xx; require the named
++        // response so empty/HTML/fault replies cannot claim a mapping.
++        if(b.find(std::string(action)+"Response")==std::string::npos || b.find("Fault")!=std::string::npos) return false;
++        granted=lease;
++    } else return false;
++    m.external=external; m.lease=granted; return true;
++}
++Discovery stun_discover(IO& io,const std::vector<Endpoint>& servers,Endpoint lan,const Transaction& nonce) {
++    Discovery result; if(valid(lan)) result.candidates.push_back(lan);
++    Endpoint first{};
++    for(size_t i=0;i<std::min<size_t>(servers.size(),2);++i) {
++        Transaction id=nonce; id[11]^=uint8_t(i+1); Endpoint mapped;
++        if(!servers[i] || !stun_response(io.exchange(servers[i],stun_request(id),1800),id,mapped)) continue;
++        ++result.replies;
++        if(first && (first.ip!=mapped.ip || first.port!=mapped.port)) result.symmetric=true;
++        if(!first) first=mapped;
++        if(std::find(result.candidates.begin(),result.candidates.end(),mapped)==result.candidates.end()) result.candidates.push_back(mapped);
++    } return result;
++}
++}
+--- /dev/null
++++ b/runtime/src/machine/net_setup.cpp
+@@ -0,0 +1,141 @@
++#include "net_traversal.h"
++#include "saturn.h"
++#include <algorithm>
++#include <chrono>
++#include <fstream>
++#include <mutex>
++#include <random>
++#include <thread>
++namespace {
++using Clock=std::chrono::steady_clock;
++struct Setup {
++    std::mutex mutex,game_io;
++    std::atomic<bool> socket_used{false};
++    std::atomic<bool> stop{false};
++    std::thread worker;
++    net::Socket socket=net::invalid, active=net::invalid;
++    uint16_t port=0;
++    bool code_mode=false;
++    NetSetupView view;
++    net::Code self,other;
++    ~Setup() { stop=true; if(worker.joinable()) worker.join(); net::close(socket); }
++} setup;
++uint64_t nonce() { std::random_device random; uint64_t n=(uint64_t(random())<<32)^random()^uint64_t(Clock::now().time_since_epoch().count()); return n?n:1; }
++void status(const std::string& text) { std::lock_guard<std::mutex> lock(setup.mutex); setup.view.status=text; }
++std::vector<std::string> server_names(const std::string& text) {
++    std::vector<std::string> names; size_t at=0;
++    while(at<text.size() && names.size()<2) { auto end=text.find(',',at); auto s=text.substr(at,end==std::string::npos?std::string::npos:end-at); s.erase(std::remove_if(s.begin(),s.end(),[](char c){return c==' '||c=='\t';}),s.end()); if(!s.empty()) names.push_back(s); if(end==std::string::npos) break; at=end+1; }
++    return names;
++}
++}
++void net_setup_close() {
++    setup.stop=true;
++    if(setup.worker.joinable()) setup.worker.join();
++    net::close(setup.socket); setup.socket=net::invalid; setup.active=net::invalid;
++    std::lock_guard<std::mutex> lock(setup.mutex); setup.view={}; setup.self={}; setup.other={};
++}
++void net_setup_begin(uint16_t port,bool code_mode) {
++    if(setup.socket!=net::invalid && setup.port==port && setup.code_mode==code_mode) return;
++    net_setup_close(); setup.stop=false; setup.socket_used=false; setup.port=port; setup.code_mode=code_mode;
++    auto socket=net::udp(port);
++    if(socket==net::invalid) { status("Cannot open UDP port. Check firewall / OS network permissions."); return; }
++    setup.socket=socket;
++    auto actual=net::local(socket); if(!actual.port) actual.port=port;
++    if(!actual.port) { net::close(socket); setup.socket=net::invalid; status("Cannot read bound UDP port."); return; }
++    auto local=net::lan_address(); local.port=actual.port;
++    bool mapping=g_cfg.netplay_auto_map && (code_mode || g_cfg.netplay_host!=0),stun=code_mode && g_cfg.netplay_stun;
++    auto servers=server_names(g_cfg.netplay_stun_servers);
++    net::Transaction transaction{}; auto a=nonce(),b=nonce(); for(size_t i=0;i<12;++i) transaction[i]=uint8_t((i<8?a:b)>>(8*(i%8)));
++    net::Code self; self.nonce=nonce(); self.build=uint32_t(g_cfg.netplay_build); self.candidates.push_back(local);
++    { std::lock_guard<std::mutex> lock(setup.mutex); setup.self=self; setup.view.busy=true; setup.view.lan=net::text(local); setup.view.status="Discovering LAN / public UDP address..."; }
++    setup.worker=std::thread([socket,local,mapping,stun,servers,transaction,self,code_mode]() mutable {
++        net::Mapping lease; net::Socket mapping_socket=net::invalid;
++        if(mapping && !setup.stop) {
++            status("Trying PCP / NAT-PMP / UPnP (short lease)..."); mapping_socket=net::udp();
++            net::SocketIO io(mapping_socket,&setup.stop);
++            if(mapping_socket!=net::invalid) lease=net::map_port(io,net::default_gateway(),local,transaction);
++            if(lease.kind!=net::Mapping::None && std::find(self.candidates.begin(),self.candidates.end(),lease.external)==self.candidates.end()) self.candidates.push_back(lease.external);
++        }
++        net::Discovery found; std::vector<net::Endpoint> endpoints;
++        if(stun && !setup.stop) {
++            status("Discovering public mapping with STUN...");
++            for(auto& name:servers) endpoints.push_back(net::resolve(name,1500,&setup.stop));
++            net::SocketIO io(socket,&setup.stop); found=net::stun_discover(io,endpoints,local,transaction);
++            for(auto e:found.candidates) if(self.candidates.size()<4 && std::find(self.candidates.begin(),self.candidates.end(),e)==self.candidates.end()) self.candidates.push_back(e);
++        }
++        std::string message;
++        if(found.symmetric) message="Symmetric NAT detected: port forwarding is needed for internet play. LAN / mapped-port candidates may still work.";
++        else if(stun && found.replies==0) message="STUN unavailable; only LAN / router-mapped candidates are available.";
++        else if(stun && found.replies==1) message="Code ready (one STUN reply; NAT type could not be checked).";
++        else message=code_mode?"Ready. Share your code, paste your friend's code, then both press Start.":"Ready. Share the endpoint; your friend joins by IP.";
++        if(mapping) message+=(lease.kind!=net::Mapping::None?" Router mapping active (leased).":" Automatic mapping unavailable; direct internet hosts may need UDP forwarding.");
++        if(!stun && !mapping) message="Ready on LAN / direct UDP. Automatic mapping and STUN are disabled.";
++        { std::lock_guard<std::mutex> lock(setup.mutex); setup.self=self; setup.view.busy=false; setup.view.ready=!setup.stop; setup.view.symmetric=found.symmetric; setup.view.code=net::encode_code(self); setup.view.status=message; if(lease.kind!=net::Mapping::None) setup.view.external=net::text(lease.external); else if(found.candidates.size()>1) setup.view.external=net::text(found.candidates[1]); }
++        // Mapping I/O has its own socket; it never consumes gameplay packets.
++        auto next=Clock::now()+std::chrono::seconds(std::max(1u,lease.lease/2));
++        auto keepalive=Clock::now()+std::chrono::seconds(15);
++        while(!setup.stop) {
++            if(stun && !endpoints.empty() && endpoints[0] && !setup.socket_used && Clock::now()>=keepalive) {
++                std::lock_guard<std::mutex> ownership(setup.game_io);
++                if(!setup.socket_used) {
++                    net::SocketIO io(socket,&setup.stop); auto id=transaction; id[10]^=0x80; net::Endpoint mapped;
++                    auto response=io.exchange(endpoints[0],net::stun_request(id),600);
++                    if(net::stun_response(response,id,mapped) && std::find(self.candidates.begin(),self.candidates.end(),mapped)==self.candidates.end()) {
++                        std::lock_guard<std::mutex> lock(setup.mutex); setup.view.ready=false; setup.view.status="Public UDP mapping changed. Generate and exchange fresh codes.";
++                    }
++                }
++                keepalive=Clock::now()+std::chrono::seconds(15);
++            }
++            if(lease.kind!=net::Mapping::None && Clock::now()>=next) {
++                net::SocketIO io(mapping_socket,&setup.stop); auto old=lease.external;
++                if(!net::renew_mapping(io,lease) || lease.external!=old) status("Router lease renewal failed or changed endpoint; direct reachability may expire. Reconnect / forward UDP if needed.");
++                next=Clock::now()+std::chrono::seconds(std::max(1u,lease.lease/2));
++            }
++            std::this_thread::sleep_for(std::chrono::milliseconds(20));
++        }
++        if(lease.kind!=net::Mapping::None) { net::SocketIO cleanup(mapping_socket); net::renew_mapping(cleanup,lease,true); }
++        net::close(mapping_socket);
++    });
++}
++NetSetupView net_setup_view() { std::lock_guard<std::mutex> lock(setup.mutex); return setup.view; }
++net::Socket net_setup_take() {
++    setup.socket_used=true; std::lock_guard<std::mutex> ownership(setup.game_io);
++    if(!net_setup_view().ready) return net::invalid;
++    auto socket=setup.socket; setup.socket=net::invalid; setup.active=socket; return socket;
++}
++bool net_setup_connect(const std::string& code,net::Endpoint& peer,bool& host,uint64_t& session,const std::function<void()>& pump) {
++    setup.socket_used=true; std::lock_guard<std::mutex> ownership(setup.game_io);
++    if(!net_setup_view().ready) return false;
++    net::Code remote,self; std::string error;
++    if(!net::decode_code(code,remote,error)) { status(error); return false; }
++    { std::lock_guard<std::mutex> lock(setup.mutex); self=setup.self; }
++    if(remote.nonce==self.nonce) { status("That is your own code. Paste the other player's code."); return false; }
++    if(remote.build!=self.build) { status("Connection code build mismatch. Use the same game build."); return false; }
++    setup.other=remote;
++    host=self.nonce<remote.nonce; session=std::min(self.nonce,remote.nonce)^(std::max(self.nonce,remote.nonce)<<1); if(!session) session=1;
++    status("Punching all candidates. Both players must press Start...");
++    auto until=Clock::now()+std::chrono::seconds(20),next=Clock::now();
++    auto packet=net::punch_packet(self,remote,false);
++    while(Clock::now()<until && !setup.stop) {
++        if(Clock::now()>=next) { for(auto e:remote.candidates) net::send(setup.socket,e,packet.data(),packet.size()); next=Clock::now()+std::chrono::milliseconds(100); }
++        uint8_t bytes[1400]; net::Endpoint from; int n=net::receive(setup.socket,bytes,sizeof bytes,from);
++        if(n>0) {
++            net::Bytes b(bytes,bytes+n); bool reply=false;
++            if(net::punch_packet_valid(b,self,remote,reply)) {
++                auto ack=net::punch_packet(self,remote,true); net::send(setup.socket,from,ack.data(),ack.size());
++                if(reply) { peer=from; status("Connected by code: "+net::text(from)+(host?" (player 1)":" (player 2)")); return true; }
++            }
++        }
++        pump(); std::this_thread::sleep_for(std::chrono::milliseconds(1));
++    }
++    status("Code connection timed out. Both peers must exchange fresh codes and press Start. Symmetric NAT / CGNAT may require port forwarding."); return false;
++}
++bool net_setup_punch(const uint8_t* bytes,size_t size,net::Endpoint from) {
++    if(size!=29 || setup.active==net::invalid || !setup.other.nonce) return false;
++    bool reply=false; net::Bytes b(bytes,bytes+size);
++    if(!net::punch_packet_valid(b,setup.self,setup.other,reply)) return false;
++    // Keep answering probes during the normal handshake, so the second peer
++    // can finish selecting an endpoint even after the first has selected one.
++    if(!reply) { auto ack=net::punch_packet(setup.self,setup.other,true); net::send(setup.active,from,ack.data(),ack.size()); }
++    return true;
++}
+--- /dev/null
++++ b/runtime/src/machine/net_socket.h
+@@ -0,0 +1,85 @@
++// Shared IPv4 sockets for discovery, punching and the existing netplay protocol.
++#pragma once
++#include <cstdint>
++#include <cstring>
++#include <string>
++#ifdef _WIN32
++#include <winsock2.h>
++#include <ws2tcpip.h>
++#else
++#include <arpa/inet.h>
++#include <fcntl.h>
++#include <netdb.h>
++#include <sys/socket.h>
++#include <unistd.h>
++#endif
++namespace net {
++#ifdef _WIN32
++using Socket=SOCKET;
++constexpr Socket invalid=INVALID_SOCKET;
++inline void close(Socket s) { if(s!=invalid) closesocket(s); }
++inline bool startup() { static bool okay=[] { WSADATA w; return WSAStartup(MAKEWORD(2,2),&w)==0; }(); return okay; }
++#else
++using Socket=int;
++constexpr Socket invalid=-1;
++inline void close(Socket s) { if(s!=invalid) ::close(s); }
++inline bool startup() { return true; }
++#endif
++struct Endpoint {
++    uint32_t ip=0; uint16_t port=0; // host byte order, never native structures on wire
++    bool operator==(const Endpoint& b) const { return ip==b.ip && port==b.port; }
++    bool operator!=(const Endpoint& b) const { return !(*this==b); }
++    explicit operator bool() const { return ip && port; }
++};
++inline sockaddr_in address(Endpoint e) { sockaddr_in s{}; s.sin_family=AF_INET; s.sin_addr.s_addr=htonl(e.ip); s.sin_port=htons(e.port); return s; }
++inline Endpoint endpoint(const sockaddr_in& s) { return {ntohl(s.sin_addr.s_addr),ntohs(s.sin_port)}; }
++inline std::string text(Endpoint e) {
++    auto s=address(e); char ip[INET_ADDRSTRLEN]{}; inet_ntop(AF_INET,&s.sin_addr,ip,sizeof ip);
++    return std::string(ip)+":"+std::to_string(e.port);
++}
++inline bool parse(const std::string& value, Endpoint& e) {
++    auto colon=value.rfind(':'); if(colon==std::string::npos || colon==0) return false;
++    auto ip=value.substr(0,colon), port=value.substr(colon+1); unsigned p=0;
++    if(port.empty() || port.size()>5) return false;
++    for(char c:port) { if(c<'0'||c>'9') return false; p=p*10+unsigned(c-'0'); }
++    in_addr a{}; if(p==0 || p>65535 || inet_pton(AF_INET,ip.c_str(),&a)!=1) return false;
++    e={ntohl(a.s_addr),uint16_t(p)}; return e.ip && (e.ip>>24)<224 && e.ip!=0xffffffff;
++}
++inline void nonblocking(Socket s) {
++#ifdef _WIN32
++    u_long on=1; ioctlsocket(s,FIONBIO,&on);
++#else
++    fcntl(s,F_SETFL,fcntl(s,F_GETFL,0)|O_NONBLOCK);
++#endif
++}
++inline Socket udp(uint16_t port=0) {
++    if(!startup()) return invalid;
++    auto s=socket(AF_INET,SOCK_DGRAM,IPPROTO_UDP); if(s==invalid) return invalid;
++    auto local=address({0,port});
++    if(bind(s,reinterpret_cast<sockaddr*>(&local),sizeof local)) { close(s); return invalid; }
++    nonblocking(s); return s;
++}
++inline Endpoint local(Socket s) {
++    sockaddr_in addr{};
++#ifdef _WIN32
++    int size=sizeof addr;
++#else
++    socklen_t size=sizeof addr;
++#endif
++    if(getsockname(s,reinterpret_cast<sockaddr*>(&addr),&size)) return {};
++    return endpoint(addr);
++}
++inline bool send(Socket s, Endpoint to, const uint8_t* p, size_t n) {
++    auto addr=address(to); return sendto(s,reinterpret_cast<const char*>(p),int(n),0,reinterpret_cast<sockaddr*>(&addr),sizeof addr)==int(n);
++}
++inline int receive(Socket s, uint8_t* p, size_t n, Endpoint& from) {
++    sockaddr_in addr{};
++#ifdef _WIN32
++    int size=sizeof addr;
++#else
++    socklen_t size=sizeof addr;
++#endif
++    int count=int(recvfrom(s,reinterpret_cast<char*>(p),int(n),0,reinterpret_cast<sockaddr*>(&addr),&size));
++    if(count>=0) from=endpoint(addr); return count;
++}
++}
+--- /dev/null
++++ b/runtime/src/machine/net_transport.cpp
+@@ -0,0 +1,227 @@
++#include "net_traversal.h"
++#include <algorithm>
++#include <chrono>
++#include <fstream>
++#include <memory>
++#include <mutex>
++#include <sstream>
++#include <thread>
++#ifdef _WIN32
++#include <iphlpapi.h>
++#else
++#include <ifaddrs.h>
++#include <net/if.h>
++#ifdef __APPLE__
++#include <sys/sysctl.h>
++#include <net/route.h>
++#endif
++#endif
++namespace net {
++namespace {
++using Clock=std::chrono::steady_clock;
++bool cancelled(const std::atomic<bool>* flag) { return flag && flag->load(); }
++bool private_ip(uint32_t ip) { return (ip>>24)==10 || (ip>>24)==127 || (ip>>16)==0xc0a8 || (ip>>20)==0xac1 || (ip>>16)==0xa9fe; }
++std::string lower(std::string s) { for(char& c:s) if(c>='A' && c<='Z') c=char(c-'A'+'a'); return s; }
++bool ready(Socket s,bool write,Clock::time_point deadline,const std::atomic<bool>* cancel) {
++    #ifndef _WIN32
++    if(s<0 || s>=FD_SETSIZE) return false;
++#endif
++    while(Clock::now()<deadline && !cancelled(cancel)) {
++        fd_set set; FD_ZERO(&set); FD_SET(s,&set); timeval wait{0,20000};
++        int n=select(int(s+1),write?nullptr:&set,write?&set:nullptr,nullptr,&wait);
++        if(n>0) return true; if(n<0) return false;
++    } return false;
++}
++struct Owned { Socket value=invalid; ~Owned(){close(value);} };
++std::string decode_http(const std::string& response) {
++    auto header=response.find("\r\n\r\n"); if(header==std::string::npos || response.size()<12 || response.substr(0,7)!="HTTP/1." || response[9]!='2') return "";
++    auto headers=lower(response.substr(0,header)); auto body=response.substr(header+4);
++    auto chunked=headers.find("transfer-encoding:");
++    if(chunked!=std::string::npos && headers.substr(chunked,headers.find("\r\n",chunked)-chunked).find("chunked")!=std::string::npos) {
++        std::string decoded; size_t pos=0;
++        while(pos<body.size()) {
++            auto end=body.find("\r\n",pos); if(end==std::string::npos || end-pos>32) return "";
++            auto digits=body.substr(pos,end-pos); auto semicolon=digits.find(';'); if(semicolon!=std::string::npos) digits.resize(semicolon);
++            if(digits.empty() || digits.find_first_not_of("0123456789abcdefABCDEF")!=std::string::npos) return "";
++            unsigned long count=std::strtoul(digits.c_str(),nullptr,16); pos=end+2;
++            if(!count) return decoded;
++            if(count>262144 || pos+count+2>body.size() || body.substr(pos+count,2)!="\r\n") return "";
++            decoded+=body.substr(pos,count); if(decoded.size()>262144) return ""; pos+=count+2;
++        } return "";
++    }
++    auto content=headers.find("\r\ncontent-length:");
++    if(content!=std::string::npos) {
++        auto start=content+17; auto end=headers.find("\r\n",start); auto text=headers.substr(start,end-start);
++        std::istringstream in(text); size_t length=0; if(!(in>>length) || length>262144 || body.size()!=length) return "";
++    }
++    return body.size()<=262144?body:"";
++}
++}
++Endpoint resolve(const std::string& name,int timeout_ms,const std::atomic<bool>* cancel) {
++    Endpoint numeric; if(parse(name,numeric)) return numeric;
++    auto colon=name.rfind(':'); if(colon==std::string::npos || colon==0) return {};
++    Endpoint port; if(!parse("127.0.0.1:"+name.substr(colon+1),port)) return {};
++    std::string host=name.substr(0,colon);
++    if(host.size()>253 || host.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-")!=std::string::npos) return {};
++    struct Result { std::mutex lock; bool done=false; uint32_t ip=0; };
++    auto result=std::make_shared<Result>();
++    // OS DNS can outlast the connection deadline. The detached resolver owns
++    // every byte it touches; cancellation never waits on or destroys its data.
++    std::thread([host,result] {
++#ifdef _WIN32
++        WSADATA w{}; bool initialized=WSAStartup(MAKEWORD(2,2),&w)==0;
++        if(!initialized) { std::lock_guard<std::mutex> guard(result->lock); result->done=true; return; }
++#endif
++        addrinfo hint{}; hint.ai_family=AF_INET; hint.ai_socktype=SOCK_DGRAM; addrinfo* addresses=nullptr; uint32_t ip=0;
++        if(!getaddrinfo(host.c_str(),nullptr,&hint,&addresses)) {
++            if(addresses) ip=ntohl(reinterpret_cast<sockaddr_in*>(addresses->ai_addr)->sin_addr.s_addr);
++            freeaddrinfo(addresses);
++        }
++        { std::lock_guard<std::mutex> guard(result->lock); result->ip=ip; result->done=true; }
++#ifdef _WIN32
++        WSACleanup();
++#endif
++    }).detach();
++    auto until=Clock::now()+std::chrono::milliseconds(timeout_ms);
++    while(Clock::now()<until && !cancelled(cancel)) {
++        { std::lock_guard<std::mutex> guard(result->lock); if(result->done) return {result->ip,port.port}; }
++        std::this_thread::sleep_for(std::chrono::milliseconds(5));
++    } return {};
++}
++Bytes SocketIO::exchange(Endpoint to,const Bytes& request,int timeout_ms) {
++    if(sock==invalid || !to) return {};
++    auto until=Clock::now()+std::chrono::milliseconds(timeout_ms),next=Clock::now(); int delay=250;
++    while(Clock::now()<until && !cancelled(cancel)) {
++        if(Clock::now()>=next) { send(sock,to,request.data(),request.size()); next=Clock::now()+std::chrono::milliseconds(delay); delay*=2; }
++        uint8_t buffer[2048]; Endpoint from; int n=receive(sock,buffer,sizeof buffer,from);
++        if(n>=0 && from==to) return Bytes(buffer,buffer+n);
++        std::this_thread::sleep_for(std::chrono::milliseconds(2));
++    } return {};
++}
++std::string SocketIO::discover(const std::string& request,int timeout_ms) {
++    if(sock==invalid) return "";
++    // An explicit numeric discovery endpoint also supports local router fixtures.
++    Endpoint destination{0xeffffffa,1900};
++    if(const char* test=std::getenv("STV_NETPLAY_SSDP")) { Endpoint e; if(parse(test,e)) destination=e; }
++    send(sock,destination,reinterpret_cast<const uint8_t*>(request.data()),request.size());
++    auto until=Clock::now()+std::chrono::milliseconds(timeout_ms);
++    while(Clock::now()<until && !cancelled(cancel)) {
++        uint8_t bytes[8192]; Endpoint from; int n=receive(sock,bytes,sizeof bytes,from);
++        if(n>0 && private_ip(from.ip)) {
++            std::string response(reinterpret_cast<char*>(bytes),size_t(n));
++            if(!ssdp_location(response).empty()) return response;
++        }
++        std::this_thread::sleep_for(std::chrono::milliseconds(2));
++    } return "";
++}
++std::string SocketIO::http(const std::string& url,const std::string& action,const std::string& body) {
++    URL u; if(!parse_url(url,u) || action.find_first_of("\r\n\"")!=std::string::npos || body.size()>16384 || cancelled(cancel)) return "";
++    auto destination=resolve(u.host+":"+std::to_string(u.port),1000,cancel);
++    if(!destination || !private_ip(destination.ip)) return "";
++    Owned socket; socket.value=::socket(AF_INET,SOCK_STREAM,IPPROTO_TCP); if(socket.value==invalid) return "";
++#ifdef SO_NOSIGPIPE
++    int on=1; setsockopt(socket.value,SOL_SOCKET,SO_NOSIGPIPE,&on,sizeof on);
++#endif
++    nonblocking(socket.value); auto addr=address(destination);
++    auto until=Clock::now()+std::chrono::milliseconds(1800);
++    int result=connect(socket.value,reinterpret_cast<sockaddr*>(&addr),sizeof addr);
++    if(result!=0 && !ready(socket.value,true,until,cancel)) return "";
++    int error=0;
++#ifdef _WIN32
++    int error_size=sizeof error;
++#else
++    socklen_t error_size=sizeof error;
++#endif
++    if(getsockopt(socket.value,SOL_SOCKET,SO_ERROR,reinterpret_cast<char*>(&error),&error_size) || error) return "";
++    std::string request=(action.empty()?"GET ":"POST ")+u.path+" HTTP/1.1\r\nHost: "+u.host+":"+std::to_string(u.port)+"\r\nConnection: close\r\n";
++    if(!action.empty()) request+="Content-Type: text/xml; charset=\"utf-8\"\r\nSOAPAction: \""+action+"\"\r\nContent-Length: "+std::to_string(body.size())+"\r\n";
++    request+="\r\n"; request+=body;
++    size_t sent=0;
++    while(sent<request.size() && ready(socket.value,true,until,cancel)) {
++        int flags=0;
++#ifdef MSG_NOSIGNAL
++        flags=MSG_NOSIGNAL;
++#endif
++        int n=int(::send(socket.value,request.data()+sent,int(request.size()-sent),flags)); if(n>0) sent+=size_t(n); else if(n==0) return "";
++    }
++    if(sent!=request.size()) return "";
++    std::string response; bool ended=false;
++    while(ready(socket.value,false,until,cancel)) {
++        char buffer[8192]; int n=int(recv(socket.value,buffer,sizeof buffer,0));
++        if(n==0) { ended=true; break; }
++        if(n>0) { response.append(buffer,size_t(n)); if(response.size()>278528) return "";
++            auto h=response.find("\r\n\r\n");
++            if(h!=std::string::npos && (lower(response.substr(0,h)).find("content-length:")!=std::string::npos || lower(response.substr(0,h)).find("transfer-encoding:")!=std::string::npos) && !decode_http(response).empty()) { ended=true; break; } }
++    }
++    if(!ended || cancelled(cancel)) return "";
++    return decode_http(response);
++}
++Endpoint lan_address() {
++    if(const char* value=std::getenv("STV_NETPLAY_LAN")) { Endpoint e; if(parse(std::string(value)+":1",e)) return e; }
++    Endpoint found{}; auto gateway=default_gateway();
++#ifdef _WIN32
++    ULONG size=16384; std::vector<uint8_t> storage(size);
++    auto* adapters=reinterpret_cast<IP_ADAPTER_ADDRESSES*>(storage.data());
++    ULONG rc=GetAdaptersAddresses(AF_INET,GAA_FLAG_SKIP_ANYCAST|GAA_FLAG_SKIP_MULTICAST|GAA_FLAG_SKIP_DNS_SERVER,nullptr,adapters,&size);
++    if(rc==ERROR_BUFFER_OVERFLOW) { storage.resize(size); adapters=reinterpret_cast<IP_ADAPTER_ADDRESSES*>(storage.data()); rc=GetAdaptersAddresses(AF_INET,GAA_FLAG_SKIP_ANYCAST|GAA_FLAG_SKIP_MULTICAST|GAA_FLAG_SKIP_DNS_SERVER,nullptr,adapters,&size); }
++    if(rc==NO_ERROR) for(auto* a=adapters;a;a=a->Next) if(a->OperStatus==IfOperStatusUp && a->IfType!=IF_TYPE_SOFTWARE_LOOPBACK) {
++        for(auto* u=a->FirstUnicastAddress;u;u=u->Next) if(u->Address.lpSockaddr->sa_family==AF_INET) {
++            auto* s=reinterpret_cast<sockaddr_in*>(u->Address.lpSockaddr); found={ntohl(s->sin_addr.s_addr),1}; if(gateway && a->IfIndex) { MIB_IPFORWARDROW route{}; if(GetBestRoute(htonl(0x08080808),0,&route)==NO_ERROR && route.dwForwardIfIndex==a->IfIndex) return found; }
++        }
++    }
++#else
++    ifaddrs* interfaces=nullptr;
++    if(getifaddrs(&interfaces)==0) {
++        for(auto* i=interfaces;i;i=i->ifa_next) if(i->ifa_addr && i->ifa_addr->sa_family==AF_INET && (i->ifa_flags&IFF_UP) && !(i->ifa_flags&IFF_LOOPBACK)) {
++            auto* s=reinterpret_cast<sockaddr_in*>(i->ifa_addr); Endpoint candidate{ntohl(s->sin_addr.s_addr),1};
++            if(!found || private_ip(candidate.ip)) found=candidate;
++            if(gateway && i->ifa_netmask) {
++                auto mask=ntohl(reinterpret_cast<sockaddr_in*>(i->ifa_netmask)->sin_addr.s_addr);
++                if((candidate.ip&mask)==(gateway.ip&mask)) { found=candidate; break; }
++            }
++        }
++        freeifaddrs(interfaces);
++    }
++#endif
++    return found?found:Endpoint{0x7f000001,1};
++}
++Endpoint default_gateway() {
++    if(const char* value=std::getenv("STV_NETPLAY_GATEWAY")) { Endpoint e; if(parse(value,e)) return e; }
++#ifdef _WIN32
++    MIB_IPFORWARDROW route{};
++    if(GetBestRoute(htonl(0x08080808),0,&route)==NO_ERROR) return {ntohl(route.dwForwardNextHop),5351};
++#elif defined(__linux__)
++    std::ifstream routes("/proc/net/route"); std::string line; std::getline(routes,line);
++    while(std::getline(routes,line)) {
++        std::istringstream fields(line); std::string iface,dest,gateway,flags;
++        if(fields>>iface>>dest>>gateway>>flags && dest=="00000000" && (std::strtoul(flags.c_str(),nullptr,16)&2)) {
++            // /proc prints the native integer holding network-order IPv4 bytes.
++            uint32_t g=uint32_t(std::strtoul(gateway.c_str(),nullptr,16));
++            return {ntohl(g),5351};
++        }
++    }
++#elif defined(__APPLE__)
++    int mib[]={CTL_NET,PF_ROUTE,0,AF_INET,NET_RT_FLAGS,RTF_GATEWAY}; size_t size=0;
++    if(sysctl(mib,6,nullptr,&size,nullptr,0)==0 && size<1048576) {
++        std::vector<uint8_t> bytes(size);
++        if(sysctl(mib,6,bytes.data(),&size,nullptr,0)==0) for(size_t at=0;at+sizeof(rt_msghdr)<=size;) {
++            auto* header=reinterpret_cast<const rt_msghdr*>(bytes.data()+at);
++            if(header->rtm_msglen<sizeof(*header) || at+header->rtm_msglen>size) break;
++            const uint8_t* p=reinterpret_cast<const uint8_t*>(header+1); const uint8_t* end=bytes.data()+at+header->rtm_msglen; Endpoint dest{},gateway{};
++            for(int i=0;i<RTAX_MAX && p+sizeof(sockaddr)<=end;++i) if(header->rtm_addrs&(1<<i)) {
++                auto* sa=reinterpret_cast<const sockaddr*>(p); size_t length=sa->sa_len;
++                if(length<2 || p+length>end) break;
++                if(sa->sa_family==AF_INET && length>=sizeof(sockaddr_in)) {
++                    auto* in=reinterpret_cast<const sockaddr_in*>(p);
++                    if(i==RTAX_DST) dest.ip=ntohl(in->sin_addr.s_addr);
++                    if(i==RTAX_GATEWAY) gateway={ntohl(in->sin_addr.s_addr),5351};
++                }
++                p+=((length+sizeof(long)-1)/sizeof(long))*sizeof(long);
++            }
++            if(!dest.ip && gateway) return gateway; at+=header->rtm_msglen;
++        }
++    }
++#endif
++    return {};
++}
++}
+--- /dev/null
++++ b/runtime/src/machine/net_traversal.h
+@@ -0,0 +1,68 @@
++// P4.19: bounded codecs and injectable discovery I/O. No guest state lives here.
++#pragma once
++#include "net_socket.h"
++#include <array>
++#include <atomic>
++#include <functional>
++#include <vector>
++namespace net {
++using Bytes=std::vector<uint8_t>;
++using Transaction=std::array<uint8_t,12>;
++uint32_t checksum(const uint8_t*,size_t);
++Bytes stun_request(const Transaction&);
++bool stun_response(const Bytes&,const Transaction&,Endpoint&);
++Bytes pmp_request(uint16_t inside,uint16_t outside,uint32_t lifetime);
++bool pmp_address(const Bytes&,uint32_t&);
++bool pmp_response(const Bytes&,uint16_t inside,Endpoint&,uint32_t& lifetime);
++Bytes pcp_request(Endpoint local,Endpoint wanted,const Transaction&,uint32_t lifetime);
++bool pcp_response(const Bytes&,uint16_t inside,const Transaction&,Endpoint&,uint32_t& lifetime);
++struct Code { uint64_t nonce=0; uint32_t build=0; std::vector<Endpoint> candidates; };
++std::string encode_code(const Code&);
++bool decode_code(const std::string&,Code&,std::string& error);
++Bytes punch_packet(const Code& self,const Code& other,bool reply);
++bool punch_packet_valid(const Bytes&,const Code& self,const Code& other,bool& reply);
++struct URL { std::string host,path; uint16_t port=80; };
++bool parse_url(const std::string&,URL&);
++std::string xml_value(const std::string&,const std::string&);
++bool igd_service(const std::string& description,const std::string& location,std::string& control,std::string& service);
++std::string ssdp_request();
++std::string ssdp_location(const std::string&);
++std::string soap(const std::string& service,const std::string& action,uint16_t inside,uint16_t outside,const std::string& lan,uint32_t lease);
++struct IO {
++    virtual ~IO()=default;
++    virtual Bytes exchange(Endpoint,const Bytes&,int timeout_ms)=0;
++    virtual std::string discover(const std::string& request,int timeout_ms)=0;
++    virtual std::string http(const std::string& url,const std::string& action,const std::string& body)=0;
++};
++class SocketIO:public IO {
++    Socket sock; const std::atomic<bool>* cancel;
++public:
++    SocketIO(Socket s,const std::atomic<bool>* c=nullptr):sock(s),cancel(c) {}
++    Bytes exchange(Endpoint,const Bytes&,int) override;
++    std::string discover(const std::string&,int) override;
++    std::string http(const std::string&,const std::string&,const std::string&) override;
++};
++Endpoint resolve(const std::string&,int timeout_ms=1500,const std::atomic<bool>* cancel=nullptr);
++Endpoint lan_address();
++Endpoint default_gateway();
++struct Mapping {
++    enum Kind { None, PCP, PMP, IGD } kind=None;
++    Endpoint gateway{}, local{}, external{};
++    Transaction nonce{};
++    std::string control,service;
++    uint32_t lease=0;
++};
++Mapping map_port(IO&,Endpoint gateway,Endpoint local,const Transaction&);
++bool renew_mapping(IO&,Mapping&,bool remove=false);
++struct Discovery { std::vector<Endpoint> candidates; bool symmetric=false; unsigned replies=0; };
++Discovery stun_discover(IO&,const std::vector<Endpoint>& servers,Endpoint lan,const Transaction&);
++}
++// Launcher/global lifecycle. Preparation is asynchronous and owns the socket
++// until the normal handshake takes it. Lease maintenance uses another socket.
++struct NetSetupView { bool busy=false,ready=false,symmetric=false; std::string code,external,lan,status; };
++void net_setup_begin(uint16_t port,bool code_mode);
++NetSetupView net_setup_view();
++void net_setup_close();
++net::Socket net_setup_take();
++bool net_setup_connect(const std::string& code,net::Endpoint& peer,bool& host,uint64_t& session,const std::function<void()>& pump);
++bool net_setup_punch(const uint8_t*,size_t,net::Endpoint from);
+--- a/runtime/src/machine/netplay.cpp
++++ b/runtime/src/machine/netplay.cpp
+@@ -1,5 +1,7 @@
+ #include "saturn.h"
+ #include "netplay.h"
++#include "net_traversal.h"
++#include <fstream>
+ #include "state.h"
+ #include "host.h"
+ #include "video.h"
+@@ -44,6 +46,7 @@
+ Socket sock=none;
+ sockaddr_in peer{};
+ bool host=false, locked=false, running=false, failed=false, restoring=false;
++bool hello_validated=false;
+ uint64_t local_through=0;
+ uint64_t session=0, seen=~0ull, present=0, target=0, remote_through=0, peer_ack=0;
+ uint64_t mismatch=~0ull, last_receive=0, last_send=0, echoed=0, ping=0;
+@@ -96,6 +99,7 @@
+ #endif
+         int n=recvfrom(sock,(char*)buffer,sizeof buffer,0,(sockaddr*)&from,&len);
+         if(n<0) break;
++        if(n>0 && net_setup_punch(buffer,size_t(n),net::endpoint(from))) continue;
+         if(n<24) continue;
+         Bytes b(buffer,buffer+n);
+         if(get(b,0,4)!=0x3631504e || get(b,4,4)!=1 || get(b,b.size()-4,4)!=crc(b.data(),b.size()-4)) continue;
+@@ -107,6 +111,7 @@
+             if(get(b,20)!=code_id || get(b,28)!=program_id || get(b,36)!=cart_id || get(b,44,4)!=uint64_t(g_cfg.input_delay) || get(b,48)!=g_cfg.stop_vblanks) {
+                 Bytes e=packet(9); std::string why="protocol/source, ROM, delay or frame-limit mismatch"; e.insert(e.end(),why.begin(),why.end()); send(e); fail(why); return;
+             }
++            hello_validated=true;
+         } else if(type==2 && !host && b.size()>=44) {
+             unsigned index=unsigned(get(b,20,4)), count=unsigned(get(b,24,4)); uint64_t size=get(b,28,4), sum=get(b,32);
+             if(size!=0x14010 || count!=(size+1023)/1024 || index>=count || b.size()!=44+std::min<uint64_t>(1024,size-uint64_t(index)*1024)) continue;
+@@ -122,7 +127,7 @@
+                 if(fragment_sent[i]) { auto rtt=millis()-fragment_sent[i]; fragment_rtts.push_back(rtt); handshake_rtt=std::min(handshake_rtt,rtt); }
+                 fragments[i]=true;
+             }
+-        } else if(type==4 && host && b.size()==24) { ready=true; message(5); }
++        } else if(type==4 && host && hello_validated && b.size()==24) { ready=true; message(5); }
+         else if(type==5 && !host && ready && b.size()==24) go=true;
+         else if(type==9 && b.size()<256) { fail(std::string(b.begin()+20,b.end()-4)); return; }
+         else if(type==6 && running && b.size()>=72) {
+@@ -180,7 +185,7 @@
+ }
+ }
+ 
+-bool netplay_active() { return g_cfg.netplay_host!=0 || !g_cfg.netplay_join.empty(); }
++bool netplay_active() { return g_cfg.netplay_host!=0 || !g_cfg.netplay_join.empty() || g_cfg.netplay_code; }
+ const std::string& netplay_status() { return status; }
+ bool netplay_replaying() { return target!=0; }
+ bool netplay_hidden_frame() { return target && sat_vblanks()<target; }
+@@ -190,18 +195,40 @@
+     code_id=code; program_id=program; cart_id=cartridge; host=g_cfg.netplay_host!=0; started=Clock::now();
+     g_cfg.rewind_seconds=0; g_cfg.fast_forward=false; g_cfg.cheat_health=g_cfg.cheat_lives=g_cfg.cheat_credits=false; g_cfg.start_scene=0;
+     std::memset(g_cfg.turbo_hz,0,sizeof g_cfg.turbo_hz); g_cfg.internal_resolution=1;
+-#ifdef _WIN32
+-    WSADATA data; if(WSAStartup(MAKEWORD(2,2),&data)) { fail("Winsock initialization failed"); return false; }
+-#endif
+-    sock=socket(AF_INET,SOCK_DGRAM,IPPROTO_UDP);
+-    if(sock==none) { fail("cannot create UDP socket (check OS / sandbox network permissions)"); return false; }
+-#ifdef _WIN32
+-    u_long on=1; ioctlsocket(sock,FIONBIO,&on);
+-#else
+-    fcntl(sock,F_SETFL,fcntl(sock,F_GETFL,0)|O_NONBLOCK);
+-#endif
+-    sockaddr_in local{}; local.sin_family=AF_INET; local.sin_addr.s_addr=htonl(INADDR_ANY); local.sin_port=htons(uint16_t(g_cfg.netplay_host));
+-    if(bind(sock,(sockaddr*)&local,sizeof local)) { fail("cannot bind UDP port"); return false; }
++    bool code_mode=g_cfg.netplay_code;
++    net_setup_begin(uint16_t(code_mode?g_cfg.netplay_code_port:g_cfg.netplay_host),code_mode);
++    auto setup_until=Clock::now()+std::chrono::seconds(15);
++    for(;;) {
++        auto view=net_setup_view(); status="NETPLAY: "+view.status;
++        if(view.ready) break;
++        if(!view.busy || Clock::now()>=setup_until) { fail(view.status.empty()?"network discovery timed out":view.status); return false; }
++        host_net_wait(); std::this_thread::sleep_for(std::chrono::milliseconds(2));
++    }
++    auto view=net_setup_view(); sat_note("netplay setup: %s; external=%s",view.status.c_str(),view.external.c_str());
++    if(code_mode) {
++        sat_note("netplay connection code: %s",view.code.c_str());
++        if(!g_cfg.netplay_code_out.empty()) {
++            std::ofstream output(g_cfg.netplay_code_out,std::ios::trunc); output<<view.code<<"\n";
++            if(!output) { fail("cannot write connection code file"); return false; }
++        }
++        auto remote=g_cfg.netplay_peer_code;
++        if(!remote.empty() && remote.front()=='@') {
++            auto path=remote.substr(1); remote.clear(); auto until=Clock::now()+std::chrono::seconds(60);
++            while(remote.empty() && Clock::now()<until) {
++                std::ifstream input(path); std::getline(input,remote); if(remote.size()>1024) remote.clear();
++                host_net_wait(); std::this_thread::sleep_for(std::chrono::milliseconds(5));
++            }
++        }
++        net::Endpoint endpoint;
++        if(!net_setup_connect(remote,endpoint,host,session,[]{host_net_wait();})) { fail(net_setup_view().status); return false; }
++        sat_note("netplay: code path %s, player %d",net::text(endpoint).c_str(),host?1:2);
++        peer=net::address(endpoint); locked=true;
++        sock=net_setup_take();
++        g_cfg.netplay_host=host?std::max(1,int(net::local(sock).port)):0;
++        g_cfg.netplay_join=host?"":net::text(endpoint);
++    }
++    if(sock==none) sock=net_setup_take();
++    if(sock==none) { fail("network socket ownership lost"); return false; }
+     if(!host) {
+         auto colon=g_cfg.netplay_join.rfind(':'); std::string ip=g_cfg.netplay_join.substr(0,colon);
+         peer.sin_family=AF_INET;
+@@ -209,7 +236,7 @@
+         std::string port=g_cfg.netplay_join.substr(colon+1); char* end=nullptr; long p=std::strtol(port.c_str(),&end,10);
+         if(!end || *end || p<1 || p>65535) { fail("invalid UDP port"); return false; }
+         peer.sin_port=htons(uint16_t(p)); locked=true;
+-        session=(uint64_t(std::random_device{}())<<32)^uint64_t(std::random_device{}())^millis();
++        if(!code_mode) session=(uint64_t(std::random_device{}())<<32)^uint64_t(std::random_device{}())^millis();
+     } else {
+         if(g_cfg.clock<0) g_cfg.clock=std::time(nullptr)-int64_t(sat_now()/1000000000);
+         put(origin,uint64_t(g_cfg.clock)); put(origin,ld32(0x060987cc));
+@@ -223,7 +250,7 @@
+         receive();
+         if(millis()-last_send>=50) {
+             if(!host) { if(ready) message(4); else { Bytes b=packet(1); put(b,code); put(b,program); put(b,cartridge); put(b,g_cfg.input_delay,4); put(b,g_cfg.stop_vblanks); send(b); } }
+-            else if(locked) for(int i=0;i<origin_parts;++i) if(!fragments[i]) {
++            else if(locked && hello_validated) for(int i=0;i<origin_parts;++i) if(!fragments[i]) {
+                 if(!fragment_sent[i]) fragment_sent[i]=millis();
+                 Bytes b=packet(2); put(b,i,4); put(b,origin_parts,4); put(b,origin.size(),4); put(b,origin_crc);
+                 size_t off=size_t(i)*1024; b.insert(b.end(),origin.begin()+off,origin.begin()+std::min(origin.size(),off+1024)); send(b);
+@@ -344,9 +371,7 @@
+     sat_note("netplay: %llu rollbacks, %llu resim fields, max %llu; captures=%llu %.3f ms/save, loads=%llu %.3f ms/load; resim total %.3f ms max burst %.3f ms; wall %.3f s, waits %llu, desync/failure=%d",
+         (unsigned long long)rollbacks,(unsigned long long)resim_fields,(unsigned long long)max_depth,(unsigned long long)captures,captures?capture_ms/captures:0,(unsigned long long)loads,loads?load_ms/loads:0,resim_ms,max_resim_ms,wall,(unsigned long long)waits,int(failed));
+     if(sock!=none) { close_socket(sock); sock=none; }
+-#ifdef _WIN32
+-    WSACleanup();
+-#endif
++    net_setup_close();
+     if(failed) host_player_error(status);
+     return !failed;
+ }
+--- a/runtime/src/machine/saturn.h
++++ b/runtime/src/machine/saturn.h
+@@ -36,6 +36,13 @@
+     std::string netplay_join;
+     bool netplay_glitch_free = false;
+     int netplay_audio_override = -1;
++    bool netplay_code = false, netplay_auto_map = true, netplay_stun = true;
++    bool netplay_stun_servers_override = false;
++    int netplay_map_override = -1, netplay_stun_override = -1;
++    uint16_t netplay_code_port = 7845;
++    uint64_t netplay_build = 0;
++    std::string netplay_peer_code, netplay_code_out;
++    std::string netplay_stun_servers = "stun.l.google.com:19302,stun.cloudflare.com:3478";
+     std::string cue;                // the disc
+     std::string out = ".";          // logs, pictures and dumps go here
+     std::string save;               // the backup memory's file; "-": none; empty: one per game in the user's data directory
+--- a/runtime/tests/CMakeLists.txt
++++ b/runtime/tests/CMakeLists.txt
+@@ -8,5 +8,5 @@
+   set(CMAKE_BUILD_TYPE Release)
+ endif()
+ include(${CMAKE_CURRENT_LIST_DIR}/../runtime.cmake)
+-add_executable(runtime_tests main.cpp net_audio_test.cpp no_modules.cpp perf_test.cpp hires_test.cpp player_test.cpp player_training_test.cpp stv_bios_test.cpp vdp2_test.cpp onchip_test.cpp bup_test.cpp pads_test.cpp settings_test.cpp touch_test.cpp pace_test.cpp frame_change_test.cpp modem_test.cpp scu_test.cpp cdrom_test.cpp cdblock_test.cpp clock_test.cpp tasks_test.cpp scsp_test.cpp)
++add_executable(runtime_tests main.cpp net_audio_test.cpp net_traversal_test.cpp no_modules.cpp perf_test.cpp hires_test.cpp player_test.cpp player_training_test.cpp stv_bios_test.cpp vdp2_test.cpp onchip_test.cpp bup_test.cpp pads_test.cpp settings_test.cpp touch_test.cpp pace_test.cpp frame_change_test.cpp modem_test.cpp scu_test.cpp cdrom_test.cpp cdblock_test.cpp clock_test.cpp tasks_test.cpp scsp_test.cpp)
+ target_link_libraries(runtime_tests saturn_core saturn_machine saturn_host Threads::Threads)
+--- /dev/null
++++ b/runtime/tests/net_traversal_test.cpp
+@@ -0,0 +1,124 @@
++#include "net_traversal.h"
++#include "test.h"
++#include <algorithm>
++#include <cstring>
++using namespace net;
++namespace {
++Bytes hex(const char* value) {
++    Bytes b; unsigned v=0,bits=0;
++    for(const char* p=value;*p;++p) { int n=*p>='0'&&*p<='9'?*p-'0':*p>='a'&&*p<='f'?*p-'a'+10:-1; if(n<0) continue; v=v*16+unsigned(n); if(++bits==2) { b.push_back(uint8_t(v)); bits=v=0; } } return b;
++}
++Transaction id{0xb7,0xe7,0xa7,0x01,0xbc,0x34,0xd6,0x86,0xfa,0x87,0xdf,0xae};
++const std::string service="urn:schemas-upnp-org:service:WANIPConnection:1";
++struct FakeRouter:IO {
++    Mapping::Kind kind; bool removed=false; int adds=0;
++    std::vector<Bytes> requests;
++    explicit FakeRouter(Mapping::Kind k):kind(k) {}
++    Bytes exchange(Endpoint,const Bytes& b,int) override {
++        requests.push_back(b);
++        if(kind==Mapping::PCP && b.size()==60 && b[0]==2) {
++            Bytes reply=b; reply[1]=129; std::fill(reply.begin()+8,reply.begin()+24,0); reply[42]=0x9c; reply[43]=0x40;
++            reply[56]=203;reply[57]=0;reply[58]=113;reply[59]=9; if(!b[4]&&!b[5]&&!b[6]&&!b[7]) removed=true; else ++adds; return reply;
++        }
++        if(kind==Mapping::PMP && b==Bytes({0,0})) return hex("00 80 0000 0000002a cb007109");
++        if(kind==Mapping::PMP && b.size()==12 && b[0]==0 && b[1]==1) {
++            Bytes reply=hex("00 81 0000 0000002a"); reply.insert(reply.end(),b.begin()+4,b.end());
++            if(!b[8]&&!b[9]&&!b[10]&&!b[11]) { removed=true; reply[10]=reply[11]=0; } else { ++adds; reply[10]=0x9c; reply[11]=0x40; }
++            return reply;
++        } return {};
++    }
++    std::string discover(const std::string& request,int) override {
++        CHECK_EQ(request==ssdp_request(),true); return kind==Mapping::IGD?"HTTP/1.1 200 OK\r\nlOcAtIoN: http://127.0.0.1:8080/root.xml\r\n\r\n":"";
++    }
++    std::string http(const std::string&,const std::string& action,const std::string& body) override {
++        if(action.empty()) return "<root><device><serviceList><service><serviceType>"+service+"</serviceType><controlURL>/ctl</controlURL></service></serviceList></device></root>";
++        if(action==service+"#GetExternalIPAddress") return "<NewExternalIPAddress>203.0.113.9</NewExternalIPAddress>";
++        if(action==service+"#AddPortMapping") {
++            CHECK_EQ(xml_value(body,"NewProtocol")=="UDP",true); CHECK_EQ(xml_value(body,"NewLeaseDuration")=="600",true);
++            CHECK_EQ(xml_value(body,"NewInternalClient")=="192.168.1.4",true); ++adds; return "<u:AddPortMappingResponse/>";
++        }
++        if(action==service+"#DeletePortMapping") { CHECK_EQ(xml_value(body,"NewProtocol")=="UDP",true); removed=true; return "<u:DeletePortMappingResponse/>"; }
++        return "";
++    }
++};
++}
++TEST(stun_rfc5389_request_and_rfc5769_ipv4_response) {
++    CHECK_EQ(stun_request(id)==hex("0001 0000 2112a442 b7e7a701bc34d686fa87dfae"),true);
++    auto response=hex("0101 003c 2112a442 b7e7a701bc34d686fa87dfae 8022 000b 7465737420766563746f7220 0020 0008 0001 a147 e112a643 0008 0014 2b91f599fd9e90c38c7489f92af9ba53f06be7d7 8028 0004 c07d4c96");
++    Endpoint e; CHECK_EQ(stun_response(response,id,e),true); CHECK_EQ(e.ip,0xc0000201); CHECK_EQ(e.port,32853);
++    for(size_t n=0;n<response.size();++n) CHECK_EQ(stun_response(Bytes(response.begin(),response.begin()+n),id,e),false);
++    response.back()^=1; CHECK_EQ(stun_response(response,id,e),false);
++}
++TEST(stun_rejects_wrong_transaction_error_length_and_family) {
++    auto b=hex("0101 000c 2112a442 b7e7a701bc34d686fa87dfae 0020 0008 0001 a147 e112a643"); Endpoint e;
++    CHECK_EQ(stun_response(b,id,e),true); b[8]^=1; CHECK_EQ(stun_response(b,id,e),false); b[8]^=1;
++    b[1]=0x11; CHECK_EQ(stun_response(b,id,e),false); b[1]=1;
++    b[3]=13; CHECK_EQ(stun_response(b,id,e),false); b[3]=12;
++    b[25]=2; CHECK_EQ(stun_response(b,id,e),false);
++}
++TEST(natpmp_big_endian_mapping_error_and_delete_vectors) {
++    CHECK_EQ(pmp_request(7845,7845,600)==hex("0001 0000 1ea5 1ea5 00000258"),true);
++    Endpoint e{0xcb007109,0}; uint32_t lease=0;
++    auto b=hex("0081 0000 0000002a 1ea5 9c40 00000258"); CHECK_EQ(pmp_response(b,7845,e,lease),true); CHECK_EQ(e.port,40000); CHECK_EQ(lease,600);
++    CHECK_EQ(pmp_response(b,7846,e,lease),false); b[3]=2; CHECK_EQ(pmp_response(b,7845,e,lease),false);
++    CHECK_EQ(pmp_request(7845,0,0)==hex("0001 0000 1ea5 0000 00000000"),true);
++    CHECK_EQ(pmp_response(hex("0081 0000 0000002a 1ea5 0000 00000000"),7845,e,lease),true);
++}
++TEST(pcp_map_matches_rfc6887_layout_nonce_and_ipv4_mapped_address) {
++    auto request=pcp_request({0xc0a80104,7845},{0,7845},id,600);
++    CHECK_EQ(request==hex("0201 0000 00000258 00000000000000000000 ffff c0a80104 b7e7a701bc34d686fa87dfae 11000000 1ea5 1ea5 00000000000000000000 ffff 00000000"),true);
++    FakeRouter io(Mapping::PCP); auto reply=io.exchange({},request,0); Endpoint e; uint32_t lease;
++    CHECK_EQ(pcp_response(reply,7845,id,e,lease),true); CHECK_EQ(e.port,40000); CHECK_EQ(e.ip,0xcb007109);
++    reply[24]^=1; CHECK_EQ(pcp_response(reply,7845,id,e,lease),false); reply[24]^=1; reply[3]=2; CHECK_EQ(pcp_response(reply,7845,id,e,lease),false);
++}
++TEST(fake_local_pcp_and_natpmp_responders_map_renew_and_remove) {
++    for(auto kind:{Mapping::PCP,Mapping::PMP}) {
++        FakeRouter io(kind); auto m=map_port(io,{0xc0a80101,5351},{0xc0a80104,7845},id);
++        CHECK_EQ(m.kind,kind); CHECK_EQ(m.external.ip,0xcb007109); CHECK_EQ(m.external.port,40000); CHECK_EQ(m.lease,600);
++        CHECK_EQ(renew_mapping(io,m),true); CHECK_EQ(io.adds,2); CHECK_EQ(renew_mapping(io,m,true),true); CHECK_EQ(io.removed,true);
++    }
++}
++TEST(fake_local_igd_ssdp_description_soap_lease_and_delete) {
++    FakeRouter io(Mapping::IGD); auto m=map_port(io,{0xc0a80101,5351},{0xc0a80104,7845},id);
++    CHECK_EQ(m.kind,Mapping::IGD); CHECK_EQ(m.external.port,7845); CHECK_EQ(m.control=="http://127.0.0.1:8080/ctl",true);
++    CHECK_EQ(renew_mapping(io,m),true); CHECK_EQ(io.adds,2); CHECK_EQ(renew_mapping(io,m,true),true); CHECK_EQ(io.removed,true);
++}
++TEST(igd_namespaces_relative_control_urls_and_failure_are_bounded) {
++    std::string control,type;
++    auto xml="<r:root><r:URLBase>http://192.168.1.1:80/base/</r:URLBase><s:service><s:serviceType>"+service+"</s:serviceType><s:controlURL>ctl?a=1&amp;b=2</s:controlURL></s:service></r:root>";
++    CHECK_EQ(igd_service(xml,"http://192.168.1.1/root.xml",control,type),true); CHECK_EQ(control=="http://192.168.1.1:80/base/ctl?a=1&b=2",true);
++    URL u; CHECK_EQ(parse_url("http://evil@192.168.1.1/",u),false); CHECK_EQ(parse_url("http://192.168.1.1/\r\nGET /",u),false);
++    for(auto s:{"","HTTP/1.","HTTP/1.1 500 Error\r\nLocation: http://127.0.0.1/\r\n"}) CHECK_EQ(ssdp_location(s).empty(),true);
++    FakeRouter no(Mapping::None); CHECK_EQ(map_port(no,{},{0xc0a80104,7845},id).kind,Mapping::None);
++}
++TEST(connection_code_round_trip_checksum_limits_and_fingerprint) {
++    Code c{0x123456789abcdef0,0x10203040,{{0xc0a80104,7845},{0xcb007109,40000},{0x7f000001,12345},{0xc0000201,65535}}};
++    auto text=encode_code(c); CHECK_EQ(text.size()<=64,true); Code decoded; std::string error;
++    CHECK_EQ(decode_code(text,decoded,error),true); CHECK_EQ(decoded.nonce,c.nonce); CHECK_EQ(decoded.build,c.build); CHECK_EQ(decoded.candidates==c.candidates,true);
++    for(size_t i=5;i<text.size();++i) { auto wrong=text; wrong[i]=wrong[i]=='A'?'B':'A'; CHECK_EQ(decode_code(wrong,decoded,error),false); }
++    CHECK_EQ(decode_code(" \n"+text+"\r\n",decoded,error),true); CHECK_EQ(decode_code(text+"A",decoded,error),false);
++    c.candidates.push_back({1,1}); CHECK_EQ(encode_code(c).empty(),true);
++}
++TEST(punch_validates_both_nonces_build_reply_and_checksum) {
++    Code a{1,123,{{0x7f000001,10001}}},b{2,123,{{0x7f000001,10002}}}; bool reply;
++    auto packet=punch_packet(a,b,false); CHECK_EQ(punch_packet_valid(packet,b,a,reply),true); CHECK_EQ(reply,false);
++    CHECK_EQ(punch_packet_valid(packet,a,b,reply),false);
++    packet=punch_packet(a,b,true); CHECK_EQ(punch_packet_valid(packet,b,a,reply),true); CHECK_EQ(reply,true);
++    for(size_t i=0;i<packet.size();++i) { auto wrong=packet; wrong[i]^=1; CHECK_EQ(punch_packet_valid(wrong,b,a,reply),false); }
++    a.build++; CHECK_EQ(punch_packet_valid(packet,b,a,reply),false);
++    b.build++; CHECK_EQ(punch_packet_valid(packet,b,a,reply),false);
++}
++TEST(fake_local_stun_responders_detect_destination_dependent_mapping) {
++    struct STUN:IO {
++        bool symmetric=false;
++        Bytes exchange(Endpoint server,const Bytes& request,int) override {
++            CHECK_EQ(request.size(),20); Bytes response=request; response[0]=1; response[1]=1; response[3]=12;
++            auto attr=hex("0020 0008 0001 a147 e112a643"); if(symmetric && server.port==3479) attr[7]^=1;
++            response.insert(response.end(),attr.begin(),attr.end()); return response;
++        }
++        std::string discover(const std::string&,int) override {return "";}
++        std::string http(const std::string&,const std::string&,const std::string&) override {return "";}
++    } io;
++    auto d=stun_discover(io,{{0x7f000001,3478},{0x7f000001,3479}},{0xc0a80104,7845},id); CHECK_EQ(d.replies,2); CHECK_EQ(d.symmetric,false); CHECK_EQ(d.candidates.size(),2);
++    io.symmetric=true; d=stun_discover(io,{{0x7f000001,3478},{0x7f000001,3479}},{0xc0a80104,7845},id); CHECK_EQ(d.symmetric,true); CHECK_EQ(d.candidates.size(),3);
++}

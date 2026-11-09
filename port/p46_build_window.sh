@@ -9,6 +9,7 @@ R=$PWD
 [ -d port/run/P41/recomp ] || python3 port/p41_build.py
 python3 port/p410_continuations.py port/run/P41/recomp
 python3 port/p415_idle_loops.py port/run/P41/recomp
+python3 port/p422_prepare.py
 PREFIX=()
 if [ ! -f /usr/lib/x86_64-linux-gnu/cmake/SDL3/SDL3Config.cmake ]; then
     D=port/run/P46/sdl3deb
@@ -23,6 +24,6 @@ if [ ! -f /usr/lib/x86_64-linux-gnu/cmake/SDL3/SDL3Config.cmake ]; then
     ln -sf /usr/lib/x86_64-linux-gnu/libSDL3.so.0 $L/libSDL3.so.0
     PREFIX=(-DCMAKE_PREFIX_PATH=$R/$D/x/usr)
 fi
-cmake -S port/run/P41/recomp -B port/run/P46/build-sdl -DSATURN_RUNTIME=$R/tools/saturn-recomp/runtime \
+cmake -S port/run/P422/recomp -B port/run/P46/build-sdl -DSATURN_RUNTIME=$R/tools/saturn-recomp/runtime \
     -DSATURN_EXTRA=$R/port/stv.cmake -DSATURN_REQUIRE_SDL=ON "${PREFIX[@]}"
 cmake --build port/run/P46/build-sdl --target saturn_stv -j8

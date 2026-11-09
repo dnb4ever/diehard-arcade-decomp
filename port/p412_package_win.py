@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Package the isolated P4.12 x64 build; inspect imports, never copy ROMs."""
+from p422_package_mods import package_mods
 import argparse
 import hashlib
 import json
@@ -10,7 +11,7 @@ import subprocess
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
-README = """Die Hard Arcade - Windows x64 (P4.16)
+README = """Die Hard Arcade - Windows x64 (P4.19)
 
 Requires 64-bit Windows 10 or Windows 11. Extract the ENTIRE zip into a folder
 before playing. Keep DieHardArcade.exe and its DLLs together. No installer or
@@ -57,17 +58,7 @@ Back/Select = coin, Start = Start, Guide = pause. Edit each player's layout
 in the launcher. Connect pads before launch for predictable player order.
 Avoid TEST/F2: the original BIOS service menu is not implemented.
 
-Online co-op: choose Netplay in the launcher, then Host (player 1) on one
-machine and Join (player 2) with the host IPv4:port on the other. Use the same
-input delay (default 3) and press Start on both. Forward UDP 7845 in the host
-router/firewall; there is no NAT traversal or relay. Both people use their local
-P1 controls. CLI: play.bat --netplay-host 7845 --input-delay 3 or
-play.bat --netplay-join HOST_IPV4:7845 --input-delay 3. Matching source/ROMs are
-required. Rewind, quick states, turbo, cheats, pause and speed changes are
-locked during netplay. Audio is delayed until confirmed. Close the window to
-end the session. Long/high-jitter connections may stall at the rollback cap.
-Live internet, Mac timing, speaker and Windows-peer acceptance remain external
-checks; see notes/port/p416_netplay.md in the source repository.
+@@P419_NETPLAY@@
 
 The normal app opens no console. Use play.bat --stats 5 to attach/open one
 and report speed/audio statistics. From a terminal you can redirect stdout
@@ -76,10 +67,12 @@ and stderr to a log. Advanced harness flags (--cart, --cartrom, --vblanks,
 headless harness defaults unless --window or --launcher is also supplied.
 
 Cross-built on Linux with llvm-mingw/UCRT and the official SDL3 MinGW release.
-Wine results and real-Windows testing limits: notes/port/p416_netplay.md in
+P4.19 verification and platform limits: notes/port/p419_netplay_polish.md in
 the source repository. Real Windows, physical controllers, speaker audio,
 fullscreen and mixed-DPI monitors still need an owner play-test.
 """
+README += "\nMod SDK and source examples: modding/README-package.txt\n"
+README = README.replace("@@P419_NETPLAY@@", (ROOT / "port/p419_netplay_help.txt").read_text())
 
 
 def imports(path, readobj):
@@ -101,7 +94,7 @@ def main():
     readobj = args.toolchain / "bin/llvm-readobj"
     out = args.output.resolve()
     # Never zip a previous owner's ROMs or saves. Only our generated package is reusable.
-    allowed = {"DieHardArcade.exe", "play.bat", "README-windows.txt", "package-manifest.json", "licenses"}
+    allowed = {"DieHardArcade.exe", "play.bat", "README-windows.txt", "package-manifest.json", "licenses", "modding"}
     candidates = {p.name.lower(): p for p in (args.toolchain / "x86_64-w64-mingw32/bin").glob("*.dll")}
     candidates["sdl3.dll"] = args.sdl / "bin/SDL3.dll"
     allowed.update(p.name for p in candidates.values())
@@ -117,7 +110,7 @@ def main():
     queue = [out / "DieHardArcade.exe"]
     graph = {}
     # These imports are supplied by Windows 10/11. Every other DLL must be bundled.
-    system = {n.lower() for n in "kernel32 user32 shell32 ole32 oleaut32 ws2_32 advapi32 gdi32 imm32 msvcrt setupapi version winmm ntdll bcrypt crypt32 shlwapi comdlg32 ucrtbase".split()}
+    system = {n.lower() for n in "kernel32 user32 shell32 ole32 oleaut32 ws2_32 iphlpapi advapi32 gdi32 imm32 msvcrt setupapi version winmm ntdll bcrypt crypt32 shlwapi comdlg32 ucrtbase".split()}
     while queue:
         binary = queue.pop()
         names = imports(binary, readobj)
@@ -150,6 +143,7 @@ def main():
     for name, source in {"Musashi.txt": "musashi/m68kcpu.c", "SoftFloat.txt": "musashi/softfloat/softfloat.c",
                          "stb_truetype.txt": "stb/stb_truetype.h", "minicoro.txt": "minicoro/minicoro.h"}.items():
         shutil.copy2(runtime / "third_party" / source, licenses / name)
+    package_mods(out / "modding", args.exe.parent / "p421-target.txt")
     manifest = {"architecture": "x86_64", "subsystem": "Windows GUI", "imports": graph, "sha256": {}}
     for path in sorted(out.rglob("*")):
         if path.is_file() and path.name != "package-manifest.json":
