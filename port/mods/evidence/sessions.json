@@ -1,0 +1,91 @@
+{
+  "saves": {
+    "recorded_set": "frame-hud@1.0.0:1d205b962bbb3a20d6094b920689436ac4d7464e4bb43016177af75979eedc03\ninfinite-health@1.0.0:1e5a050429e7912198c8123d557fc4f8d9e75b5942b0ebbd746535aa60a0357d\n",
+    "serialized_hud_ticks": 1500,
+    "png_equal": true,
+    "wrong_set_rejected": true,
+    "changed_library_rejected": true
+  },
+  "mismatched-sets": {
+    "returncodes": [
+      2,
+      2
+    ],
+    "mod_hash_mismatch_rejected": true,
+    "seconds": 0.48486794205382466,
+    "transport": "test-only file-backed datagrams",
+    "latency_ms": 0,
+    "loss_percent": 0,
+    "jitter_ms": 0
+  },
+  "mismatched-library-hash": {
+    "returncodes": [
+      2,
+      2
+    ],
+    "mod_hash_mismatch_rejected": true,
+    "seconds": 0.477330707013607,
+    "transport": "test-only file-backed datagrams",
+    "latency_ms": 0,
+    "loss_percent": 0,
+    "jitter_ms": 0
+  },
+  "matching-mods": {
+    "returncodes": [
+      0,
+      0
+    ],
+    "artifacts": {
+      "shot-2100.png": "3293d35ba438ddc8747894235d66338a2ae0061af77f91281cb7a989ee7230ba",
+      "audio.wav": "3d04051fd613404d7089f44a11c8e912b60f4cea12ed119b1364ef5a7eba3f7e",
+      "final-machine.bin": "aa0bf2d2ce2963834fd6ef48ed44b3019b38f28a1220c132fea4a3d334b6def0"
+    },
+    "confirmed_checksums": 36,
+    "rollback_stats": [
+      [
+        "3",
+        "14",
+        "6"
+      ],
+      [
+        "3",
+        "8",
+        "4"
+      ]
+    ],
+    "seconds": 20.455878895008937,
+    "transport": "test-only file-backed datagrams",
+    "latency_ms": 0,
+    "loss_percent": 0,
+    "jitter_ms": 0
+  },
+  "matching-mods-rollback": {
+    "returncodes": [
+      0,
+      0
+    ],
+    "artifacts": {
+      "shot-1200.png": "ddfbeda5ccfb2ff554b359e883720a527e772dd39ccbce463e213dc097776598",
+      "audio.wav": "65cc9a1378bd7e20fd64e76a417da6e81d58c3d57044f437e744dac779a163d6",
+      "final-machine.bin": "4e10d611f55336d69c3e588528f611ec4ac7822048593ebed69e21a68190f710"
+    },
+    "confirmed_checksums": 21,
+    "rollback_stats": [
+      [
+        "6",
+        "36",
+        "8"
+      ],
+      [
+        "6",
+        "24",
+        "7"
+      ]
+    ],
+    "seconds": 12.531111249001697,
+    "transport": "test-only file-backed datagrams",
+    "latency_ms": 30,
+    "loss_percent": 1,
+    "jitter_ms": 10
+  }
+}

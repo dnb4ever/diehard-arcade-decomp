@@ -1,0 +1,27 @@
+{
+  "normal": {
+    "samples": 1412,
+    "min_hp": 78,
+    "max_hp": 114,
+    "hp_at_1900": 78
+  },
+  "health": {
+    "samples": 1412,
+    "min_hp": 114,
+    "max_hp": 114,
+    "hp_at_1900": 114
+  },
+  "pixels": {
+    "different": 492,
+    "bbox": [
+      240,
+      18,
+      336,
+      24
+    ],
+    "size": [
+      704,
+      240
+    ]
+  }
+}

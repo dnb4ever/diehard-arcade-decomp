@@ -1,0 +1,8 @@
+{
+  "converge_abi_probe": 0,
+  "round2_abi_probe": 0,
+  "round2_poll_probe": 0,
+  "round3_pulse_probe": 0,
+  "round4_contract_probe": 0,
+  "round4_compute_probe": 0
+}

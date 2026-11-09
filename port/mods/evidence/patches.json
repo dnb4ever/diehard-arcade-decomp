@@ -1,0 +1,58 @@
+{
+  "patches": {
+    "port/runtime-patches/p421-mod-runtime.patch": {
+      "files": [
+        "include/saturn/dh_hooks.h",
+        "include/saturn/dh_mod.h",
+        "include/saturn/p421_bridge.h",
+        "runtime.cmake",
+        "src/core/core.cpp",
+        "src/host/host.cpp",
+        "src/host/launcher.cpp",
+        "src/machine/netplay.cpp",
+        "src/machine/p421_codec.c",
+        "src/machine/p421_hooks.inc",
+        "src/machine/p421_mods.cpp",
+        "src/machine/p421_mods.h",
+        "src/machine/state.cpp",
+        "src/video/video.cpp"
+      ],
+      "sha256": "30b3083e41726ac5dfa00ad2b57851010d5552070b85e1fb9f9cdb361ecf22d9"
+    },
+    "port/runtime-patches/p421-mod-convergence.patch": {
+      "files": [
+        "CMakeLists.txt",
+        "bridge.cpp"
+      ],
+      "sha256": "0141eb79afb79f92844b78ca2de6cfdb812ec32e24f3d2282c8aa62f84048bdc"
+    },
+    "port/runtime-patches/p421-mod-harness.patch": {
+      "files": [
+        "main_stv.cpp"
+      ],
+      "sha256": "5d3d7f611fef94933ff65e27fcadab7a38d5e7fb166db24efe261f7761f16842"
+    }
+  },
+  "changed_files": {
+    "runtime/include/saturn/dh_hooks.h": "f606f10d470518d8c03f0960d24f4f3df569f1a0a245387f470d215458f529ca",
+    "runtime/include/saturn/dh_mod.h": "279b2048d3b9fdc98c26dd0bc7e5dcb89a5e2b5dec743e830460331ac3d98bdc",
+    "runtime/include/saturn/p421_bridge.h": "57d98e27a4ea9b842e2358b3061f1b75caf01180790ea2a5521e1c7a9d744872",
+    "runtime/runtime.cmake": "9136eb2ebb23e70074cde8ac8350627b1fcda4d43038af6ceb6479febbdf8598",
+    "runtime/src/core/core.cpp": "cac8a9be3cc514202d99ca1b18e0645707cd4ccf868f7baee2e9c629ecb96032",
+    "runtime/src/host/host.cpp": "8e9782b9c171f7bf93f69546f31006f9f3e91a9df9b8b07ebea2ff6eaa9c9376",
+    "runtime/src/host/launcher.cpp": "4ca856edfad2bc87b6919c01108585100321009969f39b745e711d4eabcf5111",
+    "runtime/src/machine/netplay.cpp": "164ff37b9e6d4a188dc3378a91241159afcf4e96dcf1d291ff2c3b8ffa7e6f9d",
+    "runtime/src/machine/p421_codec.c": "a616cd2b4270662a20ec9efbb66e1f46d340e100b40e724eb938c8b5915bf24f",
+    "runtime/src/machine/p421_hooks.inc": "022d3e28554cac43beb9f146ce8397605155cde0da6e807f633a3621b1bfb189",
+    "runtime/src/machine/p421_mods.cpp": "c373b32642a6ae1295ec9007d57f9cd1756e6d610b6970b51fe1546dd0a172ac",
+    "runtime/src/machine/p421_mods.h": "3142e26d2324e080cd83b303dd4443b1840f9e18dd37479f0404c3e0d00f5914",
+    "runtime/src/machine/state.cpp": "f8387e61aa2da667c20bb89281d02f252d6ed76cd9df9144dc91ac7e6060e871",
+    "runtime/src/video/video.cpp": "88aec35e44499fcf16488e72e426f53c882e9de2b8db60fe0ee534052cf5e38c",
+    "generated/CMakeLists.txt": "b0e7a8d00126dedf28d61833bbf9041754ae3e147be05c79ecfc78e5e9c4901e",
+    "generated/bridge.cpp": "b743a06b8ac42c7abe9d81b35d405abecb284e154cb3b634dd33dc062e171b67",
+    "port/main_stv.cpp": "97f01f098c1589ffe8dac6cd3667e05b8fa7fd23b0719052c9baebc6acb217c2"
+  },
+  "reconstructed": 17,
+  "fuzz": 0,
+  "offsets": 0
+}

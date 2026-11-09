@@ -1,0 +1,111 @@
+--- a/generated/CMakeLists.txt
++++ b/generated/CMakeLists.txt
+@@ -259,7 +259,9 @@
+     converge_06017D90.cpp converge_06017D90.c
+ )
+ target_compile_options(recomp PRIVATE $<$<COMPILE_LANGUAGE:C>:-fwrapv;-fno-strict-aliasing>)
++if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+ target_link_options(saturn_stv PRIVATE -Wl,--wrap=_Exit)
++endif()
+ add_executable(converge_abi_probe abi_probe.cpp)
+ target_link_libraries(converge_abi_probe saturn_core saturn_stub recomp Threads::Threads)
+ target_link_options(converge_abi_probe PRIVATE -Wl,--wrap=_Exit)
+@@ -298,3 +300,24 @@
+ add_executable(round4_compute_probe round4_compute_probe.cpp)
+ target_link_libraries(round4_compute_probe saturn_core saturn_stub recomp Threads::Threads)
+ target_link_options(round4_compute_probe PRIVATE -Wl,--wrap=_Exit -Wl,--wrap=_Z8sh2_pollR10SH2Context -Wl,--wrap=_Z11sh2_io_readji)
++
++# P4.21: use the runtime loader from the qualified bridge.
++target_include_directories(recomp PRIVATE ${SATURN_RUNTIME}/src/machine)
++# Retain P4.16's portable source identity; exact compiler/host identity belongs
++# to saves/mod targets. Include the qualified bodies/recipes without that seed.
++set(_p421_net_hashes "${_net_identity}")
++foreach(_p421_source IN LISTS _converge_identity_sources)
++    file(READ "${_p421_source}" _p421_net_text)
++    string(REPLACE "#include <cstdlib>\n" "" _p421_net_text "${_p421_net_text}")
++    string(SHA256 _p421_body_hash "${_p421_net_text}")
++    string(APPEND _p421_net_hashes "${_p421_body_hash}")
++endforeach()
++string(SHA256 _p421_net_identity "${_p421_net_hashes}")
++string(SUBSTRING "${_p421_net_identity}" 0 16 _p421_net_short)
++set(_p421_hashes "p421-abi1-${_state_identity}-${_converge_identity}-${_net_identity}")
++file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/overrides.json" _p421_catalogue_hash)
++file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt" _p421_buildscript_hash)
++string(SHA256 _p421_identity "${_p421_hashes}-${_p421_catalogue_hash}-${_p421_buildscript_hash}")
++file(APPEND "${CMAKE_CURRENT_BINARY_DIR}/p410_identity.h"
++ "#define STV_NETPLAY_CODE 0x${_p421_net_short}ull\n#define STV_MOD_TARGET \"${_p421_identity}\"\n")
++file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/p421-target.txt" "${_p421_identity}\n")
+--- a/generated/bridge.cpp
++++ b/generated/bridge.cpp
+@@ -1,4 +1,7 @@
+ #include "bridge.h"
++#include "saturn/p421_bridge.h"
++extern "C" uint32_t dt_read(uint32_t,int);
++extern "C" uint32_t dt_write(uint32_t,int,uint32_t);
+ #include <cstdio>
+ #include <cstdlib>
+ #include <algorithm>
+@@ -121,6 +124,10 @@
+     }
+ };
+ static thread_local Session* active = nullptr;
++static uint32_t mod_read(uint32_t a,int n) {
++    if(active && !active->flushed)return active->readable.read(a,n);
++    return n==1?ld8(a):n==2?ld16(a):ld32(a);
++}
+ uint32_t abi_read(uint32_t a,int n) { return active->machine.read(a,n); }
+ uint32_t effect_read(uint32_t a,int n) { return active->readable.read(a,n); }
+ uint32_t effect_sample(unsigned i) {
+@@ -190,7 +197,7 @@
+     catch (const Tail& tail) { s.target=tail.target; }
+     if (s.residue.budget!=c.budget || s.residue.cpu!=c.cpu) fail("residue changed timing");
+     ActiveSession scope(&s);
+-    uint32_t result=entry(args);
++    uint32_t result=g_p421_bridge.dispatch ? g_p421_bridge.dispatch(index,args,n,entry,mod_read,dt_write) : entry(args);
+     if (s.target && !s.called) fail("C failed to forward tail call");
+     if (!s.called) {
+         if (returns_word && !mod && result!=s.residue.r[0]) {
+@@ -200,6 +207,7 @@
+         s.flush();
+     } else if (s.readable.writes.size() && !s.flushed) fail("unflushed tail effects");
+     if (returns_word) c.r[0]=result;
++    if(g_p421_bridge.after)g_p421_bridge.after(index,args,n,result);
+ }
+ void invoke_direct(SH2Context& c, Body body, CEntry entry, unsigned n, unsigned index, Recipe recipe, bool returns_word, std::initializer_list<int> registers, uint32_t output_mask, int result_register) {
+     current_index=index;
+@@ -216,13 +224,13 @@
+     ActiveSession scope(&s);
+     s.readable.capture_reads=true;
+     s.readable.output_mask=output_mask;
+-    uint32_t result=entry(args);
++    uint32_t result=g_p421_bridge.dispatch ? g_p421_bridge.dispatch(index,args,n,entry,mod_read,dt_write) : entry(args);
+     s.public_bytes(s.readable,true); // reject any guest effect in the private ABI stack
+     recipe(s.residue,args,result);
+     if(returns_word) s.residue.r[result_register]=result;
+     s.residue.pc=c.pr;s.residue.cont_entry=0;
+     // Optional validation only. Normal execution never runs the old algorithm.
+-    if (std::getenv("CONVERGE_AUDIT")) {
++    if (std::getenv("CONVERGE_AUDIT") || (g_p421_bridge.equivalence_required && g_p421_bridge.equivalence_required(index))) {
+         SH2Context expected=c;Transaction tx;body(expected,tx);
+         auto a=s.public_bytes(tx,false),b=s.public_bytes(s.readable,true);
+         bool mismatch=a.size()!=b.size();
+@@ -245,6 +253,7 @@
+     for(auto w:s.machine.writes) store(w);
+     for(auto w:s.readable.writes) store(w);
+     c=s.residue;
++    if(g_p421_bridge.after)g_p421_bridge.after(index,args,n,result);
+ }
+ }
+ extern "C" uint32_t dt_read(uint32_t a,int n) {
+@@ -261,8 +270,11 @@
+ }
+ // The ST-V harness deliberately uses _Exit to leave its parked slave thread.
+ // GNU link wrapping provides diagnostics without changing that existing file.
++#if defined(__linux__)
+ extern "C" [[noreturn]] void __real__Exit(int);
+ extern "C" [[noreturn]] void __wrap__Exit(int code) {
+     converge::report();
+     __real__Exit(code);
+ }
++
++#endif

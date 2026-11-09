@@ -1,0 +1,8 @@
+id=infinite-health
+name=Infinite player health
+version=1.0.0
+author=P4.21 prototype
+description=Restores joined player health after the qualified readiness function and at each field. Affects gameplay.
+target=@TARGET@
+library=@LIBRARY@
+hooks=post:player_refresh_ready_mask,frame

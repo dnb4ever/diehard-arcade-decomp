@@ -1,0 +1,66 @@
+--- a/port/main_stv.cpp
++++ b/port/main_stv.cpp
+@@ -47,6 +47,7 @@
+ #include "player.h"
+ #include <algorithm>
+ #include "p410_identity.h"
++#include "p421_mods.h"
+ extern bool stv_continue(SH2Context&, uint32_t);
+ #include <cstdio>
+ #include <cstdlib>
+@@ -156,6 +157,7 @@
+     uint32_t base = 0x06004000u, entry = 0x06005020u, sp = 0x06100000u;
+     uint64_t vblanks = 600;
+     bool vblanks_given = false;
++    std::string mods_dir,mods_selection,mods_zip;bool mods_inspect=false,mods_check=false;
+     bool trace = false;
+     bool window = false, fullscreen = false, unpaced = false;  // --window: real time, for a player
+     bool launcher = false;
+@@ -176,6 +178,11 @@
+         else if (!std::strcmp(a, "--base") && more) base = hx(argv[++i]);
+         else if (!std::strcmp(a, "--entry") && more) entry = hx(argv[++i]);
+         else if (!std::strcmp(a, "--sp") && more) sp = hx(argv[++i]);
++        else if (!std::strcmp(a,"--mods-dir") && more) mods_dir=argv[++i];
++        else if (!std::strcmp(a,"--mods") && more) mods_selection=argv[++i];
++        else if (!std::strcmp(a,"--mods-install") && more) mods_zip=argv[++i];
++        else if (!std::strcmp(a,"--mods-check")) mods_check=true;
++        else if (!std::strcmp(a,"--mods-list")) mods_inspect=true;
+         else if (!std::strcmp(a, "--vblanks") && more) { vblanks = std::strtoull(argv[++i], nullptr, 10); vblanks_given = true; }
+         else if (!std::strcmp(a, "--out") && more) out = argv[++i];
+         else if (!std::strcmp(a, "--peek") && more) peek = argv[++i];
+@@ -250,7 +257,16 @@
+     g_cfg.dump = dump;
+     g_cfg.input = input;
+     g_cfg.wav = wav;       // sound_init reads this; with --wav the whole run's SCSP output is written
++    if(mods_dir.empty() && !g_cfg.settings.empty() && g_cfg.settings!="-") {
++        auto slash=g_cfg.settings.find_last_of("/\\");
++        if(slash!=std::string::npos)mods_dir=g_cfg.settings.substr(0,slash)+"/mods";
++    }
++    mods_configure(STV_MOD_TARGET,mods_dir,mods_selection);
++    if(!mods_zip.empty()) { bool ok=mods_install(mods_zip);std::fprintf(stderr,"%s\n",mods_status().c_str());return ok?0:2; }
++    if(mods_inspect) { std::printf("target=%s\nmods=%s\n",mods_target().c_str(),mods_directory().c_str());for(auto& m:mods_list())std::printf("%s enabled=%d %s %s\n",m.id.c_str(),m.enabled,m.hash.c_str(),m.error.c_str());return 0; }
+     if (launcher && !host_launch(g_cfg)) return 0;
++    if(!mods_open()) { host_player_error(mods_status());return 2; }
++    if(mods_check) {std::printf("%s\n%s",mods_status().c_str(),mods_set().c_str());return 0;}
+ 
+     // --input "VBLANK:BUTTON+BUTTON,...": scripted pad presses, exactly as the runtime's own
+     // saturn_main installs them (machine.cpp). smpc.cpp reports these through the SMPC peripheral
+@@ -510,7 +526,8 @@
+     uint64_t identity = STV_STATE_BUILD;
+     for (uint8_t b : img) identity = (identity ^ b) * 1099511628211ull;
+     for (uint8_t b : g_cart_rom_buf) identity = (identity ^ b) * 1099511628211ull;
+-    quick_init(g_cfg.quick_path, identity, stv_continue);
++    quick_init(g_cfg.quick_path, mods_fingerprint(identity), stv_continue);
++    mods_start();
+     if (netplay_active() && (g_cfg.quick_start || !g_cfg.movie_play.empty() || !g_cfg.movie_record.empty() ||
+         no_sound || spoof_sound_done || base != 0x06004000u || entry != 0x06005020u || sp != 0x06100000u)) {
+         host_player_error("Netplay requires normal power-on, sound and no input movies or quick loads."); return 2;
+@@ -519,7 +536,7 @@
+     for (uint8_t b : img) rom_program = (rom_program ^ b) * 1099511628211ull;
+     for (uint8_t b : g_cart_rom_buf) rom_cart = (rom_cart ^ b) * 1099511628211ull;
+     try {
+-        if (!netplay_open(STV_NETPLAY_CODE, rom_program, rom_cart)) { netplay_finish(); return 2; }
++        if (!netplay_open(mods_fingerprint(STV_NETPLAY_CODE), rom_program, rom_cart)) { netplay_finish(); return 2; }
+     } catch (...) { netplay_finish(); return 0; } // Window closed while connecting.
+     bool resumed = g_cfg.quick_start && quick_restore();
+     if (g_cfg.quick_start && !resumed) sat_note("Quick load rejected; starting normally");

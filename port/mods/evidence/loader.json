@@ -1,0 +1,130 @@
+{
+  "disabled-no-dlopen": {
+    "rc": 0,
+    "expected": null
+  },
+  "enabled-loads": {
+    "rc": 0,
+    "expected": null
+  },
+  "unknown-enabled-id": {
+    "rc": 2,
+    "expected": "missing/duplicate enabled mod"
+  },
+  "wrong-target": {
+    "rc": 2,
+    "expected": "Target build differs"
+  },
+  "duplicate-key": {
+    "rc": 2,
+    "expected": "duplicate"
+  },
+  "unsafe-library": {
+    "rc": 2,
+    "expected": "invalid manifest"
+  },
+  "unknown-field": {
+    "rc": 2,
+    "expected": "unknown"
+  },
+  "bad-native-abi": {
+    "rc": 2,
+    "expected": "ABI/id mismatch"
+  },
+  "manifest-library-hooks-differ": {
+    "rc": 2,
+    "expected": "hook list differs"
+  },
+  "device-floor": {
+    "rc": 2,
+    "expected": "unqualified/resumable"
+  },
+  "unknown-function": {
+    "rc": 2,
+    "expected": "unqualified/resumable"
+  },
+  "resumable-entry": {
+    "rc": 2,
+    "expected": "unqualified/resumable"
+  },
+  "rom-write": {
+    "rc": 2,
+    "expected": "outside guest RAM"
+  },
+  "device-write": {
+    "rc": 2,
+    "expected": "outside guest RAM"
+  },
+  "span-overflow": {
+    "rc": 2,
+    "expected": "outside guest RAM"
+  },
+  "invalid-width": {
+    "rc": 2,
+    "expected": "outside guest RAM"
+  },
+  "alias-replacement-conflict": {
+    "rc": 2,
+    "expected": "conflicting replacements"
+  },
+  "duplicate-id": {
+    "rc": 2,
+    "expected": "duplicate"
+  },
+  "overlapping-patches": {
+    "rc": 2,
+    "expected": "overlapping data patches"
+  },
+  "memory-api-and-data-frame": {
+    "rc": 0,
+    "expected": null
+  },
+  "pre-replace-post-phase-contract": {
+    "rc": 0,
+    "expected": null
+  },
+  "install-deflate": {
+    "rc": 0,
+    "expected": "Installed"
+  },
+  "install-no-overwrite": {
+    "rc": 2,
+    "expected": "already installed"
+  },
+  "zip-traversal": {
+    "rc": 2,
+    "expected": "unsafe ZIP"
+  },
+  "zip-absolute": {
+    "rc": 2,
+    "expected": "unsafe ZIP"
+  },
+  "zip-case-duplicate": {
+    "rc": 2,
+    "expected": "unsafe ZIP"
+  },
+  "zip-duplicate": {
+    "rc": 2,
+    "expected": "unsafe ZIP"
+  },
+  "zip-symlink": {
+    "rc": 2,
+    "expected": "unsafe ZIP"
+  },
+  "zip-crc": {
+    "rc": 2,
+    "expected": "CRC differs"
+  },
+  "zip-truncated-0": {
+    "rc": 2,
+    "expected": null
+  },
+  "zip-truncated-10": {
+    "rc": 2,
+    "expected": null
+  },
+  "zip-truncated-1638": {
+    "rc": 2,
+    "expected": null
+  }
+}

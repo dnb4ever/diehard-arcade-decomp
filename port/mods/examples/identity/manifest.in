@@ -1,0 +1,8 @@
+id=identity
+name=Identical fixed-point multiply
+version=1.0.0
+author=P4.21 prototype
+description=Readable C replacement with the original full register recipe; pixels, traces and audio stay identical.
+target=@TARGET@
+library=@LIBRARY@
+hooks=replace:fixed_mul16

@@ -1,0 +1,21 @@
+{
+  "original": {
+    "target": "26fa88600ed1243b1d20763c7f9470ba8fdafd96896cdf292122b4f73a7b4205",
+    "net_code": "0xe588082df16a6627ull"
+  },
+  "mutated_bridge": {
+    "target": "81e673180ba86ea8fb3c0d49f5b3a264f417a1a8df3faf3df1b9a7d4d390e04c",
+    "net_code": "0xb2ddac1e04bb0d6full"
+  },
+  "compiler_flags_only": {
+    "target": "54f895206ec9ad4310147fba6402ac4b2c986568c66abf2efcbc7399ad047485",
+    "net_code": "0xe588082df16a6627ull"
+  },
+  "host_ui_only": {
+    "target": "e408e3d74ae6f98878b44b5ba1713ad4549c2f5814b2e36d7b1cabbec49a9571",
+    "net_code": "0xe588082df16a6627ull"
+  },
+  "restored_exactly": true,
+  "convergence_changes_net_code": true,
+  "compiler_host_details_leave_net_code_unchanged": true
+}
