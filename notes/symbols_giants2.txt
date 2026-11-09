@@ -1,0 +1,58 @@
+# symbols_giants2.txt - worker: giants2 (largest deferred 0x24x + 0x225xxx whole-unit)
+# Appended discoveries; notes/symbols.txt left untouched per task.
+
+# --- SHIPPED ---
+0x02242cb8 func_242cb8            # HIGH shipped. void(void *ctx, void *obj). Per-object
+#   motion/mode dispatcher, inline braf table switch(*(s8)(ctx+0x13)) 0..9, table@0x242d00,
+#   braf@0x242cfa, targets 0x242cfe+entry. Writes obj physics fields +0x08(pos) +0x14(vel)
+#   +0x18(accel) +0x74(counter) +0x80(flagword, bit1=0x2). Local helper of func_02242a10.
+#   CORRECTION to band240giants note: NOT self-contained - case 3 calls func_242f60.
+
+0x02242f60 func_242f60            # = mode_resolve_0x242f60 (already in symbols.txt). Called
+#   by func_242cb8 case 3. switch(g_06098564){0->0;1->1;2->2;3->(rng_next()&1)+1;default->val}.
+#   No args, returns s32 index into g_060995b0[].
+
+# --- TRUE ENTRY of the ~0x225xxx player-input/combat state machine (DEFERRED) ---
+0x02223ee0 player_combat_statemachine  # DEFERRED (whole-unit). TRUE ENTRY (confirmed).
+#   Extent [0x02223ee0, 0x02225fac) = 0x20cc bytes ~= 4150 insn (~8.3KB) - LARGER than the
+#   bandresidue note's 4KB estimate; entry is well below 0x225000.
+#   Arg: r4 = entity ptr (spilled -> @(52,r15)). Frame: push r8; sts.l pr; sts.l macl;
+#   add #-56,r15. Epilogue @0x225fa2: add #56,r15 / lds macl / lds pr / rts / pop r8.
+#   Reads g_06098734 (per-player input record, stride 0x18) + g_060987ac, indexed by
+#   (M8(entity,0x34)-1). Button masks 0x300, 0xC0. entity fields +0x84/+0x88 (state words).
+
+# --- DEFERRED giants (CFG only) ---
+0x02246ab8 func_246ab8            # DEFERRED. 785 insn. decrement-counter / hit-interrupt FSM;
+#   nested conditional cascade then switch(obj->0xC8). Tail = func_225c2c (0x00225C2C).
+0x022402c0 func_2402c0            # DEFERRED. 2379 insn, 58 computed branches. per-object update.
+
+# --- globals referenced ---
+0x060995b0 g_060995B0            # void*[] per-slot source objects (242cb8 case3; dup of symbols.txt)
+0x06098734 g_06098734            # per-player input record base, stride 0x18 (223ee0)
+0x060987ac g_060987ac            # second per-player record base, stride ~0x24? (223ee0)
+
+# --- callees of func_246ab8 (resolved; for the deferred CFG) ---
+0x022489d0 func_2489d0
+0x02246208 func_246208
+0x02249a82 func_249a82
+0x02249f08 func_249f08
+0x02245bcc func_245bcc
+0x02245d1c func_245d1c
+0x0224840a func_24840a
+0x02246180 func_246180
+0x02247d6e func_247d6e
+0x02210020 func_210020           # no args (rng/util)
+0x02244e2e func_244e2e
+0x0224492c func_24492c
+0x02243fe0 func_243fe0
+0x02249fb0 func_249fb0           # braf tail-call target (x3)
+0x02249836 func_249836           # braf tail-call target
+0x00225c2c                       # universal tail block (interior of player_combat_statemachine)
+# TRAP: 0x246e68 "bsrf r0 via mov.b @(r0,r8)" is the pool-mask phantom 0x0003FFFF (NOT a table).
+
+# --- callees of player_combat_statemachine (0x223ee0) ---
+0x0220fb98 func_20fb98           # bsrf @0x223fc2
+0x0223c7f6 func_23c7f6           # bsrf x4 (@0x224b06/225654/225716/225d36)
+0x02225fac func_225fac           # bsr @0x225c6c (the already-shipped next function)
+# TRAP: 0x225d9c "braf r0 via and r1,r0" is a POOL PHANTOM (code at 0x225d70 ends in
+#   bra 0x225ea2; 0x225d80-0x225d9a is a literal pool of 0x0609xxxx ptrs + masks). NOT a table.

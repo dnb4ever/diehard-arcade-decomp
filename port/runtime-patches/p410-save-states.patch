@@ -1,0 +1,515 @@
+--- a/runtime/include/saturn/sh2.h
++++ b/runtime/include/saturn/sh2.h
+@@ -23,6 +23,7 @@
+     uint32_t gbr, vbr, mach, macl, pr;
+     uint32_t pc;                        // where the last rts/rte went: the caller checks it
+     int32_t  budget;                    // safe points left before sh2_poll
++    uint32_t cont, cont_x, cont_k, cont_entry; // portable static-recompile continuation
+     int      cpu;                       // 0 master, 1 slave
+ };
+ 
+--- a/runtime/src/host/host.cpp
++++ b/runtime/src/host/host.cpp
+@@ -39,6 +39,7 @@
+ #include "pad_slots.h"
+ #include "settings.h"
+ #include "touch_pad.h"
++#include "state.h"
+ #include "uinput_pad.h"
+ #include "unplugs.h"
+ #include "ui.h"
+@@ -57,6 +58,7 @@
+ static const Frame* g_last;
+ using Clock = PaceClock;
+ static Clock::time_point g_base;                // host time of virtual time 0
++static unsigned g_stats_generation;
+ static bool g_paced;
+ 
+ uint16_t host_pad(int slot) { return g_buttons[slot]; }
+@@ -719,7 +721,7 @@
+ // by as long as it was, so the run is the same run with or without it. A panel of two columns where
+ // the screen is wide enough, the game's choices in one and the touch pad's in the other, each a row:
+ // an action, a choice of a few, a slider, or a switch.
+-enum MenuId { M_RESUME, M_SAVES, M_QUIT, M_PAD, M_SIZE, M_STYLE, M_MENU_BUTTON };
++enum MenuId { M_QUICKSAVE, M_QUICKLOAD, M_RESUME, M_SAVES, M_QUIT, M_PAD, M_SIZE, M_STYLE, M_MENU_BUTTON };
+ enum class Control { Action, Choice, Slider, Switch };
+ struct MenuRow { MenuId id; Control control; int column; SDL_FRect r; };
+ struct MenuLayout { SDL_FRect panel; float u; float title_y; float section_y[2]; float column_x[2]; std::vector<MenuRow> rows; };
+@@ -760,6 +762,8 @@
+ 
+ static const char* menu_label(MenuId id) {
+     switch (id) {
++    case M_QUICKSAVE: return "Quick save (F5)";
++    case M_QUICKLOAD: return "Quick load (F7)";
+     case M_RESUME: return "Resume";
+     case M_SAVES: return "Save files";
+     case M_QUIT: return "Quit";
+@@ -773,6 +777,7 @@
+ static MenuLayout menu_layout() {
+     const float pad = 20, title = 56, section = 30, row = 52, gap = 6, column = 340, between = 24;
+     std::vector<std::pair<MenuId, Control>> game = {{M_RESUME, Control::Action}};
++    if (quick_available()) { game.push_back({M_QUICKSAVE, Control::Action}); game.push_back({M_QUICKLOAD, Control::Action}); }
+     if (!g_cfg.after.empty()) game.push_back({M_SAVES, Control::Action});
+     game.push_back({M_QUIT, Control::Action});
+     const std::vector<std::pair<MenuId, Control>> touch = g_cfg.arcade ? std::vector<std::pair<MenuId, Control>>{} : std::vector<std::pair<MenuId, Control>>{
+@@ -846,6 +851,7 @@
+ // Enter, A, or a tap on the row's label: an action acts, and the rest move on a step.
+ static void menu_activate(MenuId id) {
+     switch (id) {
++    case M_QUICKSAVE: case M_QUICKLOAD: quick_request(id == M_QUICKLOAD); menu_close(); break;
+     case M_RESUME: menu_close(); break;
+     case M_SAVES: menu_quit(true); break;
+     case M_QUIT: menu_quit(false); break;
+@@ -939,6 +945,9 @@
+         break;
+     case SDL_EVENT_KEY_DOWN: {
+         SDL_Scancode k = e.key.scancode;
++        if (quick_available() && !e.key.repeat && (k == SDL_SCANCODE_F5 || k == SDL_SCANCODE_F7)) {
++            quick_request(k == SDL_SCANCODE_F7); menu_close(); break;
++        }
+         if (g_cfg.arcade && !g_menu_open && !e.key.repeat) panel_tap(k);
+         if (k == SDL_SCANCODE_F12 && !e.key.repeat) save_shot();
+         if ((k == SDL_SCANCODE_F11 || (k == SDL_SCANCODE_RETURN && (e.key.mod & SDL_KMOD_ALT))) && !e.key.repeat) {
+@@ -1197,6 +1206,13 @@
+         ui_fill_rounded({g_out_w / 2.0f - 70 * u, 24 * u, 140 * u, 40 * u}, 20 * u, rgba(0.09f, 0.1f, 0.13f, 0.9f));
+         ui_text(g_out_w / 2.0f, 44 * u, 17 * u, "Saving…", rgba(1, 1, 1, 0.95f), true);
+     }
++    static std::string last_status;
++    static Clock::time_point status_until;
++    if (last_status != quick_status()) {
++        last_status = quick_status(); status_until = Clock::now() + std::chrono::seconds(3);
++    }
++    if (g_cfg.arcade && !last_status.empty() && Clock::now() < status_until)
++        ui_text(16, g_out_h - 20.0f, 14, last_status, rgba(1, 1, 1, 1), false, UiAlign::Left);
+     SDL_SetRenderDrawBlendMode(g_ren, SDL_BLENDMODE_NONE);
+     // Opt-in software-renderer evidence, captured after filters and overlays.
+     static bool captured = false;
+@@ -1237,6 +1253,11 @@
+     static Clock::time_point since = Clock::now();
+     static uint64_t from = sat_vblanks();
+     static int least = 1 << 30, most = 0, skipped_from = 0;
++    static unsigned generation;
++    if (generation != g_stats_generation) {
++        generation = g_stats_generation; since = Clock::now(); from = sat_vblanks();
++        least = 1 << 30; most = 0; skipped_from = g_skipped;
++    }
+     if (g_audio) {
+         int queued = SDL_GetAudioStreamQueued(g_audio) / 4;
+         least = std::min(least, queued);
+@@ -1347,3 +1368,16 @@
+         SDL_SetAudioStreamFrequencyRatio(g_audio, ratio);
+     }
+ }
++
++void host_quick_reset() {
++    ++g_stats_generation;
++    g_base = Clock::now() - std::chrono::nanoseconds(sat_now());
++    g_skipped_run = 0;
++    if (g_audio) {
++        SDL_PauseAudioStreamDevice(g_audio);
++        SDL_ClearAudioStream(g_audio);
++        SDL_SetAudioStreamFrequencyRatio(g_audio, 1.0f);
++        g_audio_started = false;
++        g_audio_level = kLead;
++    }
++}
+--- a/runtime/src/host/host.h
++++ b/runtime/src/host/host.h
+@@ -31,3 +31,5 @@
+ // the host call the machine's thread is in, or "" between them, for the stall report (machine.cpp)
+ extern std::atomic<const char*> g_host_call;
+ extern std::atomic<int> g_host_paused;              // above 0: the menu is open or the app is in the background, so no VBlank is no stall
++
++void host_quick_reset(); // discard queued host audio and rebase pacing after a state load
+--- a/runtime/src/host/host_null.cpp
++++ b/runtime/src/host/host_null.cpp
+@@ -23,3 +23,5 @@
+ bool host_audio_open() { return false; }
+ void host_audio_push(const int16_t*, int) {}
+ void host_audio_report() {}
++
++void host_quick_reset() {}
+--- a/runtime/src/host/launcher.cpp
++++ b/runtime/src/host/launcher.cpp
+@@ -14,6 +14,7 @@
+ #include <algorithm>
+ #include <cstring>
+ #include <fstream>
++#include <filesystem>
+ #include <sstream>
+ 
+ namespace {
+@@ -214,6 +215,14 @@
+             started_ = true;
+         }
+         if (ImGui::IsWindowAppearing()) ImGui::SetItemDefaultFocus();
++        if (cfg_.arcade && !cfg_.quick_path.empty()) {
++            ImGui::SameLine();
++            std::error_code error;
++            bool saved = std::filesystem::exists(cfg_.quick_path, error);
++            ImGui::BeginDisabled(!saved);
++            if (ImGui::Button("Load quick save")) { cfg_.quick_start = true; started_ = true; }
++            ImGui::EndDisabled();
++        }
+         ImGui::SameLine();
+         if (ImGui::Button("Quit")) {
+             SDL_Event q{};
+@@ -364,6 +373,7 @@
+ 
+     void game_settings() {
+         ImGui::SeparatorText("Game settings (next start)");
++        ImGui::TextDisabled("F5: quick save    F7: quick load (one slot)");
+         ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x * 0.52f);
+         int difficulty = set_.number("stv", "difficulty");
+         if (ImGui::SliderInt("Difficulty", &difficulty, 1, 8, "Level %d")) {
+--- a/runtime/src/machine/bios.cpp
++++ b/runtime/src/machine/bios.cpp
+@@ -334,15 +334,16 @@
+ // the attract) or the CONTINUE? countdown is up (== 3) it inserts a coin and presses START, as a
+ // player starting or continuing would. Nothing is written except BIOS input words and the
+ // same COIN/START events the timeline uses.
++static uint64_t g_stv_last_continue;
+ static void stv_autoplay(uint64_t vb, uint16_t& p1raw) {
+     static const char* env = std::getenv("STV_AUTOPLAY");
+     if (!env || vb < std::strtoull(env, nullptr, 10)) return;
+-    static uint64_t last_continue = 0;
++
+     uint32_t task = ld32(0x060995B4u), me = task ? ld32(task + 8) : 0;
+     uint16_t hp = me ? ld16(me + 0x56) : 0;
+     uint8_t p1state = (uint8_t)ld8(0x06098674u);
+-    if ((p1state == 0 || p1state == 3) && vb - last_continue > 600) {   // no game / CONTINUE?
+-        last_continue = vb;
++    if ((p1state == 0 || p1state == 3) && vb - g_stv_last_continue > 600) {   // no game / CONTINUE?
++        g_stv_last_continue = vb;
+         g_stv_events.push_back({vb + 1, 3, false});      // COIN
+         g_stv_events.push_back({vb + 30, 1, false});     // START1
+         sat_note("AUTOPLAY VB %llu: %s, coin + START", (unsigned long long)vb,
+@@ -1787,3 +1788,11 @@
+         if (s.loading) g_bup[name] = b;
+     }
+ }
++
++void arcade_bios_state(State& s) {
++    s(g_stv_credits), s(g_stv_frametimer), s(g_stv_physical_raw), s(g_stv_physical_sys);
++    s(g_stv_last_continue);
++    uint64_t n = g_stv_events.size(); s(n);
++    if (s.loading) g_stv_events.resize(n);
++    for (auto& e : g_stv_events) s(e.vb), s(e.kind), s(e.fired), s(e.raw), s(e.duration);
++}
+--- a/runtime/src/machine/machine.cpp
++++ b/runtime/src/machine/machine.cpp
+@@ -337,6 +337,9 @@
+ static std::atomic<int> g_turn;     // 0 the master runs, 1 the slave; set under g_mu
+ static bool g_slave_on, g_slave_idle = true, g_slave_reset, g_slave_thread;
+ static int g_slave_polls;
++static bool g_slave_resume;
++static bool (*g_continue)(SH2Context&, uint32_t);
++void machine_continue_with(bool (*fn)(SH2Context&, uint32_t)) { g_continue = fn; }
+ 
+ // Waits for `me`'s turn. A turn is mostly tens of microseconds, shorter than a sleep and a wake-up take
+ // on a busy host (hundreds of turns a frame), so the waiting thread spins a while (about a millisecond)
+@@ -382,6 +385,11 @@
+         try {
+             g_slave_reset = false;
+             while (!g_slave_on) { g_slave_idle = true; to_master(); }
++            if (g_slave_resume) {
++                g_slave_resume = false;
++                if (!g_continue || !g_continue(g_slave, g_slave.cont))
++                    sat_fatal("state: slave continuation returned");
++            }
+             // the BIOS's slave boot: its own vector table, interrupts masked,
+             // its stack, then the entry the program set as vector 0x94
+             SH2Context& s = g_slave;
+@@ -558,6 +566,7 @@
+     master_poll_devices();
+     scu_deliver(c);
+     onchip_deliver(c);
++    if (g_cfg.arcade && !sat_in_interrupt()) quick_poll();
+ }
+ 
+ static int g_int_depth;
+@@ -730,3 +739,27 @@
+     std::fflush(stdout);
+     std::_Exit(0);                  // the slave's thread is parked: do not wait for it
+ }
++
++// At a master post-poll boundary the slave is parked in its post-poll
++// continuation. Its to_master() resets the slice count on waking.
++void arcade_machine_state(State& s) {
++    s(g_vtime), s(g_starts), s(g_ints), s(g_cfg.clock), s(g_cfg.multitap);
++    s(g_master), s(g_slave), s(g_slave_on), s(g_slave_idle), s(g_slave_polls);
++    if (s.loading) {
++        g_cpu = &g_master;
++        g_slave_resume = g_slave_on;
++        g_slave_reset = false;
++        g_slave_polls = 0;
++    }
++}
++bool arcade_continuation_ready() {
++    return g_master.cont && (!g_slave_on || (!g_slave_idle && g_slave.cont));
++}
++
++void machine_prepare_restore() {
++    if (g_slave_thread) return;
++    g_slave_thread = true;
++    g_slave_on = false;
++    std::thread(slave_main).detach();
++    to_slave(); // starts and parks without executing guest code
++}
+--- a/runtime/src/machine/saturn.h
++++ b/runtime/src/machine/saturn.h
+@@ -83,6 +83,9 @@
+     std::string progress_keep;      // "ADDR:BYTES,...": the ranges
+     std::string resume_label;       // what the window says while --resume plays
+     std::string after;              // with it, the menu has Save files, which writes "saves" here and quits
++    std::string quick_path;
++    bool quick_start = false;
++    uint64_t quick_save_at = 0, quick_load_at = 0; // opt-in deterministic verification
+     bool arcade = false;            // an ST-V board: the window's [arcade] keys and the gamepads drive its control panel
+                                     // (host_stv_panel) instead of a Saturn pad
+     bool unpaced = false;           // with a window: run as fast as the host can (virtual time still), for measuring
+--- a/runtime/src/machine/scu.cpp
++++ b/runtime/src/machine/scu.cpp
+@@ -220,3 +220,5 @@
+ void scu_state(State& s) {
+     s(g_ist), s(g_ims), s(g_t0c), s(g_t1s), s(g_t1md), s(g_regs), s(g_dma);
+ }
++
++void arcade_scu_state(State& s) { scu_state(s); s(g_ext_asserted), s(g_ext_blocked); }
+--- a/runtime/src/machine/smpc.cpp
++++ b/runtime/src/machine/smpc.cpp
+@@ -367,3 +367,10 @@
+     }
+     while (g_script_pos < g_script.size() && g_script[g_script_pos].vblank < sat_vblanks()) ++g_script_pos;
+ }
++
++void arcade_smpc_state(State& s) {
++    s(g_script_pos), s(g_host_vblank), s(g_script_pressed), s(g_host_pressed), s(g_script_names);
++    uint64_t n = g_script.size(); s(n);
++    if (s.loading) g_script.resize(n);
++    for (auto& e : g_script) s(e.vblank), s(e.pad), s(e.pressed);
++}
+--- a/runtime/src/machine/state.cpp
++++ b/runtime/src/machine/state.cpp
+@@ -13,6 +13,7 @@
+ // copy on a thread of its own, beside the file and renamed over it.
+ #include "saturn.h"
+ #include "state.h"
++#include "host.h"
+ #include <atomic>
+ #include <chrono>
+ #include <cstdio>
+@@ -180,3 +181,134 @@
+     sat_note("state: loaded %s at VBlank %llu, going on at %08X", path.c_str(), (unsigned long long)sat_vblanks(), g_master.pc);
+     g_loading_path.clear();
+ }
++
++// ---- ST-V quick slot: complete devices + portable static continuations -----------------------
++// No stack addresses are persisted. Loading throws out the master's C++ frames,
++// resets/unwinds the slave, then dispatches saved generated continuation labels.
++// Normal execution still uses the original calls, branches and poll schedule.
++static std::string g_quick_path, g_quick_message;
++static uint64_t g_quick_identity;
++static int g_quick_request;
++static bool g_save_triggered, g_load_triggered;
++static bool (*g_quick_resume)(SH2Context&, uint32_t);
++static std::vector<std::vector<uint8_t>> g_quick_pending;
++void arcade_scu_state(State&);
++void arcade_sound_state(State&);
++static const struct { const char* name; void (*fn)(State&); } kQuickParts[] = {
++    {"machine", arcade_machine_state}, {"video", video_state}, {"core", core_state},
++    {"mmio", mmio_state}, {"bios", bios_state}, {"stv", arcade_bios_state},
++    {"scu", arcade_scu_state}, {"scudsp", scudsp_state}, {"onchip", onchip_state},
++    {"clock", clock_state}, {"smpc", smpc_state}, {"stv-smpc", arcade_smpc_state},
++    {"cdblock", cdblock_state}, {"cddrive", cddrive_state}, {"cdfs", cdfs_state}, {"cdpos", cdpos_state},
++    {"vdp1", vdp1_state}, {"vdp2", vdp2_state}, {"sound", arcade_sound_state},
++    {"scsp", scsp_state}, {"scspdsp", scspdsp_state},
++};
++static uint64_t quick_hash(const uint8_t* p, size_t n) {
++    uint64_t h = 14695981039346656037ull;
++    for (size_t i = 0; i < n; ++i) h = (h ^ p[i]) * 1099511628211ull;
++    return h;
++}
++static void quick_message(const std::string& text) {
++    g_quick_message = text;
++    sat_note("quick state: %s", text.c_str());
++}
++const std::string& quick_status() { return g_quick_message; }
++bool quick_available() { return g_cfg.arcade && g_quick_resume; }
++void quick_init(const std::string& path, uint64_t identity, bool (*resume)(SH2Context&, uint32_t)) {
++    g_quick_path = path; g_quick_identity = identity; g_quick_resume = resume;
++    extern void machine_continue_with(bool (*)(SH2Context&, uint32_t));
++    machine_continue_with(resume);
++}
++void quick_request(bool load) {
++    if (!quick_available()) return;
++    g_quick_request = load ? 2 : 1;
++}
++// Wire values are fixed little endian; device blobs are native to the exact
++// build/ABI fingerprint, checked before any state is applied.
++static void quick_u64(std::vector<uint8_t>& b, uint64_t v) {
++    for (unsigned i = 0; i < 8; ++i) b.push_back((uint8_t)(v >> (8*i)));
++}
++static bool quick_read() {
++    FILE* f = std::fopen(g_quick_path.c_str(), "rb");
++    if (!f) { quick_message("No readable quick save"); return false; }
++    std::fseek(f, 0, SEEK_END); long length = std::ftell(f); std::rewind(f);
++    if (length < 48 || length > 64*1024*1024) { std::fclose(f); quick_message("Rejected truncated/oversized state"); return false; }
++    std::vector<uint8_t> bytes((size_t)length);
++    bool ok = std::fread(bytes.data(), 1, bytes.size(), f) == bytes.size(); std::fclose(f);
++    auto u64 = [&](size_t at) { uint64_t v = 0; for (int i = 7; i >= 0; --i) v = v << 8 | bytes[at+i]; return v; };
++    if (!ok || std::memcmp(bytes.data(), "STVQUICK", 8) || u64(8) != 1 || u64(16) != g_quick_identity ||
++        u64(24) != bytes.size()-48 || u64(32) != quick_hash(bytes.data()+48, bytes.size()-48) ||
++        u64(40) != sizeof(SH2Context)) {
++        quick_message("Rejected stale, incompatible or corrupt state"); return false;
++    }
++    size_t at = 48; g_quick_pending.clear();
++    for (auto& part : kQuickParts) {
++        size_t n = std::strlen(part.name);
++        if (bytes.size()-at < n+8 || std::memcmp(bytes.data()+at, part.name, n)) { ok = false; break; }
++        at += n; uint64_t size = u64(at); at += 8;
++        if (size > bytes.size()-at) { ok = false; break; }
++        g_quick_pending.emplace_back(bytes.begin()+at, bytes.begin()+at+(size_t)size); at += (size_t)size;
++    }
++    if (!ok || at != bytes.size()) { g_quick_pending.clear(); quick_message("Rejected incomplete state parts"); return false; }
++    return true;
++}
++void quick_poll() {
++    if (!quick_available()) return;
++    if (!g_save_triggered && g_cfg.quick_save_at && sat_vblanks() >= g_cfg.quick_save_at) {
++        g_save_triggered = true; quick_request(false);
++    }
++    if (!g_load_triggered && g_cfg.quick_load_at && sat_vblanks() >= g_cfg.quick_load_at) {
++        g_load_triggered = true; quick_request(true);
++    }
++    if (!g_quick_request) return;
++    extern bool arcade_continuation_ready();
++    if (!arcade_continuation_ready()) return;
++    int request = g_quick_request; g_quick_request = 0;
++    if (request == 2) {
++        if (quick_read()) throw QuickLoad{};
++        return;
++    }
++    std::vector<uint8_t> payload;
++    for (auto& part : kQuickParts) {
++        State s; part.fn(s);
++        put(payload, part.name, std::strlen(part.name)); quick_u64(payload, s.data.size());
++        put(payload, s.data.data(), s.data.size());
++    }
++    std::vector<uint8_t> bytes;
++    put(bytes, "STVQUICK", 8); quick_u64(bytes, 1); quick_u64(bytes, g_quick_identity);
++    quick_u64(bytes, payload.size()); quick_u64(bytes, quick_hash(payload.data(), payload.size()));
++    quick_u64(bytes, sizeof(SH2Context)); put(bytes, payload.data(), payload.size());
++    std::error_code e;
++    auto parent = std::filesystem::path(g_quick_path).parent_path();
++    if (!parent.empty()) std::filesystem::create_directories(parent, e);
++    std::string tmp = g_quick_path + ".part";
++    FILE* f = e ? nullptr : std::fopen(tmp.c_str(), "wb");
++    bool ok = f && std::fwrite(bytes.data(), 1, bytes.size(), f) == bytes.size();
++    if (f) ok = std::fclose(f) == 0 && ok;
++    if (ok) std::filesystem::rename(tmp, g_quick_path, e);
++    if (!ok || e) quick_message("Could not write quick save");
++    else {
++        sat_note("quick state: saved VB %llu, %zu bytes", (unsigned long long)sat_vblanks(), bytes.size());
++        quick_message("Quick save complete");
++    }
++}
++bool quick_restore() {
++    if (g_quick_pending.empty() && !quick_read()) return false;
++    // The slave's old frames must unwind before its context and devices change.
++    slave_off();
++    extern void machine_prepare_restore();
++    machine_prepare_restore();
++    for (size_t i = 0; i < g_quick_pending.size(); ++i) {
++        State s; s.loading = true; s.data = std::move(g_quick_pending[i]);
++        kQuickParts[i].fn(s);
++        if (s.pos != s.data.size()) state_fail("quick part layout mismatch");
++    }
++    g_quick_pending.clear();
++    host_quick_reset();
++    sat_note("quick state: loaded VB %llu", (unsigned long long)sat_vblanks());
++    quick_message("Quick save loaded");
++    return true;
++}
++void quick_run_master() {
++    if (!g_quick_resume(g_master, g_master.cont)) sat_fatal("state: master continuation returned");
++}
+--- a/runtime/src/machine/state.h
++++ b/runtime/src/machine/state.h
+@@ -71,3 +71,17 @@
+ void scsp_state(State& s);
+ void scspdsp_state(State& s);
+ void tasks_state(State& s);
++
++struct SH2Context;
++// ST-V continuations have no host addresses or copied host stacks.
++struct QuickLoad {};
++void quick_init(const std::string& path, uint64_t identity, bool (*resume)(SH2Context&, uint32_t));
++void quick_request(bool load);
++void quick_poll();
++bool quick_restore();
++void quick_run_master();
++bool quick_available();
++const std::string& quick_status();
++void arcade_machine_state(State&);
++void arcade_bios_state(State&);
++void arcade_smpc_state(State&);
+--- a/runtime/src/sound/sound.cpp
++++ b/runtime/src/sound/sound.cpp
+@@ -206,3 +206,5 @@
+     if (cpu.size() != m68k_state_size()) state_fail("the 68000's registers are another size");
+     m68k_state_set(cpu.data());
+ }
++
++void arcade_sound_state(State& s) { sound_state(s); s(g_stv_autostart); s.vec(g_out); }
+--- a/runtime/tests/stv_bios_test.cpp
++++ b/runtime/tests/stv_bios_test.cpp
+@@ -77,3 +77,48 @@
+     bios_call(c, 0x4064);
+     CHECK_EQ(c.r[0], 0);
+ }
++
++#include "state.h"
++#include <filesystem>
++#include <fstream>
++
++TEST(stv_quick_load_rejects_bad_files_before_mutating_machine) {
++    SaturnConfig cfg = g_cfg;
++    SH2Context master = g_master;
++    uint8_t old = g_wram_h[0x90000];
++    g_cfg.arcade = true;
++    g_master.r[3] = 0x12345678;
++    g_wram_h[0x90000] = 0xA5;
++    std::string dir = test_dir("stv-quick");
++    std::string path = dir + "/slot";
++    quick_init(path, 42, nullptr);
++    CHECK_EQ(quick_restore(), false); // missing slot
++    for (size_t size : {10u, 64u}) {
++        std::vector<uint8_t> bytes(size);
++        std::memcpy(bytes.data(), "STVQUICK", 8);
++        bytes[8] = 99; // a future version, with no accepted payload
++        std::ofstream f(path, std::ios::binary);
++        f.write(reinterpret_cast<const char*>(bytes.data()), bytes.size()); f.close();
++        CHECK_EQ(quick_restore(), false);
++        CHECK_EQ(g_master.r[3], 0x12345678);
++        CHECK_EQ(g_wram_h[0x90000], 0xA5);
++    }
++    std::filesystem::remove_all(dir);
++    g_master = master; g_cfg = cfg; g_wram_h[0x90000] = old;
++    quick_init("", 0, nullptr);
++}
++
++TEST(stv_cabinet_pause_is_a_physical_system_switch) {
++    stv_input_script("1:PAUSE:2");
++    for (uint32_t a = 0x06000700; a < 0x06000780; a += 4) st32(a, 0);
++    SH2Context c{};
++    stv_scene_probe_tick(1); bios_call(c, 0x4010);
++    CHECK_EQ(ld16(0x06000728), 0x4000);
++    CHECK_EQ(ld16(0x0600072C), 0x4000);
++    stv_scene_probe_tick(2); bios_call(c, 0x4010);
++    CHECK_EQ(ld16(0x0600072C), 0);
++    stv_scene_probe_tick(3); bios_call(c, 0x4010);
++    CHECK_EQ(ld16(0x06000728), 0);
++    CHECK_EQ(ld16(0x0600072E), 0x4000);
++    stv_input_script("");
++}

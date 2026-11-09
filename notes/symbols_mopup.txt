@@ -1,0 +1,28 @@
+# Die Hard Arcade (ST-V) - symbols from census mop-up pass (functional_mopup)
+# SH2 addresses (cart = sh2 - 0x02000000). Confidence: HIGH=decomp-proven, MED=structural.
+
+# ---- functions decompiled this pass ----
+0x0220d8d0 entity_motion_post_hit    # HIGH  (arg0,player) e=arg0->unk8: reload unk64/unkA8 from tables 0x6052018/0x6052090 on the unkD edge, clamp velocity unk24/unk26, countdown unkA8, reload unk64 from 0x6051e6c at 0. uses g_06098830
+0x0222ece4 broadphase_grid_sweep     # HIGH  broad-phase collision: walk list g_06097554, 5x5 neighbourhood over the 32x16 spatial hash (base g_06097558, row 0x80), layer-gate via g_0604ebe4 + unkBC/unk68, narrow-phase func_0222ef38/func_0222f1d0; contracts view box g_06097438..4c by radius unk64 after func_022132d4
+0x0220e6d4 motion_integrate_lookat   # HIGH  (obj,vel,ofs) first-frame: cache vel/ofs >> g_06096c90 (ashr_var) into unk14..1C / unk40..48; each frame integrate pos unk8/C/10 + accum unkB8/BC/C0, then func_0221055c (lookat angles) into unk24/unk26
+0x0220d58c actor_swing_pendulum      # HIGH  swing/pendulum: on trigger (unkA8==g_06052098-1) seed from desc g_0606080c + g_060b3d54*0x2C, pick dir from func_02210020()&1; per-frame swing unk26+=unk76 with band bounce (unk74 reverses), phase unk78+=0x200, unkC=0x20000-(sin(unk78)>>2)
+0x022306c4 action_setup_a            # HIGH/MED  action/attack state setup task; anim desc g_06097d58+(source->unk34<<8)+unk5F*0x10; param table g_06087f84; matrix-draw cluster on scratch g_06098878; next handler func_022308a0, child func_02238df4. MED on func_022173f4 args. Sibling of func_02230ae0
+0x02230ae0 action_setup_b            # HIGH/MED  sibling of func_022306c4: unk60=0x14 (vs unk64 doubling), sound 0xa01306ff, next handler func_02230cdc, mtx base g_06087f6c, unk30 0x186/0x191
+0x0223db2a projectile_tumble_sm      # HIGH  tumbling-debris state machine (task->unk10 states 0/4/2/5/6); state2 = gravity/spin integrate (all deltas >> g_06096c90 via ashr_var), floor bounce/settle; draw cluster mtx_load_abc/apply_at8/rotate_zyx/func_02215a2c on scratch g_06098878; tables g_060e0e88-relative
+
+# ---- helper referenced, not yet decompiled ----
+0x022132d4 transform_bbox_helper     # MED  called by func_0222ece4(selfvec@+8, @+0x4c, &g_06097438, &g_06097444); builds the working AABB the sweep then contracts (return unused)
+
+# ---- globals ----
+0x06096c90 g_velocity_shift_count    # MED  ashr_var count applied to per-frame velocity/position deltas
+0x06097554 g_active_obj_list_head    # MED  broad-phase object list (node->unk0 next, node->unk4 entity)
+0x06097558 g_spatial_hash_grid       # MED  32x16 bucket grid, row stride 0x80, cell stride 4
+0x0609742c g_grid_origin_x           # MED  (with 0x06097434 g_grid_origin_y) world->grid origin
+0x06097438 g_view_box                # MED  working AABB: mins +0/4/8, maxes +0x10/0x14/0x18 (0x6097438..4c)
+0x0604ebe4 g_layer_mask_table        # HIGH  s32[] layer/collision mask indexed by actor unk34
+0x06098830 g_recoil_phase            # MED  mode/phase word (entity_motion_post_hit, action setup)
+0x06098878 g_mtx_scratch_ptr         # HIGH  bump pointer; routines reserve/release a 0x30-byte matrix scratch block
+0x0606080c g_actor_desc_table        # MED  0x2C-stride descriptor table, index g_060b3d54 (swing seed)
+0x06097d58 g_anim_desc_table         # MED  0x100-stride animation descriptor (action setup)
+0x06087f84 g_action_param_table      # MED  per-action timing/param words (action setup)
+0x060e0e88 g_tumble_tables_base      # MED  state-machine table base (+0x84, +0xa4, and g_060e1080)

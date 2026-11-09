@@ -1,0 +1,48 @@
+# Die Hard Arcade (ST-V / SH-2 BE) - functional-decomp symbols, WAVE 1 band [0x0220a000, 0x02213000)
+# Format: 0x<SH2addr> <name>   # <confidence> <note>
+# Confidence: HIGH = decompiled + hand-verified vs m2c --asm (compiles -Wall -Wextra clean).
+# Band = cart offsets 0x20a000..0x213000 (SH2 base 0x02000000). Author: wave1_20a000.
+
+# ---- resident-command coordinate registration (fp @0x06000644) ----
+0x0220aa70 resident_cmd_reg_coords_70   # HIGH  two-phase fp(0/2) register of fields +0x70/+0x78/+0x90/+0x98; sibling of 0x0220ab34
+0x0220ab34 resident_cmd_reg_coords_74   # HIGH  same, fields +0x74/+0x78/+0x94/+0x98
+
+# ---- HUD / debug-text printers (cursor g_060997A4/A8, print thunk *g_060902A0, *g_0609029C) ----
+0x0220ad58 hud_print_entity_pos         # HIGH  prints (*g_0609882c)->unk8 world pos (unk8/C/10) + angles (unk24/26/28)
+0x0220ade6 hud_print_slot_u16s          # HIGH  prints 6 u16s at g_06098734 stride 0x18
+0x0220ae90 hud_dump_zone_records        # HIGH  prints 4 records at g_06098734 (+ table g_060906DC lookup); calls *g_06000660
+0x0220af94 hud_print_table_record       # HIGH  prints 5 longs of record g_060512A4[(u8)(arg2*0x14)]
+
+# ---- camera framing handlers (task->unk8 = camera; fill target/zoom/offset/eye/pitch) ----
+# Each mode has an "approach" state that hands off to a "steady" state when the framed span is tight,
+# and the steady state hands back to approach when it grows. All call the bbox builder func_0220d9ec,
+# the smoother func_0220e0aa, the shake tick func_0220d98e and the matrix builder func_0214a7a.
+0x0220b3cc camera_frame_steady_near     # HIGH  near/tight mode, steady; -> approach func_0220b544
+0x0220b544 camera_frame_approach_near   # HIGH  near/tight mode, approach; -> steady func_0220b3cc
+0x0220b8d4 camera_frame_steady_mid      # HIGH  medium mode, steady; -> approach func_0220ba48
+0x0220ba48 camera_frame_approach_mid    # HIGH  medium mode, approach; -> steady func_0220b8d4
+0x0220be2c camera_frame_steady_far      # HIGH  far/loose mode, steady; -> approach func_0220bfa4
+0x0220bfa4 camera_frame_approach_far    # HIGH  far/loose mode, approach; -> steady func_0220be2c
+0x0220e0aa camera_smooth_lerp           # HIGH  ease eye pos (unk8/C/10) + angles (unk24/26) toward target; snap unk28
+0x0220d98e camera_shake_decay           # HIGH  decay recoil counter unkAA, add g_06052164[] to Y (unkC); clear g_06098834 bit0
+0x0220d9ec camera_compute_bbox          # (DEFERRED, see notes) builds XZ min/max box over players+objects+debris into 2 out vecs
+
+# ---- camera target acquisition / follow ----
+0x0220cca0 camera_target_acquire        # HIGH  pick player idx, bounds-check, visibility probe (func_0220e000), commit approach
+0x0220cb5c camera_target_acquire_leap   # HIGH  twin of 0x0220cca0, leap-style commit (unk74=+/-0x1D4, unk70=0xD2)
+0x0220d70c camera_follow_object         # HIGH  follow tracked handle's X, clamp to zone, sine-bob Y (sin_lookup)
+0x0220e000 count_objects_in_rect        # HIGH  count active slots (1..7) strictly inside XZ rect; *count,*last out. Leaf
+0x0220e978 attach_to_parent_space       # HIGH  copy src pos/angles into obj and add parent Z offset; parent chosen by mode
+
+# ---- generic movers / spawn ----
+0x0220b6b2 object_spawn_init            # HIGH  seed boss/object pos+angles from template or defaults; install func_0220b85c
+0x0220d310 patrol_pingpong_mover        # HIGH  bounce an object between zone bounds unk90..unk9C at +/-0xE00 (rng side pick)
+
+# ---- look-at angle builders (atan2 helper func_022130b4, fixmul 0x22131c8, sqrt func_0213164) ----
+0x0221055c lookat_angles_xz             # HIGH  from (x,y,z)+(bx,by,bz): *a7=-angle(dz,dx), *a6=angle(dist,dy). Called by 0x0220d262
+0x022105ca lookat_angles_xz_delta       # HIGH  same from a precomputed (dx,dy,dz)
+0x02210622 lookat_angles_xy             # HIGH  XY-plane variant (planar over first two components)
+
+# ---- out-of-band helpers identified by call sites (NOT in this band; names for reference) ----
+# 0x022130b4 angle_from_vec2   (planar atan2-style; also used by 0x02244df2 rec_delta_angle_neg)
+# 0x02213164 sqrt_16_16        (16.16 square root)

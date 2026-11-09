@@ -1,0 +1,92 @@
+# Band 0x02237000-0x02240000 (237 pass) - functional decomp symbols
+# Worker: band237. New names/globals confirmed this pass. Do NOT edit symbols.txt
+# directly; Mac Claude merges per-band files.
+
+## Functions decompiled (src_functional/)
+func_022371c0  8-slot HUD meter/popup manager (alloc + per-slot ease/draw)
+func_02237828  2-slot timer/meter updater (sibling of 022371c0)
+func_02237be4  segmented gauge/bar renderer into g_0609d7b0
+func_0223c95c  stage/effect state init + config-table copy from a pose template
+func_0223b28a  launched-object state machine (arc; gravity 0x360, floor 0x800)
+func_0223b5d8  launched-object state machine (spin; floor 0x1000, RNG+trig seed)
+func_0223b9b8  launched-object state machine (floor 0x500, bounce >>1)
+func_0223bcd4  launched-object state machine (fixed life 0x258, spin/trig)
+func_02239fc6  "apply action" for a fighter slot (switch on action code unk88)
+func_0223a3a2  "cancel/release action" (counterpart of func_02239fc6)
+
+## Helper functions referenced (not decompiled here; naming per existing refs)
+func_021632e   VRAM/tile command push (s32 ch, u32 src, u32 dst, s32 n)
+func_021326c   short/tile block copy (void *src, void *dst, s32 n)
+func_02149aa   terminal draw step 1 (void)  [g_06098878 state]
+func_0214a40   terminal draw step 2 (void *obj)
+func_0214a06   terminal draw step 3 (void *obj)
+func_0215a2c   terminal draw step 4 (void *obj, s32)
+func_0210020   RNG / returns s32 (void)
+func_0213190   trig lookup (s32 angle) -> s32  [1-arg; extra regs are stale]
+func_02173f4   integrate velocity (void *ent, void *rec)
+func_020feec   spawn/allocate helper (void *ctx, void (*ctor)(void)) -> void*
+func_0228906   spawn constructor callback (passed to func_020feec)
+func_0223cd0c  action spawn/retire helper (void *obj)      [0x23 band = 8-hex]
+func_0223c6bc  action update helper (void *obj)            [0x23 band = 8-hex]
+func_0223e17c  shadow/aux reset for a fighter slot (void *arg0)
+func_0223b254  move-apply dispatch (void*, s8 pidx, void *masktab, s32 maskarg)
+func_02260c8   per-slot mirror helper (void *arg0)
+func_02237e0e  slot glyph helper (void *slot, s32 idx)
+func_02237e6c  slot glyph/queue helper (void *slot)  [CONFIRMED 1-ARG: reads only
+               unk0/unk2 of its slot, tail-jumps g_0609029c; callers that appear
+               to pass 2-4 args are leaving stale r5-r7]
+
+## Globals (HWRAM 0x06xxxxxx / regs) confirmed this pass
+g_06098584  u8[]   8 x 0x10-byte HUD meter slots {s16 unk0 type,unk2 chan,u8 unk4
+                   active,u8 unk5 tile,s16 unk6 toggle,s32 unk8 cur,s32 unkC prev}
+g_06098604  s32    live meter-slot count
+g_06098608  s32    used-channel bit mask (indices into g_0604ebe4)
+g_0604ebe4  s32[]  per-channel bit masks
+g_06099510  u32*   VRAM command-buffer write pointer (deref + post-inc by 4)
+g_0609860c  u8[]   HUD popup struct (unk4,unkC gate the retire-one pass)
+g_06099590  s32[]  per-slot enable flags
+g_060995b0  u8[]   per-slot object pointer table (->unk8->unk56 = meter target,
+                   ->unkF bit0x10 = paired, ->unk12 = tile index)
+g_06079738  u8[]   tile/digit lookup table
+g_060987ec  u8[]   beat/mode scale-select table (indexed by g_06098808)
+g_06098808  s32    index into g_060987ec
+g_06099796  s16    suppress-glyph flag
+g_06098670  s32    glyph-enable flag
+g_060997a4  s32    glyph/dispatch param A (also g_060997a8 param B, ac param C)
+g_060997a8  s32    glyph/dispatch param B
+g_0609978c  s16[]  glyph index table (indexed by slot-1)
+g_06099788  s16[]  per-slot meter target values (func_02237828)
+g_06098568  s32    enable mask (func_02237828 init gate)
+g_06098594  s16    fixed-slot-1 init gate      g_060985a4 s16 fixed-slot-2 gate
+g_06099594  s32    fixed-slot-1 init gate      g_06099598 s32 fixed-slot-2 gate
+g_060902a0  (*)(void*,...)  variadic glyph thunk
+g_0608c504  u8[]   glyph format template
+g_0609d7b0  u8[]   shared HUD text buffer
+g_0608c2a4/b4/e4 g_0608c304  u8[]  gauge header tile templates (func_02237be4)
+# --- stage/effect-slot block (func_0223c95c + the 0x23bxxx object machines) ---
+g_060e0e88  u8[]   effect state block: +0x04 phys recs (0x10 stride), +0x84
+                   state[] (= g_060e0f0c), +0xa4 signal[] (= g_060e0f2c),
+                   +0xe4 mask region (= g_060e0f6c, 8 words/slot)
+g_060e0f0c  s32[]  effect-slot state index   (alias g_060e0e88+0x84)
+g_060e0f2c  s32[]  effect-slot signal/handshake with scene director (+0xa4)
+g_060e0e58  u8[]   shadow records, 0x10 stride (per fighter slot)
+g_060e0e78  u8[]   small scratch (16 bytes; fighter shadow frame table)
+g_060e1080  s16[]  per-state param table (filled by func_0223c95c)
+g_060e10a8  s16[]  animation table B (lower channel)   g_060e1148 s16[] table C
+g_060e11a8  s16[]  promotion/grab animation frames
+g_060e1208  s16[]  g_060e120c s32[]  g_060e1214 s16  (func_0223c95c outputs)
+g_06091704  s16*[] pose/layout template pointer table (func_0223c95c)
+g_06098668  s32    base pose index   g_06098670 s32 pose-mode flag (==1 path)
+g_0609979a  s16    "infinite life" flag (life = 0x7FFFFFFF when set, else 0x258)
+g_06098878  s32    draw/transform offset accumulator (+/-0x30 around draw tail)
+# --- fighter action system (func_02239fc6 / func_0223a3a2) ---
+g_06096248  u8[]   sprite records, 0x20 stride {unk8 upper frame, unkE lower frame}
+g_060e11e8  u8[]   saved anim state, 4-byte records {s16 unk0, s16 unk2}
+g_06091678  u8[]   move-descriptor pointer table (entry+off ->unk6 = frame)
+g_0608ce74  s16[]  per-move secondary-frame table
+g_06096c74  s32[]  per-slot mirror of current move secondary frame
+g_060995b0  (also used by action system as actor ptr table)
+g_06099580  void*  spawn pool/context (arg to func_020feec)
+g_0608c794  s16[]  thrown-body spin table ((unk6C-0xF)&3)
+g_0608d3e8  s8[]   fighter shadow frame id table
+g_060e0ddc  s32    (referenced by deferred func_0223bf86; not used here)

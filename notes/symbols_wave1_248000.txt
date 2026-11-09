@@ -1,0 +1,30 @@
+# Die Hard Arcade (Sega ST-V, SH-2 BE) - wave1 symbols, band [0x248000, 0x28de20)
+# Format: 0x<SH2addr> <name>   # <confidence> <evidence>
+# Confidence: HIGH = decompilation-proven; MED = strong structural/HW evidence; GUESS = plausible.
+# (New file per wave rule; do NOT merge into shared symbols.txt here.)
+
+# ---- SH-2 runtime integer-divide library (register ABI: dividend r1, divisor r0, result r0;
+#      div-by-zero writes 0x44e to g_060e132c and returns 0) ----
+0x0224a06c sdiv32   # HIGH  signed 32-bit divide (div0s + 32x div1 + sign correct)
+0x0224a120 udiv32   # HIGH  unsigned 32-bit divide (div0u + 32x div1), quotient
+0x0224a1c8 umod32   # HIGH  unsigned 32-bit modulo (div0u + 32x div1 + remainder correct)
+
+# ---- SH-2 unsigned right-shift-by-N helpers (value r0 in/out; entered via a shared
+#      dispatcher prologue that spills/restores r2 - benign to the computed value) ----
+0x0224ab5c shr15    # HIGH  (u32)x >> 15  (shlr x7 + shlr8)
+0x0224ab70 shr23    # HIGH  (u32)x >> 23  (shlr x7 + shlr16)
+0x0224ab84 shr27    # HIGH  (u32)x >> 27  (shlr x3 + shlr8 + shlr16)
+0x0224ab92 shr28    # HIGH  (u32)x >> 28  (rotl x4 + and #15)
+0x0224aba0 shr29    # HIGH  (u32)x >> 29  (rotl x3 + and #7)
+0x0224abac shr30    # HIGH  (u32)x >> 30  (rotl x2 + and #3)
+0x0224abb6 shr31    # HIGH  (u32)x >> 31  (rotl x1 + and #1)
+
+# ---- SH-2 soft-float conversions (double passed/returned via stack per SHC ABI) ----
+0x0224a7a8 dtoi     # MED   double -> signed int (truncating); exp bias 0x3ff
+0x0224a830 itod     # MED   signed int -> double; exp base 0x41f, result via caller ptr
+
+# ---- actor / entity handlers (task,entity ABI; tail to animation_update 0x0222dc2c) ----
+0x0224806a actor_proximity_dispatch # HIGH  distance-band 2-D table lookup -> response code / fp dispatch
+0x0224a000 actor_pre_anim_service   # HIGH  hit/ready service, tail animation_update
+0x022482dc actor_state_init_6       # HIGH  post-spawn field init, tail func_02244988(actor,*actor[0x184])
+0x02248436 actor_turn_flip_fsm      # HIGH  3-state flip FSM, tail animation_update

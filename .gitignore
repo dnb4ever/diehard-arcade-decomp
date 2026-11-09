@@ -1,0 +1,88 @@
+# ─── Large / regenerable binaries (regenerate from cart.bin or build) ───
+*.bin
+*.zip
+*.tar.xz
+*.tar.gz
+*.whl
+*.jar
+*.so
+*.a
+*.o
+*.obj
+*.wav
+*.png
+*.jsa
+*.jmod
+*.sym
+
+# ─── Toolchain installs (huge, third-party, not our IP) ───
+tools/ghidra_12.1.4_PUBLIC/
+tools/jdk-21*/
+tools/src-binutils/
+tools/decomp/venv/
+tools/compilers/
+tools/cross/
+ghidra_proj/
+
+# ─── Nested third-party git clones (each has its own .git; not vendored here) ───
+# NOTE: our edits to tools/saturn-recomp/runtime (RBG0/RBG1, ST-V BIOS shims) are
+# protected by tar snapshots + reconciliation, not this outer repo.
+tools/decomp-permuter/
+tools/m2c/
+tools/saturn-recomp/
+tools/tgm2p-decomp/
+tools/wibo/
+
+# ─── Build outputs (regenerable) ───
+port/recomp-build*/
+port/recomp/
+port/run*/
+tools/bin/
+tools/decomp/perm/
+notes/assets/*.json
+
+# ─── Root scratch samples ───
+/leaf_candidates.c
+/leaf2.c
+/decomp_sample.c
+**/build/
+**/build-*/
+**/CMakeFiles/
+**/CMakeCache.txt
+tools/saturn-recomp/**/build*/
+
+# ─── Logs ───
+*.log
+
+# ─── Scratch / working dirs (ephemeral) ───
+drafts/
+work/
+work1318/
+work_r7_12/
+work_agentA/
+scratch_r1924/
+tmp_band24_grind/
+decomp_batch.c
+decomp_batch2.c
+
+# ─── Mod outputs (recolor zips/renders; mod/*.py scripts ARE kept) ───
+mod/*.zip
+mod/outputs/
+
+# ─── Editor / OS / Python ───
+.DS_Store
+__pycache__/
+*.pyc
+*.bak
+*.bak[0-9]*
+
+# runtime patch snapshots are source and must be tracked (the broad port/run*/ rule above would otherwise catch runtime-patches/)
+!port/runtime-patches/
+!port/runtime-patches/**
+
+# local-model generation staging (not committed)
+tools/decomp/llm_stage/
+
+# extracted game media and screenshots never go in the repo
+*.mid
+*.jpg

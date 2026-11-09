@@ -1,0 +1,62 @@
+# symbols_lastgiants.txt - worker: lastgiants (the two final large deferred fns)
+# Appended discoveries; notes/symbols.txt left untouched per task.
+
+# --- SHIPPED (both compile gcc -O1 -Wall -Wextra with ZERO output) ---
+0x02246ab8 func_02246ab8          # HIGH shipped WHOLE. void(void *ctx, void *obj).
+#   ctx=r4(r13, only forwarded to tail), obj=r5(r14). Counter/hit-interrupt FSM:
+#   nested-if cascade (0x4C hit, func_246208, 0x06097418, 0x54&2) then obj->0xC8/
+#   0xC4 decrement gates, then switch(func_244e2e(obj)) {1,3,default}. Universal
+#   tail func_22dc2c(ctx,obj); case 3 tail-calls func_2470a2(obj).
+#   NOTE: fn.py "785 insn" = census blob [0x246ab8,0x2470da) of many functions;
+#   the real func_02246ab8 is only [0x246ab8, 0x246cac) (~250 insn), fully resolved.
+
+0x022402c0 func_02402c0           # HIGH shipped WHOLE. void(void *obj, s32 *out).
+#   obj=r4(r14), out=r5(r12). expire/lock-on check: runs func_22ab18/func_227704/
+#   func_24174e, then hp(obj->0x64) vs obj->0x146 / obj->0x56 / func_241556(obj,6)
+#   gates -> expire(E0|=0x40000,*out=1) or seek(E0|=0x2000000) or tail.
+#   Tail func_24124e(obj,out,0); lock-on branch returns directly.
+#   NOTE: fn.py "2379 insn/extent 0x1296" = census blob [0x2402c0,0x241556) of ~20
+#   sibling functions; real func_02402c0 is only [0x2402c0, 0x24043c) (~90 insn).
+
+# --- CORRECTIONS to notes/symbols_giants2.txt ---
+0x0022dc2c func_22dc2c            # CORRECTION. The func_02246ab8 universal tail.
+#   giants2 note called it "0x00225c2c" - a miscalculation. r12 = mova(0x246ad0) +
+#   0xFFFE715C = 0x0022DC2C (verified). Cross-checked: sibling func_246d0c's tail
+#   0x246d1c + 0xFFFE6F10 ALSO = 0x0022DC2C. The tail is func_22dc2c, NOT 0x225c2c.
+# CORRECTION: func_02246ab8 switch selector is func_244e2e(obj) RETURN value, not
+#   obj->0xC8 (the note's "switch(obj->0xC8)"). obj->0xC8 is separately decremented.
+
+# --- callees of func_02246ab8 (all bsrf resolved; verified) ---
+0x022489d0 func_2489d0            # bsrf @0x246ade (obj); hit-interrupt handler
+0x02246208 func_246208           # bsrf @0x246ae8 (obj) -> s32
+0x02249a82 func_249a82           # bsrf @0x246af2 (obj)
+0x02249f08 func_249f08           # bsrf @0x246b04 (obj)
+0x02245bcc func_245bcc           # bsrf @0x246b18 (obj) -> s32
+0x0224840a func_24840a           # bsrf @0x246b22 (obj)
+0x02246180 func_246180           # bsrf @0x246b66 (obj)
+0x02247d6e func_247d6e           # bsrf @0x246b8c & @0x246bde (obj) -> s32
+0x02210020 func_210020           # bsrf @0x246b9e; NO args -> s32
+0x02244e2e func_244e2e           # bsrf @0x246bf6 (obj) -> s32 switch selector {0,1,2,3}
+0x0224492c func_24492c           # bsrf @0x246c80 (obj, MP(elem,8), 0x18000, 0x20000) -> s32
+0x02246cac func_246cac           # bsr @0x246bb0/bec/c92 (obj); local state-init helper
+0x022470a2 func_2470a2           # bra tail @0x246c26 (obj); case-3 leaf (sets 0xD4=0x12,
+#   0x84=1,0x88=0, E0&=0x20030|2, 0x41=1, 0x5C=(*(obj+0x158))->0xC)
+# case1 computed call: (*(void(**)(void*))(0x06090230 + obj->0x100*4))(obj)
+
+# --- callees of func_02402c0 (all bsrf resolved; verified) ---
+0x0022ab18 func_22ab18           # bsrf @0x2402d2 (obj, obj->0x64); per-frame update
+0x00227704 func_227704           # bsrf @0x2402e2 (obj); gated on obj->0xE0 & 0x10000
+0x0024174e func_24174e           # bsrf @0x2402e8 (obj); shared blob helper
+0x00241556 func_241556           # bsrf @0x240316 (obj, 6) -> s32; shared blob helper
+0x00215f6c func_215f6c           # bsrf @0x2403b8 (0xA0....FF cmd); PIC (also in 242a10)
+0x0024124e func_24124e           # bra tail @0x24042c (obj, out, 0); shared blob tail fn
+#   (this is the sibling m2c wrongly spliced into f_2402c0's output)
+
+# --- globals referenced ---
+0x06090230 g_06090230            # func-ptr table (func_02246ab8 case1, idx obj->0x100)
+0x06097418 g_06097418            # abort/interrupt flag (read in func_02246ab8)
+0x06099584 g_06099584            # base: +0x0C active-flag array, +0x2C = 0x060995B0 objs
+0x060995b0 g_060995B0            # source-object array (both functions; dup of symbols.txt)
+0x06098564 g_06098564            # mode word (==3 gate in func_02402c0)
+0x060e0ddc g_060E0DDC            # effect-enable flag (func_02402c0; dup of symbols.txt)
+0x0608da40 g_0608DA40            # s16 effect param (func_02402c0)

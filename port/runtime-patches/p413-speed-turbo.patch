@@ -1,0 +1,343 @@
+--- a/runtime/runtime.cmake
++++ b/runtime/runtime.cmake
+@@ -18,7 +18,7 @@
+     ${_src}/machine/machine.cpp ${_src}/machine/bios.cpp ${_src}/machine/mmio.cpp ${_src}/machine/tasks.cpp
+     ${_src}/machine/onchip.cpp ${_src}/machine/scu.cpp ${_src}/machine/scudsp.cpp ${_src}/machine/smpc.cpp
+     ${_src}/machine/cdrom.cpp ${_src}/machine/cdblock.cpp ${_src}/machine/agent.cpp ${_src}/machine/state.cpp
+-    ${_src}/machine/modem.cpp ${_src}/machine/modem_tcp.cpp
++    ${_src}/machine/player.cpp ${_src}/machine/modem.cpp ${_src}/machine/modem_tcp.cpp
+     ${_src}/video/video.cpp ${_src}/video/vdp1.cpp ${_src}/video/vdp2.cpp ${_src}/video/png.cpp ${_src}/video/movie.cpp
+     ${_src}/sound/sound.cpp ${_src}/sound/scsp.cpp)
+ option(SATURN_NO_SDL "build the headless host even if SDL3 is installed" OFF)
+--- a/runtime/src/host/host.cpp
++++ b/runtime/src/host/host.cpp
+@@ -40,6 +40,7 @@
+ #include "settings.h"
+ #include "touch_pad.h"
+ #include "state.h"
++#include "player.h"
+ #include "uinput_pad.h"
+ #include "unplugs.h"
+ #include "ui.h"
+@@ -59,7 +60,8 @@
+ using Clock = PaceClock;
+ static Clock::time_point g_base;                // host time of virtual time 0
+ static unsigned g_stats_generation;
+-static bool g_rewind_key;
++static bool g_rewind_key, g_forward_key;
++bool host_fast_forward() { return g_cfg.arcade && (g_forward_key || g_cfg.fast_forward); }
+ static bool g_paced;
+ 
+ uint16_t host_pad(int slot) { return g_buttons[slot]; }
+@@ -98,7 +100,7 @@
+             for (auto& p : problems) sat_note("%s, so its default", p.c_str());
+         }
+     }
+-    if (g_cfg.arcade && !g_cfg.rewind_seconds) g_cfg.rewind_seconds = g_settings.number("player", "rewind_seconds");
++    player_settings(g_settings);
+     bind_keyboard();
+ }
+ 
+@@ -112,6 +114,7 @@
+ bool host_wants_frame() {
+     if (!g_win) return false;
+     if (sat_resuming()) return sat_vblanks() % 30 == 0;
++    if (host_fast_forward()) return sat_vblanks() % 4 == 0;
+     if (g_paced && g_skipped_run < (g_cfg.rewind_seconds ? 5 : 2) && g_settings.flag("display", "frameskip") &&
+         Clock::now() > g_base + std::chrono::nanoseconds(sat_now() + video_frame_ns())) {
+         ++g_skipped_run;
+@@ -229,7 +232,7 @@
+ }
+ 
+ void host_audio_push(const int16_t* lr, int frames) {
+-    if (sat_resuming()) return;
++    if (sat_resuming() || host_fast_forward()) return;
+     int queued = [] { HostCall in("SDL_GetAudioStreamQueued"); return SDL_GetAudioStreamQueued(g_audio) / 4; }();
+     if (!g_audio_started) {
+         audio_silence(kLead);
+@@ -835,6 +838,9 @@
+ static bool inside(const SDL_FRect& r, float x, float y) { return x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h; }
+ 
+ static void menu_close() {
++    // ImGui's nested panel consumes key-up events itself. Never retain a
++    // synthetic hold after leaving pause; physical rewind state is repolled.
++    g_rewind_key = g_forward_key = false;
+     g_menu_open = false;
+     g_slider_finger = 0;
+     for (auto& h : g_held_over) h = 0xFFFF;
+@@ -948,12 +954,20 @@
+     case SDL_EVENT_GAMEPAD_REMOVED:
+         pad_removed(e.gdevice.which);
+         break;
++    case SDL_EVENT_WINDOW_FOCUS_LOST:
++        g_rewind_key = g_forward_key = false;
++        break;
+     case SDL_EVENT_KEY_UP:
++        if (e.key.scancode == SDL_GetScancodeFromName(g_settings.get("player", "fast_forward_key").c_str())) g_forward_key = false;
+         if (e.key.scancode == SDL_GetScancodeFromName(g_settings.get("player", "rewind_key").c_str())) g_rewind_key = false;
+         break;
+     case SDL_EVENT_KEY_DOWN: {
+         SDL_Scancode k = e.key.scancode;
+         if (k == SDL_GetScancodeFromName(g_settings.get("player", "rewind_key").c_str())) g_rewind_key = true;
++        if (g_cfg.arcade && k == SDL_GetScancodeFromName(g_settings.get("player", "fast_forward_key").c_str())) g_forward_key = true;
++        if (g_cfg.arcade && !e.key.repeat && k == SDL_GetScancodeFromName(g_settings.get("player", "fast_forward_toggle").c_str())) {
++            g_cfg.fast_forward = !g_cfg.fast_forward; break;
++        }
+         if (quick_available() && !e.key.repeat && (k == SDL_SCANCODE_F5 || k == SDL_SCANCODE_F7)) {
+             quick_request(k == SDL_SCANCODE_F7); menu_close(); break;
+         }
+@@ -1210,6 +1224,7 @@
+         if (touch_shown()) draw_touch_pad();
+         if (menu_button_shown()) draw_menu_button();
+     }
++    if (host_fast_forward()) ui_text(16, 22, 16, "FAST FORWARD (audio muted)", rgba(1, .85f, .3f, 1), true, UiAlign::Left);
+     if (g_quitting) {
+         float u = display_scale();
+         ui_fill_rounded({g_out_w / 2.0f - 70 * u, 24 * u, 140 * u, 40 * u}, 20 * u, rgba(0.09f, 0.1f, 0.13f, 0.9f));
+@@ -1357,7 +1372,15 @@
+ }
+ 
+ void host_pace(uint64_t now) {
+-    if (!g_win || !g_paced) return;
++    if (!g_win) return;
++    static bool was_forward = false;
++    bool forward = host_fast_forward();
++    if (forward != was_forward) {
++        was_forward = forward; host_quick_reset();
++        sat_note("player: fast forward %s (host audio %s)", forward ? "on" : "off", forward ? "muted" : "resumed");
++    }
++    if (forward) { g_base = Clock::now() - std::chrono::nanoseconds(now); return; }
++    if (!g_paced) return;
+     if (sat_resuming()) {
+         g_base = Clock::now() - std::chrono::nanoseconds(now);
+         return;
+--- a/runtime/src/host/launcher.cpp
++++ b/runtime/src/host/launcher.cpp
+@@ -7,6 +7,7 @@
+ // go there and it closes, for a check without a display.
+ #include "host.h"
+ #include "state.h"
++#include "player.h"
+ #include "host_sdl.h"
+ #include "video.h"
+ #include "imgui.h"
+@@ -28,10 +29,26 @@
+         g_cfg.rewind_seconds = seconds; host_settings_save();
+     }
+     ImGui::TextWrapped("Hold Backspace / left shoulder to rewind (30 snapshots/s). Bindings use SDL names.");
+-    for (const char* key : {"rewind_key", "rewind_pad"}) {
++    for (const char* key : {"rewind_key", "rewind_pad", "fast_forward_key", "fast_forward_toggle"}) {
+         char value[64]; std::snprintf(value, sizeof value, "%s", set.get("player", key).c_str());
+         if (ImGui::InputText(key, value, sizeof value, ImGuiInputTextFlags_EnterReturnsTrue)) {
+             set.set("player", key, value); host_settings_save();
++        }
++    }
++    bool ff = g_cfg.fast_forward;
++    if (ImGui::Checkbox("Fast forward (mute audio)", &ff)) {
++        set.set("player", "fast_forward", ff ? "true" : "false");
++        g_cfg.fast_forward = ff; host_settings_save();
++    }
++    ImGui::TextWrapped("Hold Tab, or toggle with F4. Maximum speed depends on CPU headroom.");
++    ImGui::SeparatorText("Autofire while a button is held (0 = off)");
++    for (int p = 0; p < 2; ++p) for (int b = 0; b < 3; ++b) {
++        std::string key = "turbo_p" + std::to_string(p+1) + "_" + char('a'+b);
++        std::string label = "P" + std::to_string(p+1) + " " + char('A'+b);
++        int rate = g_cfg.turbo_hz[p][b];
++        if (ImGui::SliderInt(label.c_str(), &rate, 0, 30, "%d Hz")) {
++            set.set("player", key, std::to_string(rate));
++            g_cfg.turbo_hz[p][b] = rate; host_settings_save();
+         }
+     }
+ }
+@@ -248,13 +265,21 @@
+             SDL_PushEvent(&q);
+         }
+ 
+-        if (ImGui::BeginTable("layout", 2, ImGuiTableFlags_SizingStretchSame)) {
++        bool feature_tab = false;
++        if (cfg_.arcade && ImGui::BeginTabBar("launcher-pages")) {
++            if (ImGui::BeginTabItem("Game / controls")) ImGui::EndTabItem();
++            if (ImGui::BeginTabItem("Player features / training", nullptr, SDL_getenv("SATURN_LAUNCHER_FEATURES") ? ImGuiTabItemFlags_SetSelected : 0)) {
++                feature_tab = true; player_features(); ImGui::EndTabItem();
++            }
++            ImGui::EndTabBar();
++        }
++        if (!feature_tab && ImGui::BeginTable("layout", 2, ImGuiTableFlags_SizingStretchSame)) {
+             ImGui::TableNextColumn();
+             if (!cfg_.launch_info.empty()) ImGui::TextWrapped("%s", cfg_.launch_info.c_str());
+             start_options();
+             players();
+             display_and_sound();
+-            if (cfg_.arcade) { game_settings(); player_features(); }
++            if (cfg_.arcade) game_settings();
+             ImGui::TableNextColumn();
+             if (cfg_.arcade) arcade_controls();
+             else controls();
+--- a/runtime/src/host/settings.cpp
++++ b/runtime/src/host/settings.cpp
+@@ -41,6 +41,16 @@
+ rewind_seconds = 0
+ rewind_key = Backspace
+ rewind_pad = leftshoulder
++fast_forward = false
++fast_forward_key = Tab
++fast_forward_toggle = F4
++; 0 disables autofire; otherwise nominal Hz at 60 fields/s, 50% duty cycle.
++turbo_p1_a = 0
++turbo_p1_b = 0
++turbo_p1_c = 0
++turbo_p2_a = 0
++turbo_p2_b = 0
++turbo_p2_c = 0
+ 
+ [audio]
+ ; percent
+@@ -143,7 +153,8 @@
+ 
+ // The range a number may take, by key.
+ static const struct { const char* key; int lo, hi; } kRanges[] = {
+-    {"rewind_seconds", 0, 20}, {"difficulty", 1, 8}, {"vitality", 0, 7}, {"lives", 1, 4}, {"scale", 1, 8}, {"size", 50, 200}, {"volume", 0, 100}, {"stick", 5, 95}, {"trigger", 5, 95}, {"multitap", 0, 2}};
++    {"turbo_p1_a", 0, 30}, {"turbo_p1_b", 0, 30}, {"turbo_p1_c", 0, 30},
++    {"turbo_p2_a", 0, 30}, {"turbo_p2_b", 0, 30}, {"turbo_p2_c", 0, 30}, {"rewind_seconds", 0, 20}, {"difficulty", 1, 8}, {"vitality", 0, 7}, {"lives", 1, 4}, {"scale", 1, 8}, {"size", 50, 200}, {"volume", 0, 100}, {"stick", 5, 95}, {"trigger", 5, 95}, {"multitap", 0, 2}};
+ 
+ static std::string trim(const std::string& s) {
+     size_t a = s.find_first_not_of(" \t\r"), b = s.find_last_not_of(" \t\r");
+--- a/runtime/src/machine/bios.cpp
++++ b/runtime/src/machine/bios.cpp
+@@ -20,6 +20,7 @@
+ // for what is and is not implemented.
+ #include "saturn.h"
+ #include "host.h"
++#include "player.h"
+ #include "state.h"
+ #include <cctype>
+ #include <climits>
+@@ -438,8 +439,7 @@
+     raw_controls[0] |= live_raw[0];
+     raw_controls[1] |= live_raw[1];
+     stv_autoplay(vb, raw_controls[0]);
+-    g_stv_physical_raw[0] = raw_controls[0];
+-    g_stv_physical_raw[1] = raw_controls[1];
++
+ 
+     // The BIOS system-switch record at 0x06000728 (fifth raw input record). The real BIOS
+     // (ROM 0x31764) packs ~PORTC every frame as COIN1 0x01, COIN2 0x02, TEST 0x04,
+@@ -454,7 +454,11 @@
+         if (event.kind == 9) sys |= 0x4000; // Cabinet pause switch.
+         if (event.kind == 8) sys |= 0x04; // Physical TEST switch (still exits to unimplemented BIOS menus).
+     }
+-    g_stv_physical_sys = sys | live_sys;
++    sys |= live_sys;
++    player_input(vb, raw_controls, sys);
++    g_stv_physical_raw[0] = raw_controls[0];
++    g_stv_physical_raw[1] = raw_controls[1];
++    g_stv_physical_sys = sys;
+ 
+     // Read-only P4.1 diagnostics; print each VBlank, including empty player slots.
+     static const bool p41trace = std::getenv("STV_P41TRACE") != nullptr;
+--- /dev/null
++++ b/runtime/src/machine/player.cpp
+@@ -0,0 +1,20 @@
++#include "saturn.h"
++#include "player.h"
++#include "settings.h"
++#include <algorithm>
++
++void player_settings(const Settings& settings) {
++    if (!g_cfg.arcade) return;
++    if (!g_cfg.rewind_seconds) g_cfg.rewind_seconds = settings.number("player", "rewind_seconds");
++    g_cfg.fast_forward = settings.flag("player", "fast_forward");
++    for (int p = 0; p < 2; ++p) for (int b = 0; b < 3; ++b) {
++        std::string key = "turbo_p" + std::to_string(p+1) + "_" + char('a'+b);
++        g_cfg.turbo_hz[p][b] = settings.number("player", key);
++    }
++}
++void player_input(uint64_t frame, uint16_t raw[2], uint16_t&) {
++    for (int p = 0; p < 2; ++p) for (int b = 0; b < 3; ++b) {
++        int rate = g_cfg.turbo_hz[p][b];
++        if (rate && (frame * unsigned(rate) % 60) >= 30) raw[p] &= uint16_t(~(1u << b));
++    }
++}
+--- /dev/null
++++ b/runtime/src/machine/player.h
+@@ -0,0 +1,6 @@
++// Optional ST-V player features, sampled at the physical panel boundary.
++#pragma once
++#include <cstdint>
++class Settings;
++void player_settings(const Settings&);
++void player_input(uint64_t frame, uint16_t raw[2], uint16_t& system);
+--- a/runtime/src/machine/saturn.h
++++ b/runtime/src/machine/saturn.h
+@@ -83,6 +83,8 @@
+     std::string progress_keep;      // "ADDR:BYTES,...": the ranges
+     std::string resume_label;       // what the window says while --resume plays
+     std::string after;              // with it, the menu has Save files, which writes "saves" here and quits
++    bool fast_forward = false;
++    int turbo_hz[2][3] = {}; // A/B/C, 0 = off, otherwise 1..30 Hz
+     int rewind_seconds = 0; // opt-in; bounded to 20 seconds and 512 MiB
+     uint64_t rewind_at = 0, rewind_frames = 0; // headless verification
+     std::string quick_path;
+--- a/runtime/tests/CMakeLists.txt
++++ b/runtime/tests/CMakeLists.txt
+@@ -8,5 +8,5 @@
+   set(CMAKE_BUILD_TYPE Release)
+ endif()
+ include(${CMAKE_CURRENT_LIST_DIR}/../runtime.cmake)
+-add_executable(runtime_tests main.cpp no_modules.cpp stv_bios_test.cpp vdp2_test.cpp onchip_test.cpp bup_test.cpp pads_test.cpp settings_test.cpp touch_test.cpp pace_test.cpp frame_change_test.cpp modem_test.cpp scu_test.cpp cdrom_test.cpp cdblock_test.cpp clock_test.cpp tasks_test.cpp scsp_test.cpp)
++add_executable(runtime_tests main.cpp no_modules.cpp player_test.cpp stv_bios_test.cpp vdp2_test.cpp onchip_test.cpp bup_test.cpp pads_test.cpp settings_test.cpp touch_test.cpp pace_test.cpp frame_change_test.cpp modem_test.cpp scu_test.cpp cdrom_test.cpp cdblock_test.cpp clock_test.cpp tasks_test.cpp scsp_test.cpp)
+ target_link_libraries(runtime_tests saturn_core saturn_machine saturn_host Threads::Threads)
+--- /dev/null
++++ b/runtime/tests/player_test.cpp
+@@ -0,0 +1,51 @@
++#include "saturn.h"
++#include "player.h"
++#include "settings.h"
++#include "test.h"
++
++TEST(player_defaults_leave_every_panel_bit_unchanged) {
++    auto old = g_cfg; g_cfg = SaturnConfig{}; g_cfg.arcade = true;
++    Settings set; player_settings(set);
++    CHECK_EQ(g_cfg.rewind_seconds, 0); CHECK_EQ(g_cfg.fast_forward, false);
++    for (unsigned frame = 0; frame < 120; ++frame) {
++        uint16_t raw[2] = {0x3c7, 0x347}, sys = 0x403f;
++        player_input(frame, raw, sys);
++        CHECK_EQ(raw[0], 0x3c7); CHECK_EQ(raw[1], 0x347); CHECK_EQ(sys, 0x403f);
++    }
++    g_cfg = old;
++}
++TEST(autofire_is_independent_per_player_and_does_not_invent_a_press) {
++    auto old = g_cfg; g_cfg = SaturnConfig{}; g_cfg.arcade = true;
++    Settings configured; std::vector<std::string> valid;
++    configured.read("[player]\nturbo_p1_a = 10\nturbo_p2_c = 15\n", valid);
++    CHECK_EQ(valid.size(), 0); player_settings(configured);
++    unsigned previous[2] = {}, edges[2] = {}, held[2] = {};
++    for (unsigned frame = 0; frame < 60; ++frame) {
++        uint16_t raw[2] = {0x103, 0x206}, sys = 0x30;
++        player_input(frame, raw, sys);
++        unsigned on[] = {unsigned(raw[0]&1), unsigned((raw[1]>>2)&1)};
++        for (int p = 0; p < 2; ++p) { edges[p] += on[p] && !previous[p]; held[p] += on[p]; previous[p] = on[p]; }
++        CHECK_EQ(raw[0]&0x102, 0x102); CHECK_EQ(raw[1]&0x202, 0x202); CHECK_EQ(sys, 0x30);
++    }
++    CHECK_EQ(edges[0], 10); CHECK_EQ(edges[1], 15); CHECK_EQ(held[0], 30); CHECK_EQ(held[1], 30);
++    uint16_t raw[2] = {}, sys = 0;
++    player_input(60, raw, sys); CHECK_EQ(raw[0], 0); CHECK_EQ(raw[1], 0);
++    Settings settings; std::vector<std::string> problems;
++    settings.read("[player]\nturbo_p1_a = 31\nrewind_seconds = 21\n", problems);
++    CHECK_EQ(problems.size(), 2); CHECK_EQ(settings.number("player", "turbo_p1_a"), 0);
++    g_cfg = old;
++}
++
++extern void stv_scene_probe_tick(uint64_t);
++TEST(autofire_reaches_the_headless_bios_scan_for_both_players) {
++    auto old = g_cfg; g_cfg = SaturnConfig{}; g_cfg.arcade = true;
++    g_cfg.turbo_hz[0][0] = 10; g_cfg.turbo_hz[1][2] = 15;
++    stv_input_script("100:P1A:60,100:P2C:60,100:P1RIGHT:60");
++    SH2Context c{}; c.pr = 0x06005000;
++    for (unsigned frame = 100; frame < 160; ++frame) {
++        stv_scene_probe_tick(frame); bios_call(c, 0x4010);
++        CHECK_EQ(ld16(0x06000708), 0x100 | (frame*10%60<30 ? 1 : 0));
++        CHECK_EQ(ld16(0x06000710), frame*15%60<30 ? 4 : 0);
++    }
++    stv_input_script(""); g_cfg = old;
++}

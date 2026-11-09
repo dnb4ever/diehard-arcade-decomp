@@ -1,0 +1,73 @@
+# Band 0x20fxxx (SH2 0x0220f000-0x02210000) - functional decomp symbols
+# worker: band20f.  One line per function + confirmed globals.  Do NOT merge into symbols.txt.
+
+## FUNCTIONS (SH2 addr  name  summary)
+0220f0ec  func_0220f0ec   refresh obj sprite-attr block from stage source record g_06099584 (self-sourced variant)
+0220f15e  func_0220f15e   init obj sprite-attr block from src record; attr table g_06097d68 index 1/2 by g_06098568
+0220f19e  func_0220f19e   as f15e + on first init spawns child via func_0220ff72, sets child.unk8->unk18
+0220f202  func_0220f202   as f19e + sets child->unkF = 1
+0220f26a  func_0220f26a   on first init only, spawns child via func_0220ff72
+0220f28e  func_0220f28e   per-frame world-transform update (rotated): ashr velocity init, ease/4, matrix-apply, look-at, integrate
+0220f454  func_0220f454   per-frame position update (non-rotated sibling of f28e): direct init, ease/8, no matrix
+0220f5b8  func_0220f5b8   debug/free-fly camera input handler (controller g_0609874c); rotate move vec; tail func_0220ad58(4)
+0220f6f6  func_0220f6f6   scene-object anim stepper A; dispatch scene->unk10; tail mtx_build_fwd_inv(obj)
+0220f816  func_0220f816   (anim)state helper: bind def to obj, set sub-state (shared by f6f6/f880)
+0220f880  func_0220f880   scene-object anim stepper B (restart rebinds obj->unkD4 instead of global default)
+0220f990  func_0220f990   reset controller button-record tables g_06098734 (5x0x18) + g_060987ac
+0220f9d4  func_0220f9d4   per-frame controller state machine: edge/hold timers + start-trigger latches
+0220fb58  func_0220fb58   copy 16-bit g_06000708 -> g_06098734->unk2 five times (settle)
+0220fc18  func_0220fc18   object-node free-list init: 511 nodes x0x20 at g_06092238 (real entry; member 0x20fc16 phantom)
+0220fc3c  func_0220fc3c   object-node allocator (splice into active list anchored at *g_06092240)
+0220fc82  func_0220fc82   object-node allocator (splice into parent's child list)
+0220fcc4  func_0220fcc4   object-node allocator (caller supplies list; 3-arg)
+0220fd52  func_0220fd52   allocate up to N nodes via fc3c, numbering node->unkD; returns count (s8)
+0220fd90  func_0220fd90   allocate one node per non-NULL def in array via fc3c; returns count
+0220fdc8  func_0220fdc8   prune: clear node->unk0 for active-list nodes with depth(unkE) > arg
+0220fe48  func_0220fe48   bulk-spawn root nodes for NULL-terminated def array (inlined allocator)
+0220fe98  func_0220fe98   *arg0 = 0 (trivial leaf)
+0220fece  func_0220fece   ctor: fc3c(a,b) + func_02214bb8(p,1,0x6c)
+0220feec  func_0220feec   ctor: fc82(a,b) + func_02214bb8(p,1,0x88)
+0220ff0a  func_0220ff0a   ctor: fc82(a,b) + func_02214bb8(p,1,0x18c)
+0220ff28  func_0220ff28   ctor: fcc4(*g_060987b8,a,b) + func_02214bb8(p,1,0x7c)
+0220ff54  func_0220ff54   ctor: fc3c(a,b) + func_02214bb8(p,1,0x40)
+0220ff72  func_0220ff72   ctor: fc82(a,b) + func_02214bb8(p,1,0x40) (shared callee of f19e/f202/f26a)
+0220ff90  func_0220ff90   ctor: fc3c(a,b) + func_02214bb8(p,1,0xdc)
+0220ffae  func_0220ffae   ctor: list_node_alloc(a,b) + func_02214bb8(p,1,0x6c)
+
+## CONFIRMED GLOBALS (HWRAM 0x06xxxxxx)
+0x06092238  g_objnode_freelist_head   object-node pool control block base (free-list head)
+0x0609223c  g_objnode_anchorA         active-list anchor used by list_node_alloc (0x20fd06)
+0x06092240  g_objnode_anchorB         active-list anchor used by func_0220fc3c
+0x06092244  g_objnode_sentinel        sentinel node / "out of nodes" return value (base+12)
+0x06096c90  g_vel_shift_count         arithmetic right-shift count for velocity init (func_0220f28e)
+0x06097d68  g_sprite_attr_table       0x100-stride attribute table -> obj->{8,C,10}
+0x06098568  g_attr_mode_flag          != 2 -> attr index 1, == 2 -> index 2
+0x06098664  g_scene_advance_flag      set to 1 by f6f6/f880 when an anim countdown expires
+0x0609866c  g_scene_def_root          default scene-definition root (f6f6 case 0)
+0x06098670  g_player_set_select       ==0 selects player set 1 (process all 5 records)
+0x06098734  g_button_records          controller button-record array (5 x 0x18)
+0x0609874c  g_dbgcam_input            debug/free-fly camera controller input word
+0x06098794  g_syspad                  system pad struct (unk4 @0x06098798 = enable/trigger flags)
+0x060987ac  g_start_ready_records     two 6-byte start/ready sub-records
+0x060987b8  g_list_anchor_obj_ptr     ptr to list-anchor object (func_0220ff28)
+0x060987d0  g_pad_gate                gate flag for pad processing (f9d4)
+0x060987d4  g_pad_buffer              pad buffer passed to kernel vector *(0x0600066c)
+0x06098674  g_p1_ready_byte           per-player-1 ready byte (f9d4)
+0x06098675  g_p2_ready_byte           per-player-2 ready byte (f9d4)
+0x0609880c  g_p1_start_flag           per-player-1 start flag latch
+0x06098810  g_p2_start_flag           per-player-2 start flag latch
+0x06098b1c  g_mtx_vec_out             transformed-vector output of mtx_push_rotate_apply (g_06098B1C)
+0x06000708  g_raw_input               raw controller input array (stride 8)
+0x06000664  kv_probe                  kernel vector: s32 (*)(s32 player)
+0x0600066c  kv_pad                    kernel vector: void (*)(void *padbuf)
+0x022199da  rom_def_022199da          ROM definition record (arg to func_0220ff72 from f19e/f202/f26a)
+
+## EXTERNAL CALLEES (decompiled in other bands; referenced here)
+func_02214bb8          pool/record init (p, count, size)
+func_0224a420          ashr_var (value >> count, arithmetic; non-standard r0/r1 ABI)
+sdiv32 (0x0224a06c)    signed 32-bit divide
+mtx_push_rotate_apply (0x0221080a)  push stack, rotate vec by angles -> g_06098b1c, pop
+func_0221055c          look-at angles from two world points (XZ variant)
+mtx_build_fwd_inv (0x02214a7a)      build forward+inverse model matrices for obj
+func_0220ad58          (tail-called by f5b8 with arg 4)
+list_node_alloc (0x0220fd06)        object-node allocator (prior worker)

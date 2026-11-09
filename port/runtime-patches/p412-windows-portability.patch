@@ -1,0 +1,130 @@
+--- a/runtime/runtime.cmake
++++ b/runtime/runtime.cmake
+@@ -60,7 +60,12 @@
+   add_library(saturn_host OBJECT ${_src}/host/host_null.cpp ${_src}/host/settings.cpp)
+ endif()
+ if(WIN32)
+-  target_sources(saturn_host INTERFACE ${_src}/host/windows/saturn.manifest)   # merged into each executable's
++  if(MINGW)
++    enable_language(RC)
++    target_sources(saturn_host INTERFACE ${_src}/host/windows/saturn.rc)
++  else()
++    target_sources(saturn_host INTERFACE ${_src}/host/windows/saturn.manifest)
++  endif()
+ endif()
+ enable_language(C)
+ set(_m68k ${_rt}/third_party/musashi)
+--- a/runtime/src/host/windows/saturn.manifest
++++ b/runtime/src/host/windows/saturn.manifest
+@@ -4,6 +4,8 @@
+   <assemblyIdentity type="win32" name="saturn-recomp.saturn" version="1.0.0.0"/>
+   <application xmlns="urn:schemas-microsoft-com:asm.v3">
+     <windowsSettings>
++      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2</dpiAwareness>
++      <dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">true/pm</dpiAware>
+       <activeCodePage xmlns="http://schemas.microsoft.com/SMI/2019/WindowsSettings">UTF-8</activeCodePage>
+     </windowsSettings>
+   </application>
+--- /dev/null
++++ b/runtime/src/host/windows/saturn.rc
+@@ -0,0 +1,2 @@
++#include <windows.h>
++CREATEPROCESS_MANIFEST_RESOURCE_ID RT_MANIFEST "saturn.manifest"
+--- a/runtime/src/sound/sound.cpp
++++ b/runtime/src/sound/sound.cpp
+@@ -28,6 +28,7 @@
+ #include "host.h"
+ #include "video.h"
+ #include <cstdio>
++#include <cstdlib>
+ #include <vector>
+ extern "C" {
+ #include "m68k.h"
+--- a/port/main_stv.cpp
++++ b/port/main_stv.cpp
+@@ -53,6 +53,9 @@
+ #include <cstring>
+ #include <string>
+ #include <vector>
++#ifdef _WIN32
++#include "p413_frontend_win.h"
++#endif
+ 
+ // The runtime services this harness calls directly (declared in saturn.h / video.h):
+ void video_init();
+@@ -151,6 +154,17 @@
+     if (!p417::arguments(argc, argv)) return 0;
+ #endif
+     std::string cart, cartrom, out = ".", peek, shots, dump, watch, input, stvinput, wav;
++#ifdef _WIN32
++    win_console(argc, argv);
++    bool packaged = true, choose_roms = false;
++    std::string rom_dir;
++    for (int i=1; i<argc; ++i) if (!std::strcmp(argv[i], "--cart")) packaged = false;
++    const std::string data_dir = win_data_dir();
++    if (packaged) {
++        if (data_dir.empty()) { MessageBoxW(nullptr,L"Windows AppData is unavailable.",L"Die Hard Arcade",MB_OK|MB_ICONERROR); return 2; }
++        out = data_dir + "/shots";
++    }
++#endif
+     bool no_sound = false;          // --no-sound: leave the 68000 held (the old render-only behaviour)
+     bool spoof_sound_done = false;  // EXPERIMENT (--spoof-sound-done): NOP the 3 frame_sync_loop spins on 0x060E0DD8 bit7
+     uint32_t base = 0x06004000u, entry = 0x06005020u, sp = 0x06100000u;
+@@ -159,6 +173,9 @@
+     bool trace = false;
+     bool window = false, fullscreen = false, unpaced = false;  // --window: real time, for a player
+     bool launcher = false;
++#ifdef _WIN32
++    if (packaged) window = launcher = true;
++#endif
+     int scale = 0, stats = 0, internal_resolution = 0;
+     int net_host = 0, input_delay = 3; std::string net_join;
+     auto net_number = [](const char* text, int lo, int hi) {
+@@ -172,6 +189,10 @@
+     for (int i = 1; i < argc; ++i) {
+         const char* a = argv[i];
+         bool more = i + 1 < argc;
++#ifdef _WIN32
++        if (!std::strcmp(a,"--rom-dir") && more) { rom_dir=argv[++i]; continue; }
++        if (!std::strcmp(a,"--choose-roms")) { choose_roms=true; continue; }
++#endif
+         if (!std::strcmp(a, "--cart") && more) cart = argv[++i];
+         else if (!std::strcmp(a, "--base") && more) base = hx(argv[++i]);
+         else if (!std::strcmp(a, "--entry") && more) entry = hx(argv[++i]);
+@@ -213,6 +234,13 @@
+         else if (!std::strcmp(a, "--virtual-input") && more) virtual_input = argv[++i]; // with --window, tests: VB:BUTTONS,... on virtual gamepads (host.cpp)
+         else { std::fprintf(stderr, "usage: saturn_stv --cart FILE [--cartrom cart.bin] [--base H] [--entry H] [--sp H] [--vblanks N] [--trace] [--out DIR] [--peek A[:W],...] [--shots N,...] [--dump N,...] [--watch LO:HI] [--input VBLANK:BUTTONS,...] [--stvinput VB:START1,...] [--internal-resolution 1|2|3] [--netplay-host PORT | --netplay-join IPv4:PORT] [--input-delay 0..3] [--window [--launcher | --no-launcher] [--fullscreen] [--scale N] [--settings FILE] [--unpaced] [--stats S]]\n"); return 2; }
+     }
++#ifdef _WIN32
++    if (window) {
++        std::error_code error; std::filesystem::create_directories(win_path(out),error);
++        if (error) { MessageBoxW(nullptr,L"Cannot create the screenshot/output folder.",L"Die Hard Arcade",MB_OK|MB_ICONERROR); return 2; }
++    }
++    if (cart.empty() && !win_select_roms(rom_dir,choose_roms,data_dir,cart,cartrom)) return 0;
++#endif
+     if (cart.empty()) { std::fprintf(stderr, "saturn_stv: --cart is required\n"); return 2; }
+ 
+     // Config the reused runtime reads: headless (host_open returns true), virtual time,
+@@ -236,6 +264,9 @@
+     g_cfg.launch_info = "Program: " + cart + "\nCartridge: " + cartrom;
+     g_cfg.virtual_input = virtual_input;
+     g_cfg.settings = !settings.empty() || !window || sat_data_dir().empty() ? settings : sat_data_dir() + "/saturn-recomp/stv.ini";
++#ifdef _WIN32
++    if (packaged && settings.empty()) g_cfg.settings = data_dir + "/stv.ini";
++#endif
+     g_cfg.quick_path = !quick_path.empty() ? quick_path :
+         ((!g_cfg.settings.empty() && g_cfg.settings != "-") ? g_cfg.settings + ".diehard.quickstate" : out + "/diehard.quickstate");
+     g_cfg.rewind_seconds = rewind_seconds; g_cfg.rewind_at = rewind_at; g_cfg.rewind_frames = rewind_frames;
+--- a/port/stv.cmake
++++ b/port/stv.cmake
+@@ -74,3 +74,10 @@
+          "1 ICON \"${CMAKE_CURRENT_LIST_DIR}/assets/p413-icon.ico\"\n")
+     target_sources(saturn_stv PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/p413_icon.rc")
+ endif()
++
++# Windows GUI and ROM preparation are applied only in isolated staging.
++if(WIN32)
++    set_target_properties(saturn_stv PROPERTIES WIN32_EXECUTABLE TRUE OUTPUT_NAME "DieHardArcade")
++    target_sources(saturn_stv PRIVATE ${CMAKE_CURRENT_LIST_DIR}/p413_roms.c)
++    target_link_libraries(saturn_stv shell32 ole32 uuid)
++endif()

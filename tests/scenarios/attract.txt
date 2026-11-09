@@ -1,0 +1,7 @@
+# v1.00; no coin; full US single-cart attract cycle and return to FBI screen.
+# Columns: first last P1 P2 SYSTEM (inclusive VBlanks; hexadecimal held masks).
+# Omitted frames release everything. P1/P2: A=1 B=2 C=4 U=40 D=80 L=100 R=200.
+# SYSTEM: COIN1=1 COIN2=2 TEST=4 SERVICE=8 START1=10 START2=20.
+frames 9300
+expect scene=10
+expect attract_return

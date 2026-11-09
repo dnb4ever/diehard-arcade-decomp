@@ -1,0 +1,50 @@
+# Die Hard Arcade (Sega ST-V, SH-2 BE) - symbols for scene-81 off16 handler
+# SH2 addr = cart offset + 0x02000000; runtime(HWRAM) = SH2 + 0x03E04000.
+# Confidence: HIGH = decomp-proven (hand-verified vs m2c --asm, compiles clean, port-confirmed).
+
+# ---- the function decompiled this pass ----
+0x02206c88 func_02206c88       # HIGH  scene-81 "off16" per-frame handler (role: scene81_off16;
+                               #       descriptor off16 -> runtime task handler rt 0x0600ac88).
+                               #       NOT the round loop: it is the scene-81 3D VIEW-CAMERA /
+                               #       model-matrix intro-move driver. ABI handler(task);
+                               #       obj = task->unk8 (the camera object). 4-state cmp/eq
+                               #       switch on task->unk10 (no jump table):
+                               #        0 seed pose (obj.8=0x160000, obj.C=0x20000,
+                               #          obj.10=-0x100000, obj.24=0xC000, obj.26/28=0,
+                               #          obj.64=0x4000) -> 1
+                               #        1 dolly Z +0x8000/f, solve aim via func_022105ca, clamp
+                               #          at obj.10>=0x160000 -> 2
+                               #        2 crane Y +0xE000/f, Z -0x2000/f, clamp obj.C>=0x1E0000
+                               #          -> 3
+                               #        3 settled (==default): EMPTY BODY, terminal by design.
+                               #       Tail (all states): func_02214a7a(obj) rebuilds fwd/inv mtx.
+                               #       STALL at state 3 is the camera intro completing - no flag/
+                               #       actor/signal is awaited; nothing writes task->unk10 past 3.
+
+# ---- callees referenced (already named in symbols.txt; restated for this unit) ----
+0x022105ca func_022105ca       # HIGH  lookat_angles_xz_delta(dx,dy,dz,&out_a,&out_b) - aim-angle
+                               #       solver from a precomputed delta; here args are
+                               #       (0x160000-obj.X, -obj.Y, 0x160000-obj.Z, &obj.24, &obj.26).
+0x02214a7a func_02214a7a       # HIGH  mtx_build_fwd_inv(obj) - builds the active forward view
+                               #       matrix (cached g_06098aec) and inverse (cached g_06098abc)
+                               #       from obj position (obj+8..10) and Euler angles (obj+24..28);
+                               #       uses matrix stack *g_06098878 (+=0x30 push / -=0x30 pop).
+                               #       tail-called by func_02206c88 every frame.
+
+# ---- object/task field offsets used by func_02206c88 (camera object = task->unk8) ----
+# task+0x08  ptr   obj (the camera/model object this handler drives)
+# task+0x10  u8    handler state byte (0..3); only func_02206c88 writes it
+# obj +0x08  s32   camera X position (16.16); travel limit 0x160000
+# obj +0x0C  s32   camera Y position (16.16); seed 0x20000, craned up to 0x1E0000
+# obj +0x10  s32   camera Z position (16.16); seed -0x100000, dollied up to 0x160000 then eased
+# obj +0x24  s16   Euler angle A (set 0xC000; also lookat_angles out_a)
+# obj +0x26  s16   Euler angle B (lookat_angles out_b; re-zeroed after each solve)
+# obj +0x28  s16   Euler angle C (0)
+# obj +0x64  s32   = 0x4000 (aux field seeded at state 0)
+
+# ---- runtime / port cross-ref ----
+# rt 0x0600AC88  f_0600AC88  (port/recomp/p_dh_001.cpp) - recomp of func_02206c88; tail braf
+#                resolves to f_06018A7A = rt of func_02214a7a (mtx_build_fwd_inv). VERIFIED.
+# Port observation (STV_SM81DIAG=81): off16 node 060922A4, hdl 0600AC88, camera ent 060E13B0 -
+#   runs 0->1->2->3 then PARKED at state 3 the whole scene-81 lifetime (~VB5176..5484, one coin);
+#   ent.3c stays 0 (no busy bit). State 3 never advances; scene 81 is torn down by the director.

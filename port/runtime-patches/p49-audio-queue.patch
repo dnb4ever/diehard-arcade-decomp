@@ -1,0 +1,101 @@
+--- a/runtime/src/host/host.cpp
++++ b/runtime/src/host/host.cpp
+@@ -27,9 +27,9 @@
+ //
+ // Sound (sound.cpp) comes as it is made, in virtual time, into an SDL audio
+ // stream at 44 100 Hz: the window's pace keeps it level with the device.
+-// The stream starts 50 ms ahead; a chunk that would take it past 250 ms is
+-// dropped (the host's clock and the device's drift apart), and one that
+-// finds it empty (the host fell behind) is preceded by 50 ms of silence.
++// The device starts with the first samples, with a short safety lead. A small
++// host-only resampling correction keeps the device and raster clocks together;
++// a discontinuity discards stale sound instead of preserving a long delay.
+ #include "saturn.h"
+ #include "sound.h"
+ #include "video.h"
+@@ -183,8 +183,10 @@
+ 
+ // ---- sound ------------------------------------------------------------------------------------
+ static SDL_AudioStream* g_audio;
+-static const int kLead = 2205, kMax = 11025;    // frames: 50 ms ahead, 250 ms at most
+-static int g_underruns, g_dropped;
++static const int kLead = 1323, kMax = 3308;     // 30 ms lead, 75 ms discontinuity guard
++static int g_underruns, g_dropped, g_resyncs;
++static bool g_audio_started;
++static float g_audio_level = kLead;
+ 
+ static void audio_silence(int frames) {
+     std::vector<int16_t> z((size_t)frames * 2);
+@@ -196,23 +198,40 @@
+     SDL_AudioSpec spec = {SDL_AUDIO_S16, 2, 44100};
+     g_audio = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, nullptr, nullptr);
+     if (!g_audio) { sat_note("SDL audio: %s (no sound)", SDL_GetError()); return false; }
+-    audio_silence(kLead);
+     SDL_SetAudioStreamGain(g_audio, g_settings.number("audio", "volume") / 100.0f);
+-    SDL_ResumeAudioStreamDevice(g_audio);
++    SDL_AudioSpec device{};
++    int block = 0;
++    if (SDL_GetAudioDeviceFormat(SDL_GetAudioStreamDevice(g_audio), &device, &block))
++        sat_note("audio device: %d Hz, %d frames/block (%.1f ms); queue target 30 ms", device.freq, block,
++                 device.freq ? block * 1000.0 / device.freq : 0.0);
++    // Keep it paused during host/ROM initialization, which can take arbitrarily long.
+     return true;
+ }
+ 
+ void host_audio_push(const int16_t* lr, int frames) {
+     if (sat_resuming()) return;
+     int queued = [] { HostCall in("SDL_GetAudioStreamQueued"); return SDL_GetAudioStreamQueued(g_audio) / 4; }();
+-    if (queued + frames > kMax) { ++g_dropped; return; }
+-    if (queued == 0) { ++g_underruns; audio_silence(kLead); }
++    if (!g_audio_started) {
++        audio_silence(kLead);
++        g_audio_started = true;
++        SDL_ResumeAudioStreamDevice(g_audio);
++    } else if (queued + frames > kMax) {
++        // A boot burst, unpaced run or host-clock reset: keep the current sound.
++        // Repeatedly dropping NEW chunks would leave the old 250 ms backlog intact.
++        SDL_ClearAudioStream(g_audio);
++        audio_silence(kLead);
++        g_audio_level = kLead;
++        ++g_resyncs;
++    } else if (queued == 0) {
++        ++g_underruns;
++        audio_silence(kLead);
++    }
+     HostCall in("SDL_PutAudioStreamData");
+     SDL_PutAudioStreamData(g_audio, lr, frames * 4);
+ }
+ 
+ void host_audio_report() {
+-    if (g_audio) std::fprintf(stderr, "  audio stream: %d times empty, %d chunks dropped\n", g_underruns, g_dropped);
++    if (g_audio) std::fprintf(stderr, "  audio stream: %d times empty, %d chunks dropped, %d resyncs\n", g_underruns, g_dropped, g_resyncs);
+ }
+ 
+ // ---- the pad ----------------------------------------------------------------------------------
+@@ -1178,9 +1197,9 @@
+     }
+     double s = std::chrono::duration<double>(Clock::now() - since).count();
+     if (s < g_cfg.stats) return;
+-    sat_note("host: %.2f VBlanks/s over %.1f s (VB %llu), %d pictures left out; audio queued %d..%d ms, %d times empty, %d chunks dropped",
++    sat_note("host: %.2f VBlanks/s over %.1f s (VB %llu), %d pictures left out; audio queued %d..%d ms, %d times empty, %d chunks dropped, %d resyncs",
+              (double)(sat_vblanks() - from) / s, s, (unsigned long long)sat_vblanks(), g_skipped - skipped_from,
+-             g_audio ? least * 1000 / 44100 : 0, g_audio ? most * 1000 / 44100 : 0, g_underruns, g_dropped);
++             g_audio ? least * 1000 / 44100 : 0, g_audio ? most * 1000 / 44100 : 0, g_underruns, g_dropped, g_resyncs);
+     since = Clock::now();
+     from = sat_vblanks();
+     skipped_from = g_skipped;
+@@ -1242,4 +1261,13 @@
+         HostCall in("SDL_DelayPrecise");
+         SDL_DelayPrecise((Uint64)std::chrono::duration_cast<std::chrono::nanoseconds>(wait).count());
+     }
+-}
++    if (g_audio && g_audio_started) {
++        // Sample at a fixed raster phase, smooth device-buffer steps (~23 ms on
++        // some drivers), and correct only host playback. Guest samples/WAV/timing
++        // remain identical. +/-2% also accommodates SDL dummy's rounded sleep.
++        float queued = SDL_GetAudioStreamQueued(g_audio) / 4.0f;
++        g_audio_level += 0.05f * (queued - g_audio_level);
++        float ratio = std::clamp(1.0f + (g_audio_level - kLead) / (44100.0f * 2), 0.98f, 1.02f);
++        SDL_SetAudioStreamFrequencyRatio(g_audio, ratio);
++    }
++}

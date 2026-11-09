@@ -1,0 +1,34 @@
+{
+  "02203ec2": {
+    "class": "call-boundary",
+    "reason": "Not a supported single terminal call"
+  },
+  "02237e6c": {
+    "class": "call-boundary",
+    "reason": "Not a supported single terminal call"
+  },
+  "02219ad2": {
+    "class": "input-model",
+    "reason": "Stronger qualification reaches an unmapped nested pointer"
+  },
+  "02223d98": {
+    "class": "unrepresented-isr-device-path",
+    "reason": "v1.07 has device-path vectors, but the port bridge has no reviewed ISR/MMIO ordering contract"
+  },
+  "02244988": {
+    "class": "inlined-helper",
+    "reason": "C call is inlined in the port body; needs a mapped C helper boundary"
+  },
+  "02244874": {
+    "class": "live-bus-boundary",
+    "reason": "Scene 62 exceeds allowed transactional memory buses"
+  },
+  "022448d0": {
+    "class": "bus-boundary-family",
+    "reason": "Conservatively withheld after sibling live bus rejection"
+  },
+  "0224492c": {
+    "class": "bus-boundary-family",
+    "reason": "Conservatively withheld after sibling live bus rejection"
+  }
+}

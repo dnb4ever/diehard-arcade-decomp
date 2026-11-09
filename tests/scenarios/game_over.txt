@@ -1,0 +1,7 @@
+# Idle after starting: die, decline continue, watch GAME OVER and return to attract.
+frames 5600
+expect paid
+expect game_over
+expect attract_return
+600 605 0 0 01
+700 705 0 0 10

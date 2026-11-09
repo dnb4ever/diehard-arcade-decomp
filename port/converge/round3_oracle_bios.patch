@@ -1,0 +1,48 @@
+--- a/tools/decomp/difftest.py
++++ b/tools/decomp/difftest.py
+@@ -1052,7 +1052,18 @@
+  if(a>=0x00200000 && (uint64_t)a+n<=0x00300000) return low+a-0x00200000;
+  fprintf(stderr,"unmapped C memory %08x/%d\n",a,n); exit(73);
+ }
++#ifndef DT_BIOS_READONLY
++#define DT_BIOS_READONLY 0
++#endif
++#ifndef DT_BIOS_DATA
++#define DT_BIOS_DATA 0
++#endif
++static const unsigned char dt_bios_data[12]={DT_BIOS_DATA};
+ static u32 dt_read(u32 a,int n) {
++ u32 bios_a=(a>>28)==2 ? a&0x1fffffff : a;
++ if(DT_BIOS_READONLY && bios_a>=0x208u && (uint64_t)bios_a+n<=0x214u && (n==1 || n==2 || n==4)) {
++  u32 v=0;for(int i=0;i<n;++i)v=(v<<8)|dt_bios_data[bios_a-0x208+i];return v;
++ }
+  u32 normalized=a; if((normalized>>28)==2)normalized&=0x1fffffff;
+  if(normalized>=0x06000000u && normalized<0x08000000u)normalized=0x06000000u+((normalized-0x06000000u)&0xfffffu);
+  for(unsigned j=0;j<sizeof dt_sequences/sizeof *dt_sequences;j++)if(dt_sequences[j].count && dt_sequences[j].target==normalized){
+@@ -1366,13 +1377,26 @@
+     return _ROM[0]
+ 
+ 
++# Convergence proposal: explicitly opt in the immutable HLE data span.
++# Stock bios_rom_read supplies zero for physical 00000208..00000213.
++# Cartridge instructions 06018A46..4A and 06018A56..5A prove these loads.
++BIOS_READONLY = False
++BIOS_DATA = bytes(12)
+ class GuestMemory(sh2emu.Memory):
+     """HWRAM, low RAM and the read-only cart ROM (A-bus CS0); nothing else."""
+     def _find(self, addr, size):
+         return super()._find(ram_address(addr), size)
+ 
++    def read(self, addr, size):
++        a = ram_address(addr)
++        if BIOS_READONLY and 0x208 <= a and a+size <= 0x214 and size in (1,2,4):
++            return int.from_bytes(BIOS_DATA[a-0x208:a-0x208+size], 'big')
++        return super().read(addr,size)
++
+     def write(self, addr, size, value):
+         a = ram_address(addr)
++        if BIOS_READONLY and a < 0x214 and a+size > 0x208:
++            raise sh2emu.MemoryError_('write to read-only BIOS data')
+         if ROM_BASE <= a < ROM_BASE + len(cart_rom()):
+             raise sh2emu.MemoryError_('write to read-only cart ROM at %08X' % (addr & M32))
+         super().write(addr, size, value)

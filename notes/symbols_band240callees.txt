@@ -1,0 +1,119 @@
+# symbols_band240callees.txt - worker: band240callees
+# Undone callees + 0x02402c0 blob siblings in the 0x240000-0x248000 band.
+# Appended discoveries only; notes/symbols.txt left untouched per task.
+# Every SHIPPED TU compiles `gcc -O1 -c -Wall -Wextra -I project/src_functional`
+# with ZERO output.
+
+# ================================================================
+# SHIPPED - named callee from the task list
+# ================================================================
+0x022469f2 func_022469f2   # void(obj). "kick-to-walk / reset counters" shared tail;
+#   real fn [0x2469f2, 0x246ab8) (fn.py "code 0xc6"; 0x152 extent trails into
+#   func_02246ab8's prologue - bounded at the rts epilogue 0x246ab4).
+#   if (M32(0xE4)==6 && (M32(0x8C)&0x3FFFF)==0 && M8(0x6A)<3) {
+#       M32(0xE0)|=0x01000000; actor_enter_statewalk(obj); return; }  (braf tail ->0x241e3c)
+#   else: if (M16(0x5A)!=M16(0x148)) {M8(0x41)=1; M16(0x5C)=M16(0x148);}
+#       M32(0xD4)=0; M32(0x84)=1; M32(0x88)=0;
+#       M32(0xE0)=(M32(0xE0)&0x00020320)|1; M32(0x108)=0; M32(0xC4)=2;
+#       M32(0xC8)=func_02210020()&7;
+#   NOTE: most callers spell it func_022469f2; a few older TUs use the 7-hex
+#   func_02469f2 (missing a leading 0) - a pre-existing inconsistency, untouched.
+
+# ================================================================
+# SHIPPED - func_02402c0 blob siblings (per-state actor setup handlers,
+#   blob [0x2402c0, 0x241556)). All take (void *obj, s32 *out). r5(out) is
+#   usually written then forwarded to a facing-resolve tail. r4=obj.
+#   Two prologue variants: (A) push-first  `mov.l r14,@-; mov #100,r0; ...`
+#                          (B) scratch-first `mov #100,r0; mov.l pool,r3; mov.l r14,@-; ...`
+#   so the real entry of a (B) function is TWO instructions before its push.
+# ================================================================
+0x0224043c func_0224043c   # (A) [0x24043c,0x240492). func_022ab18(obj,M16(0x64));
+#   actor_motion_init(obj); 0x84=0x1000; 0x108=1;
+#   if(func_0224158c(obj,6)==0){0xBC=-1; 0xE0|=0x08000000;} *out=2;
+#   -> func_0224124e(obj,out,3) (bra tail).
+0x02240492 func_02240492   # (B) [0x240492,0x2404ce). func_022ab18(obj,M16(0x64));
+#   func_227704(obj); 0x108=1; 0x84=0x1000; *out=1; -> func_0224124e(obj,out,1).
+0x022404ce func_022404ce   # (A) [0x2404ce,0x240542). 0xE0|=0x400000;
+#   if(g_06096c58[(s8)M8(0x34)]>0x8000){ func_02402c0(obj,out); return; }  (signed)
+#   func_022ab18(obj,M16(0x64)); func_022417a4(obj);
+#   base=(M32(0x38)&0x400)?0x0608D898:0x06086304; M16(0x5C)=*(s16*)(base+(M8(0x4D)&1)*2);
+#   0x84=0x1000; *out=3; (plain rts, no tail).
+0x02240588 func_02240588   # (A) [0x240588,0x240612). func_022ab18(obj,M16(0x64));
+#   a=(u16)rec_delta_angle_neg(obj);
+#   if(0x4000<=a&&a<0xC000){M8(0x44)=0; M16(0x26)=0xC000;} else {M8(0x44)=1; M16(0x26)=0x4000;}
+#   if(M16(0xBA)&0x40){ M16(0x5C)=g_06086304[0]; 0x84=0x1000; *out=3; return; }
+#   0xE0|=0x40000; 0x108=1; M8(0x49)=1; 0x84=0x1000; *out=1; -> func_0224124e(obj,out,0).
+0x02240612 func_02240612   # leaf [0x240612,0x240622). no frame. g_060e0f2c[M32(0x94)]=1;
+#   -> func_02402c0(obj,out) (bra tail). (reached by call/branch; prev sibling rts's.)
+0x02240a4a func_02240a4a   # (B) [0x240a4a,0x240a7a). func_022ab18(obj,M16(0x64));
+#   if(M32(0xE0)&0x10000) func_227704(obj); -> func_02241324(obj,out) (bra tail).
+0x02240a7a func_02240a7a   # (B) [0x240a7a,0x240ae0). func_022ab18(obj,M16(0x64));
+#   func_022417a4(obj); func_02241324(obj,out) (bsr); 0xE0|=0x400000; rts.
+0x02240ae0 func_02240ae0   # (A) [0x240ae0,0x240b2e). func_022ab18(obj,M16(0x64));
+#   a=(u16)rec_delta_angle_neg(obj);
+#   if(0x4000<=a&&a<0xC000){M8(0x44)=0; M16(0x26)=0xC000;} else {M8(0x44)=1; M16(0x26)=0x4000;}
+#   -> func_02241324(obj,out) (bra tail).
+0x02240b2e func_02240b2e   # (B) [0x240b2e,0x240b5a). func_022ab18(obj,M16(0x64));
+#   g_060e0f2c[M32(0x94)]=1; -> func_02241324(obj,out) (bra tail).
+0x02240b5a func_02240b5a   # (B) [0x240b5a,0x240b8a). func_022ab18(obj,M16(0x64));
+#   if(M32(0xE0)&0x10000) func_227704(obj); -> func_022413e6(obj,out) (bra tail).
+0x02240b8a func_02240b8a   # (B) [0x240b8a,0x240bba). func_022ab18(obj,M16(0x64));
+#   func_022417a4(obj); func_022413e6(obj,out) (bsr); 0xE0|=0x400000; rts.
+
+# ================================================================
+# CORRECTIONS / NOT-A-FUNCTION (deferred, with reason)
+# ================================================================
+0x02245bcc func_02245bcc   # CORRECTION: ALREADY SHIPPED as func_02245bbe (file
+#   02245bbe.c). The census entry 0x245bbe is pool-contaminated (7 pool words);
+#   the real prologue `mov.l r14,@-r15` is at 0x245bcc and the shipped body is this
+#   function. CALLERS that declare `extern s32 func_245bcc(...)` (e.g. 02246ab8.c)
+#   will NOT link against symbol func_02245bbe -> needs a rename/alias to resolve.
+0x02244e50 (not a function) # 2-insn `rts; mov.l @r15+,r14` at [0x244e50,0x244e54)
+#   with NO prologue (pops r14 never pushed here). A shared epilogue/return tail,
+#   not a standalone callable function. The task's "0x02244e50?" is resolved: skip.
+0x022416ac (not a function) # pool-contaminated census entry; disassembles as
+#   `.byte 0xff,0xfd`. Real entry is 0x2416c4 = func_022416c4 (actor_facing_clamp),
+#   ALREADY SHIPPED. 0x2416ac is its 0x18-byte trailing-pool offset, not a function.
+
+# ================================================================
+# DEFERRED - genuine but out-of-budget this pass (decoded enough to flag)
+# ================================================================
+0x02240054 func_02240054   # standalone pre-blob fn [0x240054,0x2401d6) (census
+#   0x24003e is pool-contaminated -> real 0x240054). Large (~190 insn), jsr through
+#   a fn-ptr table at 0x060918a0, func_215f6c PIC trigger, and many cross-band calls
+#   (0x245c88,0x22ca54,0x23ed94,0x20ff54,0x23e4a0,0x23cbb0,0x23a924,0x23edce,
+#   0x2418fa,0x241b2c). Needs its own careful pass.
+# 0x240622..0x24124e blob-sibling cluster (DEFERRED): ~20 more siblings, but this
+#   run has MID-FUNCTION shared literal pools and heavy tail-merging (functions bra
+#   into the middle of neighbours: 0x240748, 0x240d86, 0x240c4a, 0x240c32, 0x240bf2,
+#   0x240e02, 0x240de2, etc.). Each must be bounded individually before shipping to
+#   avoid silent-wrong splicing. Known clean entries still to do include the big
+#   0x240622 (pushes r8..r13) and the 0x240bba (rec_delta_angle_neg + mid-pool) run.
+
+# ================================================================
+# callees referenced (extern; all bsrf/braf resolved via braf_resolve, no phantoms)
+# ================================================================
+0x0222ab18 func_022ab18       # void(obj, s32 amount). per-frame update; arg=M16(obj,0x64)
+0x00227704 func_227704        # void(obj)
+0x02210020 func_02210020      # s32(void). rng_next; NO args
+0x0215f6c  func_215f6c        # void(s32 code). PIC trigger
+0x022415ee actor_motion_init  # void(obj)  [0x022415ee, shipped]
+0x0224158c func_0224158c      # s32(obj, s32 limit)  [shipped]
+0x022417a4 func_022417a4      # void(obj)  [shipped]
+0x022417ea func_022417ea      # void(obj)  [shipped]
+0x0224124e func_0224124e      # void(obj, s32 *out, s32 arg). facing-resolve tail [shipped]
+0x02241324 func_02241324      # void(obj, s32 *out). facing-resolve tail [shipped]
+0x022413e6 func_022413e6      # void(obj, s32 *out). random-angle facing tail [shipped]
+0x022414ee func_022414ee      # void(obj, s32 *out). facing-init tail [shipped]
+0x02244df2 rec_delta_angle_neg # s32(obj). -angle(record[4..5]-record[0..1]) [shipped]
+0x022402c0 func_02402c0       # void(obj, s32 *out). expire/lock-on check [shipped]
+0x02241e3c actor_enter_statewalk # void(obj) [0x02241e3c, shipped]
+
+# ================================================================
+# globals referenced
+# ================================================================
+0x06096c58 g_06096c58       # s32 table, idx (s8)obj->0x34 (func_022404ce; cmp >0x8000)
+0x0608d898 g_0608D898       # s16 facing table (func_022404ce, obj->0x38&0x400 set)
+0x06086304 g_06086304       # s16 facing table (func_022404ce default; func_02240588 [0])
+0x060e0f2c g_060e0f2c       # s32 flag table, idx obj->0x94 (func_02240612/02240b2e)
+0x060918a0 g_060918a0       # fn-ptr table jsr'd by func_02240054 (idx (obj->0x82)&0x3F)

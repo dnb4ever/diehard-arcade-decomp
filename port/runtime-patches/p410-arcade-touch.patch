@@ -1,0 +1,55 @@
+--- a/runtime/src/host/host.cpp
++++ b/runtime/src/host/host.cpp
+@@ -683,13 +683,14 @@
+ static int g_out_w, g_out_h;                    // the window's size in pixels, as last drawn
+ 
+ static bool touch_shown() {
++    if (g_cfg.arcade) return false;
+     std::string mode = g_settings.get("touch", "controls");
+     if (mode == "on") return true;
+     if (mode == "off") return false;
+     return g_touchscreen && g_pads.empty();
+ }
+ 
+-static bool menu_button_shown() { return g_touchscreen && g_settings.flag("touch", "menu_button"); }
++static bool menu_button_shown() { return !g_cfg.arcade && g_touchscreen && g_settings.flag("touch", "menu_button"); }
+ 
+ // The window's pixels to a density-independent pixel: Android's density, 1 on most desktops.
+ static float display_scale() {
+@@ -773,15 +774,15 @@
+     std::vector<std::pair<MenuId, Control>> game = {{M_RESUME, Control::Action}};
+     if (!g_cfg.after.empty()) game.push_back({M_SAVES, Control::Action});
+     game.push_back({M_QUIT, Control::Action});
+-    const std::vector<std::pair<MenuId, Control>> touch = {
++    const std::vector<std::pair<MenuId, Control>> touch = g_cfg.arcade ? std::vector<std::pair<MenuId, Control>>{} : std::vector<std::pair<MenuId, Control>>{
+         {M_PAD, Control::Choice}, {M_SIZE, Control::Slider}, {M_STYLE, Control::Choice}, {M_MENU_BUTTON, Control::Switch}};
+     float tall = (float)std::max(game.size(), touch.size());
+     // two columns, or one, whichever is drawn bigger; never bigger than density-independent pixels make it
+     float dp = display_scale(), w = 0.94f * g_out_w, h = 0.94f * g_out_h;
+     float w2 = 2 * pad + 2 * column + between, h2 = 2 * pad + title + section + tall * (row + gap);
+-    float w1 = 2 * pad + column, h1 = 2 * pad + title + 2 * section + (float)(game.size() + touch.size()) * (row + gap) + gap;
++    float w1 = 2 * pad + column, h1 = 2 * pad + title + (g_cfg.arcade ? section : 2 * section) + (float)(game.size() + touch.size()) * (row + gap) + gap;
+     float k2 = std::min({dp, w / w2, h / h2}), k1 = std::min({dp, w / w1, h / h1});
+-    bool two = k2 >= k1;
++    bool two = !g_cfg.arcade && k2 >= k1;
+     float u = two ? k2 : k1;
+     MenuLayout l;
+     l.u = u;
+@@ -789,7 +790,7 @@
+     l.panel = {(g_out_w - pw) / 2, (g_out_h - ph) / 2, pw, ph};
+     l.title_y = l.panel.y + (pad + title / 2) * u;
+     float top = l.panel.y + (pad + title) * u;
+-    for (int c = 0; c < 2; ++c) {
++    for (int c = 0; c < (g_cfg.arcade ? 1 : 2); ++c) {
+         auto& items = c == 0 ? game : touch;
+         float x = l.panel.x + (pad + (two ? c * (column + between) : 0)) * u;
+         float y = two || c == 0 ? top : top + (section + (float)game.size() * (row + gap) + gap) * u;
+@@ -1107,7 +1108,7 @@
+     ui_fill_rounded(l.panel, 22 * u, panel);
+     ui_text(l.panel.x + 20 * u, l.title_y, 26 * u, "Paused", text, true, UiAlign::Left);
+     ui_text(l.panel.x + l.panel.w - 20 * u, l.title_y, 13 * u, "Back to resume", muted, false, UiAlign::Right);
+-    for (int c = 0; c < 2; ++c)
++    for (int c = 0; c < (g_cfg.arcade ? 1 : 2); ++c)
+         ui_text(l.column_x[c], l.section_y[c], 12 * u, c == 0 ? "GAME" : "TOUCH CONTROLS", muted, true, UiAlign::Left);
+     g_menu_at = std::clamp(g_menu_at, 0, (int)l.rows.size() - 1);
+     for (size_t i = 0; i < l.rows.size(); ++i) {

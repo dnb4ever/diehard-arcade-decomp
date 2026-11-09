@@ -1,0 +1,23 @@
+# symbols discovered/used for 0x0222ef38 (actor_multi_hitbox_sweep_test)
+# NOT merged into notes/symbols.txt (left untouched per task rules).
+
+# --- target ---
+0x0222ef38 func_0222ef38 actor_multi_hitbox_sweep_test  # scans 10 attacker sub-hitboxes vs target swept segment; returns 1 on first hit, registers it. ABI (r4=atk,r5=tgt). Sibling/specialisation of hit_check_swept 0x0222f1d0.
+
+# --- helpers (already named elsewhere; listed for reference) ---
+0x022132c4 func_022132c4 vec3_dot_fixed     # 16.16 dot of two s32[3] (PC-rel via mova+add anchor)
+0x022131c8 func_022131c8 fixmul_16_16       # signed 16.16 multiply (PC-rel via mova+add anchor)
+0x02213234 func_02213234 sh2_hw_divide      # num/den
+0x0221330c func_0221330c bounds_overlap_margin  # s32 (s32*a,s32*b,s32*c,s32 margin): 3-axis range test
+0x002107dc func_02107dc  angle_from_2d      # 5 args (4 reg + 1 stack &angle)
+0x0021055c func_021055c  lookat_angles_xz   # 8 args (4 reg + 4 stack: by,bz,&ang0,&ang1)
+0x00215f6c func_02215f6c sound_queue_push
+
+# --- globals referenced ---
+0x0607C424 g_0607C424   # base of 0x40-byte candidate-radius records; radp = base + atk.5E*0x40 + 0x24 (s32)
+0x06097D58 g_06097D58   # per-slot anim/pos recs (0x100/row); rec = base + atk.34*0x100 + 0x90 (candidate xyz, 16B stride)
+0x06097438 g_06097438   # broad-phase test vector b (passed as arg2 to bounds_overlap_margin)
+0x06097444 g_06097444   # broad-phase test vector a (passed as arg1 to bounds_overlap_margin)
+0x06053F04 g_06053F04   # s16[] sfx-id table, indexed by (s8)tgt.5C
+0x060E0DDC g_060E0DDC   # s32 sfx-enable gate (nonzero -> fire sfx)
+0x0604EBE4 g_0604ebe4   # s32[] per-slot faction/flag words, indexed by tgt.5D; OR'd into tgt.68

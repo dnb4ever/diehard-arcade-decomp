@@ -1,0 +1,745 @@
+--- a/runtime/runtime.cmake
++++ b/runtime/runtime.cmake
+@@ -18,7 +18,7 @@
+     ${_src}/machine/machine.cpp ${_src}/machine/bios.cpp ${_src}/machine/mmio.cpp ${_src}/machine/tasks.cpp
+     ${_src}/machine/onchip.cpp ${_src}/machine/scu.cpp ${_src}/machine/scudsp.cpp ${_src}/machine/smpc.cpp
+     ${_src}/machine/cdrom.cpp ${_src}/machine/cdblock.cpp ${_src}/machine/agent.cpp ${_src}/machine/state.cpp
+-    ${_src}/machine/player.cpp ${_src}/machine/modem.cpp ${_src}/machine/modem_tcp.cpp
++    ${_src}/machine/netplay.cpp ${_src}/machine/player.cpp ${_src}/machine/modem.cpp ${_src}/machine/modem_tcp.cpp
+     ${_src}/video/video.cpp ${_src}/video/vdp1.cpp ${_src}/video/vdp2.cpp ${_src}/video/png.cpp ${_src}/video/movie.cpp
+     ${_src}/sound/sound.cpp ${_src}/sound/scsp.cpp)
+ option(SATURN_NO_SDL "build the headless host even if SDL3 is installed" OFF)
+--- a/runtime/src/host/host.cpp
++++ b/runtime/src/host/host.cpp
+@@ -41,6 +41,7 @@
+ #include "settings.h"
+ #include "touch_pad.h"
+ #include "state.h"
++#include "netplay.h"
+ #include "player.h"
+ #include "uinput_pad.h"
+ #include "unplugs.h"
+@@ -62,7 +63,7 @@
+ static Clock::time_point g_base;                // host time of virtual time 0
+ static unsigned g_stats_generation;
+ static bool g_rewind_key, g_forward_key;
+-bool host_fast_forward() { return g_cfg.arcade && (g_forward_key || g_cfg.fast_forward); }
++bool host_fast_forward() { return !netplay_active() && g_cfg.arcade && (g_forward_key || g_cfg.fast_forward); }
+ static bool g_paced;
+ 
+ uint16_t host_pad(int slot) { return g_buttons[slot]; }
+@@ -115,6 +116,7 @@
+ 
+ bool host_wants_frame() {
+     if (!g_win) return false;
++    if (netplay_replaying()) return true; // The final recovered field must be shown.
+     if (sat_resuming()) return sat_vblanks() % 30 == 0;
+     if (host_fast_forward()) return sat_vblanks() % 4 == 0;
+     if (g_paced && g_skipped_run < (g_cfg.rewind_seconds ? 5 : 2) && g_settings.flag("display", "frameskip") &&
+@@ -196,7 +198,7 @@
+     SDL_free(SDL_GetTouchDevices(&touch_devices));
+     g_touchscreen = touch_devices > 0;
+     g_base = Clock::now();
+-    g_paced = !g_cfg.realtime && !g_cfg.unpaced;
++    g_paced = netplay_active() || (!g_cfg.realtime && !g_cfg.unpaced);
+     return true;
+ }
+ 
+@@ -212,6 +214,7 @@
+ static int g_underruns, g_dropped, g_resyncs;
+ static bool g_audio_started;
+ static float g_audio_level = kLead;
++static int audio_lead() { return netplay_active() ? 2646 : kLead; } // 60 ms during netplay
+ 
+ static void audio_silence(int frames) {
+     std::vector<int16_t> z((size_t)frames * 2);
+@@ -237,10 +240,11 @@
+     if (sat_resuming() || host_fast_forward()) return;
+     int queued = [] { HostCall in("SDL_GetAudioStreamQueued"); return SDL_GetAudioStreamQueued(g_audio) / 4; }();
+     if (!g_audio_started) {
+-        audio_silence(kLead);
++        audio_silence(audio_lead());
++        g_audio_level = float(audio_lead());
+         g_audio_started = true;
+         SDL_ResumeAudioStreamDevice(g_audio);
+-    } else if (queued + frames > kMax) {
++    } else if (!netplay_active() && queued + frames > kMax) {
+         // A boot burst, unpaced run or host-clock reset: keep the current sound.
+         // Repeatedly dropping NEW chunks would leave the old 250 ms backlog intact.
+         SDL_ClearAudioStream(g_audio);
+@@ -249,7 +253,7 @@
+         ++g_resyncs;
+     } else if (queued == 0) {
+         ++g_underruns;
+-        audio_silence(kLead);
++        audio_silence(audio_lead());
+     }
+     HostCall in("SDL_PutAudioStreamData");
+     SDL_PutAudioStreamData(g_audio, lr, frames * 4);
+@@ -914,7 +918,7 @@
+ }
+ 
+ static void menu_open() {
+-    if (g_menu_open || g_quitting) return;
++    if (netplay_active() || g_menu_open || g_quitting) return;
+     g_menu_open = true;
+     g_menu_at = 0;
+     g_fingers.clear();
+@@ -967,7 +971,7 @@
+         SDL_Scancode k = e.key.scancode;
+         if (k == SDL_GetScancodeFromName(g_settings.get("player", "rewind_key").c_str())) g_rewind_key = true;
+         if (g_cfg.arcade && k == SDL_GetScancodeFromName(g_settings.get("player", "fast_forward_key").c_str())) g_forward_key = true;
+-        if (g_cfg.arcade && !e.key.repeat && k == SDL_GetScancodeFromName(g_settings.get("player", "fast_forward_toggle").c_str())) {
++        if (!netplay_active() && g_cfg.arcade && !e.key.repeat && k == SDL_GetScancodeFromName(g_settings.get("player", "fast_forward_toggle").c_str())) {
+             g_cfg.fast_forward = !g_cfg.fast_forward; break;
+         }
+         if (quick_available() && !e.key.repeat && (k == SDL_SCANCODE_F5 || k == SDL_SCANCODE_F7)) {
+@@ -1236,6 +1240,8 @@
+     }
+     static std::string last_title;
+     if (title != last_title) { SDL_SetWindowTitle(g_win, title.c_str()); last_title = title; }
++    if (netplay_active())
++        ui_text(16, 42, 14, netplay_status(), rgba(.8f, .95f, 1, 1), true, UiAlign::Left);
+     if (!player_movie_status().empty())
+         ui_text(g_out_w-16.0f, 22, 14, player_movie_status(), rgba(.8f, .9f, 1, 1), true, UiAlign::Right);
+     if (host_fast_forward()) ui_text(16, 22, 16, "FAST FORWARD (audio muted)", rgba(1, .85f, .3f, 1), true, UiAlign::Left);
+@@ -1416,9 +1422,16 @@
+         // remain identical. +/-2% also accommodates SDL dummy's rounded sleep.
+         float queued = SDL_GetAudioStreamQueued(g_audio) / 4.0f;
+         g_audio_level += 0.05f * (queued - g_audio_level);
+-        float ratio = std::clamp(1.0f + (g_audio_level - kLead) / (44100.0f * 2), 0.98f, 1.02f);
++        float ratio = std::clamp(1.0f + (g_audio_level - audio_lead()) / (44100.0f * 2), 0.98f, 1.02f);
+         SDL_SetAudioStreamFrequencyRatio(g_audio, ratio);
+     }
++}
++
++void host_net_wait() {
++    if (!g_win) return;
++    events();
++    static auto next = Clock::now();
++    if (Clock::now() >= next) { draw(); next = Clock::now() + std::chrono::milliseconds(16); }
+ }
+ 
+ void host_quick_reset() {
+--- a/runtime/src/host/host_null.cpp
++++ b/runtime/src/host/host_null.cpp
+@@ -27,5 +27,6 @@
+ bool host_rewind_held() { return false; }
+ void host_rewind_frame() {}
+ void host_quick_reset() {}
++void host_net_wait() {}
+ 
+ void host_player_error(const std::string&) {}
+--- a/runtime/src/host/launcher.cpp
++++ b/runtime/src/host/launcher.cpp
+@@ -8,6 +8,7 @@
+ #include "host.h"
+ #include "state.h"
+ #include "player.h"
++#include "netplay.h"
+ #include "host_sdl.h"
+ #include "video.h"
+ #include "imgui.h"
+@@ -121,7 +122,24 @@
+     ImGui::EndDisabled();
+     ImGui::TextWrapped("These buttons start play. Record ends and writes the file when you quit. Rewind replaces the abandoned future. Quick load is unavailable while an input file is active.");
+ }
++void netplay_features() {
++    int mode = g_cfg.netplay_host ? 1 : !g_cfg.netplay_join.empty() ? 2 : 0;
++    const char* modes[] = {"Offline", "Host (player 1)", "Join (player 2)"};
++    static char address[128] = "127.0.0.1:7845";
++    static int port = 7845;
++    if (!g_cfg.netplay_join.empty()) std::snprintf(address, sizeof address, "%s", g_cfg.netplay_join.c_str());
++    if (g_cfg.netplay_host) port = g_cfg.netplay_host;
++    ImGui::Combo("Connection", &mode, modes, 3);
++    if (mode == 1) { ImGui::InputInt("UDP port", &port); port = std::clamp(port, 1, 65535); }
++    if (mode == 2) ImGui::InputText("Host IPv4:port", address, sizeof address);
++    ImGui::SliderInt("Input delay", &g_cfg.input_delay, 0, 3, "%d fields");
++    g_cfg.netplay_host = mode == 1 ? port : 0;
++    g_cfg.netplay_join = mode == 2 ? address : "";
++    ImGui::TextWrapped("Press Start on both machines. Forward the host UDP port (default 7845). No NAT traversal or relay. Both players use their local P1 controls; the guest drives P2.");
++    ImGui::TextWrapped("Requires matching source/ROMs and input delay. Uses host settings, 1x, an 8-field rollback cap and confirmed audio. Rewind, quick states, movies, pause, turbo and cheats are disabled.");
++}
+ void player_features(bool running = false) {
++    if (running && netplay_active()) { ImGui::TextWrapped("Netplay locks gameplay settings until the session ends."); return; }
+     if (ImGui::BeginTabBar("feature-kind")) {
+         if (ImGui::BeginTabItem("Time / autofire")) { time_features(); ImGui::EndTabItem(); }
+         if (ImGui::BeginTabItem("Training / cheats", nullptr, SDL_getenv("SATURN_TRAINING_SHOT") ? ImGuiTabItemFlags_SetSelected : 0)) {
+@@ -336,7 +354,7 @@
+             ImGui::SameLine();
+             std::error_code error;
+             bool saved = std::filesystem::exists(cfg_.quick_path, error);
+-            ImGui::BeginDisabled(!saved);
++            ImGui::BeginDisabled(!saved || netplay_active());
+             if (ImGui::Button("Load quick save")) { cfg_.quick_start = true; started_ = true; }
+             ImGui::EndDisabled();
+         }
+@@ -352,6 +370,9 @@
+             if (ImGui::BeginTabItem("Game / controls")) ImGui::EndTabItem();
+             if (ImGui::BeginTabItem("Player features / training", nullptr, SDL_getenv("SATURN_LAUNCHER_FEATURES") ? ImGuiTabItemFlags_SetSelected : 0)) {
+                 feature_tab = true; player_features(); ImGui::EndTabItem();
++            }
++            if (ImGui::BeginTabItem("Netplay", nullptr, SDL_getenv("SATURN_NETPLAY_SHOT") ? ImGuiTabItemFlags_SetSelected : 0)) {
++                feature_tab = true; netplay_features(); ImGui::EndTabItem();
+             }
+             ImGui::EndTabBar();
+         }
+--- a/runtime/src/machine/bios.cpp
++++ b/runtime/src/machine/bios.cpp
+@@ -21,6 +21,7 @@
+ #include "saturn.h"
+ #include "host.h"
+ #include "player.h"
++#include "netplay.h"
+ #include "state.h"
+ #include <cctype>
+ #include <climits>
+@@ -436,9 +437,13 @@
+     // timeline's presses; STV_AUTOPLAY then plays P1 only while the player leaves P1's controls alone.
+     uint16_t live_raw[2], live_sys;
+     host_stv_panel(live_raw, live_sys);
+-    raw_controls[0] |= live_raw[0];
+-    raw_controls[1] |= live_raw[1];
+-    if (!player_movie_playing()) stv_autoplay(vb, raw_controls[0]);
++    if (netplay_active() && !g_cfg.netplay_join.empty()) {
++        raw_controls[1] |= live_raw[0];
++        live_sys = uint16_t((live_sys & 0x11) << 1);
++    } else {
++        raw_controls[0] |= live_raw[0]; raw_controls[1] |= live_raw[1];
++    }
++    if (!netplay_active() && !player_movie_playing()) stv_autoplay(vb, raw_controls[0]);
+ 
+ 
+     // The BIOS system-switch record at 0x06000728 (fifth raw input record). The real BIOS
+@@ -455,7 +460,8 @@
+         if (event.kind == 8) sys |= 0x04; // Physical TEST switch (still exits to unimplemented BIOS menus).
+     }
+     sys |= live_sys;
+-    player_input(vb, raw_controls, sys);
++    if (netplay_active()) netplay_panel(vb, raw_controls, sys);
++    else player_input(vb, raw_controls, sys);
+     g_stv_physical_raw[0] = raw_controls[0];
+     g_stv_physical_raw[1] = raw_controls[1];
+     g_stv_physical_sys = sys;
+--- a/runtime/src/machine/machine.cpp
++++ b/runtime/src/machine/machine.cpp
+@@ -36,6 +36,7 @@
+ #include "host.h"
+ #include "video.h"
+ #include "state.h"
++#include "netplay.h"
+ #include "player.h"
+ #include <atomic>
+ #include <chrono>
+@@ -579,7 +580,7 @@
+     progress_due();
+     state_poll();
+     if (g_slave_on && !g_slave_idle) to_slave();
+-    if (g_cfg.stop_vblanks && sat_vblanks() >= g_cfg.stop_vblanks) sat_stop("VBlank limit");
++    if (!netplay_active() && g_cfg.stop_vblanks && sat_vblanks() >= g_cfg.stop_vblanks) sat_stop("VBlank limit");
+ }
+ 
+ // The generated P4.15 pass calls this only at the fingerprinted 060051EE
+--- /dev/null
++++ b/runtime/src/machine/netplay.cpp
+@@ -0,0 +1,349 @@
++#include "saturn.h"
++#include "netplay.h"
++#include "state.h"
++#include "host.h"
++#include "video.h"
++#include <algorithm>
++#include <array>
++#include <chrono>
++#include <cstring>
++#include <ctime>
++#include <deque>
++#include <map>
++#include <random>
++#include <thread>
++#ifdef _WIN32
++#include <winsock2.h>
++#include <ws2tcpip.h>
++using Socket = SOCKET;
++static constexpr Socket none = INVALID_SOCKET;
++static void close_socket(Socket s) { closesocket(s); }
++#else
++#include <arpa/inet.h>
++#include <fcntl.h>
++#include <sys/socket.h>
++#include <unistd.h>
++using Socket = int;
++static constexpr Socket none = -1;
++static void close_socket(Socket s) { close(s); }
++#endif
++namespace {
++using Bytes = std::vector<uint8_t>;
++using Clock = std::chrono::steady_clock;
++uint64_t millis() { return std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now().time_since_epoch()).count(); }
++void put(Bytes& b, uint64_t v, int n=8) { for (int i=0;i<n;++i) b.push_back(uint8_t(v>>(i*8))); }
++uint64_t get(const Bytes& b, size_t at, int n=8) { uint64_t v=0; for (int i=0;i<n;++i) v |= uint64_t(b.at(at+i))<<(i*8); return v; }
++uint32_t crc(const uint8_t* p, size_t n, uint32_t c=0) {
++    static const auto table=[] { std::array<uint32_t,256> t{}; for(unsigned i=0;i<256;++i) { uint32_t x=i; for(int k=0;k<8;++k) x=(x>>1)^((x&1)?0xedb88320u:0); t[i]=x; } return t; }();
++    c=~c; for(size_t i=0;i<n;++i) c=table[(c^p[i])&255]^(c>>8); return ~c;
++}
++struct Panel { uint16_t raw=0, sys=0; bool operator==(const Panel& b) const { return raw==b.raw && sys==b.sys; } };
++struct Field { Panel local{}, remote{}, used{}; bool sampled=false, known=false, simulated=false; };
++struct Snapshot { uint64_t frame=0, samples=0; uint32_t hash=0; Bytes data; };
++struct Audio { uint64_t end; std::vector<int16_t> pcm; };
++Socket sock=none;
++sockaddr_in peer{};
++bool host=false, locked=false, running=false, failed=false, restoring=false;
++uint64_t local_through=0;
++uint64_t session=0, seen=~0ull, present=0, target=0, remote_through=0, peer_ack=0;
++uint64_t mismatch=~0ull, last_receive=0, last_send=0, echoed=0, ping=0;
++uint64_t rollbacks=0, resim_fields=0, captures=0, loads=0, max_depth=0, waits=0;
++uint64_t hash_frame=0, peer_hash_frame=0;
++uint32_t latest_hash=0;
++std::map<uint64_t,uint32_t> hashes, peer_hashes;
++std::map<uint64_t,Field> fields;
++std::deque<Snapshot> snapshots;
++std::deque<Audio> audio;
++std::string status;
++double capture_ms=0, load_ms=0, resim_ms=0, max_resim_ms=0;
++Clock::time_point resim_start, started=Clock::now(), load_start;
++uint64_t code_id=0, program_id=0, cart_id=0;
++constexpr uint64_t window=8;
++Bytes origin; std::vector<bool> fragments;
++std::vector<uint64_t> fragment_sent, fragment_rtts;
++uint64_t handshake_rtt=~0ull;
++uint64_t origin_crc=0;
++int origin_parts=0;
++bool ready=false, go=false;
++void send_failure();
++void fail(const std::string& why) { if(!failed) { failed=true; status="NETPLAY STOPPED: "+why; sat_note("%s",status.c_str()); if(locked && sock!=none) send_failure(); } }
++Bytes packet(unsigned type) { Bytes b; put(b,0x3631504e,4); put(b,1,4); put(b,session); put(b,type,4); return b; }
++void send(Bytes b) { if(!locked) return; put(b,crc(b.data(),b.size()),4); sendto(sock,(const char*)b.data(),int(b.size()),0,(sockaddr*)&peer,sizeof peer); }
++void message(unsigned type) { send(packet(type)); }
++void send_failure() {
++    Bytes b=packet(9); auto text=status.substr(sizeof("NETPLAY STOPPED: ")-1,180); b.insert(b.end(),text.begin(),text.end()); send(std::move(b));
++}
++void update_status() { if(failed) return; status="NETPLAY "+std::string(host?"P1 host":"P2 guest")+" | ping "+std::to_string(ping)+" ms | rollback "+std::to_string(rollbacks)+" / max "+std::to_string(max_depth)+"f"; }
++void check_hashes() {
++    for(auto& h:peer_hashes) { auto it=hashes.find(h.first); if(it!=hashes.end() && h.second!=it->second) { fail("desync at field "+std::to_string(h.first)); return; } }
++}
++void send_inputs() {
++    Bytes b=packet(6); put(b,remote_through); put(b,millis()); put(b,echoed); put(b,hash_frame); put(b,latest_hash,4);
++    uint64_t newest=local_through;
++    uint64_t first=peer_ack+1;
++    unsigned count=unsigned(std::min<uint64_t>(32,newest>=first?newest-first+1:0));
++    put(b,first); put(b,count,4);
++    for(unsigned i=0;i<count;++i) { auto& f=fields.at(first+i); put(b,f.local.raw,2); put(b,f.local.sys,2); }
++    send(std::move(b)); last_send=millis();
++}
++void receive() {
++    for(int budget=0;budget<256;++budget) {
++        uint8_t buffer[1400]; sockaddr_in from{};
++#ifdef _WIN32
++        int len=sizeof from;
++#else
++        socklen_t len=sizeof from;
++#endif
++        int n=recvfrom(sock,(char*)buffer,sizeof buffer,0,(sockaddr*)&from,&len);
++        if(n<0) break;
++        if(n<24) continue;
++        Bytes b(buffer,buffer+n);
++        if(get(b,0,4)!=0x3631504e || get(b,4,4)!=1 || get(b,b.size()-4,4)!=crc(b.data(),b.size()-4)) continue;
++        unsigned type=unsigned(get(b,16,4)); uint64_t id=get(b,8);
++        if(locked && (from.sin_addr.s_addr!=peer.sin_addr.s_addr || from.sin_port!=peer.sin_port || id!=session)) continue;
++        if(!locked && (!host || type!=1 || b.size()!=60)) continue;
++        if(type==1 && host && b.size()==60) {
++            if(!locked) { peer=from; session=id; locked=true; }
++            if(get(b,20)!=code_id || get(b,28)!=program_id || get(b,36)!=cart_id || get(b,44,4)!=uint64_t(g_cfg.input_delay) || get(b,48)!=g_cfg.stop_vblanks) {
++                Bytes e=packet(9); std::string why="protocol/source, ROM, delay or frame-limit mismatch"; e.insert(e.end(),why.begin(),why.end()); send(e); fail(why); return;
++            }
++        } else if(type==2 && !host && b.size()>=44) {
++            unsigned index=unsigned(get(b,20,4)), count=unsigned(get(b,24,4)); uint64_t size=get(b,28,4), sum=get(b,32);
++            if(size!=0x14010 || count!=(size+1023)/1024 || index>=count || b.size()!=44+std::min<uint64_t>(1024,size-uint64_t(index)*1024)) continue;
++            if(origin.empty()) { origin.resize(size); fragments.resize(count); origin_parts=int(count); origin_crc=sum; }
++            if(sum!=origin_crc) { fail("origin changed during handshake"); return; }
++            std::copy(b.begin()+40,b.end()-4,origin.begin()+index*1024); fragments[index]=true;
++            Bytes ack=packet(3); put(ack,index,4); send(ack);
++            ready=std::all_of(fragments.begin(),fragments.end(),[](bool v){return v;});
++            if(ready && crc(origin.data(),origin.size())!=origin_crc) { fail("corrupt origin"); return; }
++        } else if(type==3 && host && b.size()==28) {
++            unsigned i=unsigned(get(b,20,4));
++            if(i<fragments.size() && !fragments[i]) {
++                if(fragment_sent[i]) { auto rtt=millis()-fragment_sent[i]; fragment_rtts.push_back(rtt); handshake_rtt=std::min(handshake_rtt,rtt); }
++                fragments[i]=true;
++            }
++        } else if(type==4 && host && b.size()==24) { ready=true; message(5); }
++        else if(type==5 && !host && ready && b.size()==24) go=true;
++        else if(type==9 && b.size()<256) { fail(std::string(b.begin()+20,b.end()-4)); return; }
++        else if(type==6 && running && b.size()>=72) {
++            uint64_t ack=get(b,20), stamp=get(b,28), echo=get(b,36), hf=get(b,44), first=get(b,56); unsigned count=unsigned(get(b,64,4));
++            if(count>32 || b.size()!=72+count*4 || first>present+64 || (count && first+count-1>present+64) || ack>present+3) continue;
++            peer_ack=std::max(peer_ack,ack); echoed=stamp;
++            if(echo && millis()>=echo) ping=millis()-echo;
++            if(hf && hf<=present+64) { peer_hashes[hf]=uint32_t(get(b,52,4)); peer_hash_frame=std::max(peer_hash_frame,hf); }
++            for(unsigned i=0;i<count;++i) {
++                uint64_t fno=first+i; if(!fno || fno+128<present) continue;
++                auto& f=fields[fno]; Panel p{uint16_t(get(b,68+i*4,2)),uint16_t(get(b,70+i*4,2))};
++                if((p.raw&~0x3c7u) || (p.sys&~0x11u)) { fail("invalid peer panel"); return; }
++                if(f.known && !(p==f.remote)) { fail("peer changed confirmed input"); return; }
++                f.remote=p; f.known=true;
++                if(f.simulated && !(f.used==p)) mismatch=std::min(mismatch,fno);
++            }
++            while(fields[remote_through+1].known) ++remote_through;
++            check_hashes(); update_status();
++        } else continue;
++        last_receive=millis();
++    }
++}
++void wait_network() {
++    host_net_wait(); std::this_thread::sleep_for(std::chrono::milliseconds(1)); ++waits;
++    receive(); if(running && millis()-last_send>=10) send_inputs();
++    if(millis()-last_receive>15000) fail("peer timed out (15 seconds)");
++    if(failed) sat_stop("netplay failure");
++}
++uint32_t state_crc() {
++    uint32_t c=crc(g_wram_l,0x100000); c=crc(g_wram_h,0x100000,c);
++    Bytes b; put(b,sat_now()); put(b,sat_vblanks()); put(b,uint64_t(g_cfg.clock));
++    for(auto* cpu:{&g_master,&g_slave}) {
++        for(auto r:cpu->r) put(b,r,4);
++        put(b,cpu->pc,4); put(b,cpu->pr,4); put(b,cpu->gbr,4); put(b,cpu->vbr,4); put(b,sh2_get_sr(*cpu),4);
++        put(b,cpu->mach,4); put(b,cpu->macl,4); put(b,cpu->cont,4); put(b,uint32_t(cpu->budget),4);
++    }
++    c=crc(b.data(),b.size(),c); c=crc(g_vdp2_regs,sizeof g_vdp2_regs,c);
++    return c;
++}
++void confirm() {
++    uint64_t through=std::min(present,remote_through);
++    // A checksum names a boundary whose complete input prefix is now known.
++    for(auto& s:snapshots) if(s.frame<=through && (s.frame%60==0 || s.frame==g_cfg.stop_vblanks)) {
++        if(!hashes.count(s.frame)) sat_note("netplay: confirmed field=%llu CRC=%08x scene=%u", (unsigned long long)s.frame,s.hash,ld32(0x06098668));
++        hashes[s.frame]=s.hash; if(s.frame>=hash_frame) { hash_frame=s.frame; latest_hash=s.hash; }
++    }
++    if(!snapshots.empty()) {
++        // A fixed eight-field playout lead smooths ordinary confirmation jitter.
++        // A network stall beyond the rollback cap may still exhaust the device.
++        uint64_t playable=(g_cfg.stop_vblanks && present>=g_cfg.stop_vblanks) ? through : std::min(through,present>window?present-window:0);
++        uint64_t cursor=0; for(auto& s:snapshots) if(s.frame<=playable) cursor=s.samples;
++        while(!audio.empty() && audio.front().end<=cursor) { auto& a=audio.front(); sound_output(a.pcm.data(),int(a.pcm.size()/2)); audio.pop_front(); }
++    }
++    check_hashes();
++}
++}
++
++bool netplay_active() { return g_cfg.netplay_host!=0 || !g_cfg.netplay_join.empty(); }
++const std::string& netplay_status() { return status; }
++bool netplay_replaying() { return target!=0; }
++bool netplay_hidden_frame() { return target && sat_vblanks()<target; }
++bool netplay_restoring() { return restoring; }
++bool netplay_open(uint64_t code, uint64_t program, uint64_t cartridge) {
++    if(!netplay_active()) return true;
++    code_id=code; program_id=program; cart_id=cartridge; host=g_cfg.netplay_host!=0; started=Clock::now();
++    g_cfg.rewind_seconds=0; g_cfg.fast_forward=false; g_cfg.cheat_health=g_cfg.cheat_lives=g_cfg.cheat_credits=false; g_cfg.start_scene=0;
++    std::memset(g_cfg.turbo_hz,0,sizeof g_cfg.turbo_hz); g_cfg.internal_resolution=1;
++#ifdef _WIN32
++    WSADATA data; if(WSAStartup(MAKEWORD(2,2),&data)) { fail("Winsock initialization failed"); return false; }
++#endif
++    sock=socket(AF_INET,SOCK_DGRAM,IPPROTO_UDP);
++    if(sock==none) { fail("cannot create UDP socket (check OS / sandbox network permissions)"); return false; }
++#ifdef _WIN32
++    u_long on=1; ioctlsocket(sock,FIONBIO,&on);
++#else
++    fcntl(sock,F_SETFL,fcntl(sock,F_GETFL,0)|O_NONBLOCK);
++#endif
++    sockaddr_in local{}; local.sin_family=AF_INET; local.sin_addr.s_addr=htonl(INADDR_ANY); local.sin_port=htons(uint16_t(g_cfg.netplay_host));
++    if(bind(sock,(sockaddr*)&local,sizeof local)) { fail("cannot bind UDP port"); return false; }
++    if(!host) {
++        auto colon=g_cfg.netplay_join.rfind(':'); std::string ip=g_cfg.netplay_join.substr(0,colon);
++        peer.sin_family=AF_INET;
++        if(colon==std::string::npos || inet_pton(AF_INET,ip.c_str(),&peer.sin_addr)!=1) { fail("join requires IPv4:PORT"); return false; }
++        std::string port=g_cfg.netplay_join.substr(colon+1); char* end=nullptr; long p=std::strtol(port.c_str(),&end,10);
++        if(!end || *end || p<1 || p>65535) { fail("invalid UDP port"); return false; }
++        peer.sin_port=htons(uint16_t(p)); locked=true;
++        session=(uint64_t(std::random_device{}())<<32)^uint64_t(std::random_device{}())^millis();
++    } else {
++        if(g_cfg.clock<0) g_cfg.clock=std::time(nullptr)-int64_t(sat_now()/1000000000);
++        put(origin,uint64_t(g_cfg.clock)); put(origin,ld32(0x060987cc));
++        for(unsigned i=0;i<0x4000;++i) origin.push_back(uint8_t(ld8(0x06000000+i)));
++        for(unsigned i=0;i<0x10000;++i) origin.push_back(uint8_t(ld8(0x00180000+i)));
++        origin_parts=int((origin.size()+1023)/1024); fragments.resize(origin_parts); fragment_sent.resize(origin_parts); origin_crc=crc(origin.data(),origin.size());
++    }
++    status=host?"NETPLAY: waiting for guest on UDP "+std::to_string(g_cfg.netplay_host):"NETPLAY: connecting to "+g_cfg.netplay_join;
++    sat_note("%s",status.c_str()); last_receive=millis(); started=Clock::now();
++    while(!failed && !(host?ready:go)) {
++        receive();
++        if(millis()-last_send>=50) {
++            if(!host) { if(ready) message(4); else { Bytes b=packet(1); put(b,code); put(b,program); put(b,cartridge); put(b,g_cfg.input_delay,4); put(b,g_cfg.stop_vblanks); send(b); } }
++            else if(locked) for(int i=0;i<origin_parts;++i) if(!fragments[i]) {
++                if(!fragment_sent[i]) fragment_sent[i]=millis();
++                Bytes b=packet(2); put(b,i,4); put(b,origin_parts,4); put(b,origin.size(),4); put(b,origin_crc);
++                size_t off=size_t(i)*1024; b.insert(b.end(),origin.begin()+off,origin.begin()+std::min(origin.size(),off+1024)); send(b);
++            }
++            last_send=millis();
++        }
++        host_net_wait(); std::this_thread::sleep_for(std::chrono::milliseconds(1));
++        if(millis()-last_receive>60000) fail("connection timeout (60 seconds)");
++    }
++    if(failed) return false;
++    if(!host) {
++        g_cfg.clock=int64_t(get(origin,0)); st32(0x060987cc,uint32_t(get(origin,8)));
++        for(unsigned i=0;i<0x4000;++i) st8(0x06000000+i,origin[16+i]);
++        for(unsigned i=0;i<0x10000;++i) st8(0x00180000+i,origin[0x4010+i]);
++    }
++    if(host && !fragment_rtts.empty()) {
++        std::sort(fragment_rtts.begin(),fragment_rtts.end());
++        handshake_rtt=fragment_rtts[fragment_rtts.size()/2];
++        // START travels one way before the guest can run. Delay the host by
++        // half the median fragment RTT so both pacing origins approximately
++        // coincide, without assuming synchronized host clocks.
++        auto until=Clock::now()+std::chrono::milliseconds(handshake_rtt/2);
++        while(Clock::now()<until && !failed) { receive(); host_net_wait(); std::this_thread::sleep_for(std::chrono::milliseconds(1)); }
++    }
++    if(failed) return false;
++    host_quick_reset(); // Startup only: no sound has been generated yet.
++    for(int i=1;i<=g_cfg.input_delay;++i) { auto& f=fields[i]; f.sampled=f.known=true; }
++    local_through=remote_through=g_cfg.input_delay; running=true; last_receive=millis(); started=Clock::now(); update_status();
++    sat_note("netplay: connected, delay=%d, window=%llu, origin CRC=%08llx, handshake RTT=%llu ms",g_cfg.input_delay,(unsigned long long)window,(unsigned long long)origin_crc,(unsigned long long)(host && handshake_rtt!=~0ull?handshake_rtt:0));
++    return true;
++}
++void netplay_panel(uint64_t frame, uint16_t raw[2], uint16_t& system) {
++    if(!running) return;
++    present=std::max(present,frame);
++    // Consume arrivals before choosing this field, and transmit newly sampled
++    // controls before composition/pacing can add a host-frame of latency.
++    if(!target) { receive(); if(failed) sat_stop("netplay failure"); }
++    auto& f=fields[frame];
++    if(!target) {
++        auto& delayed=fields[frame+g_cfg.input_delay];
++        if(!delayed.sampled) { unsigned p=host?0:1; delayed.local={uint16_t(raw[p]&0x3c7),uint16_t((system>>(p?1:0))&0x11)}; delayed.sampled=true; local_through=frame+g_cfg.input_delay; }
++    }
++    if(!target) send_inputs();
++    if(!f.sampled) { fail("missing local input history"); sat_stop("netplay history"); }
++    // During early slave boot some fields have no resumable boundary. Do not
++    // speculate an input unless its preceding boundary actually exists.
++    if(!target && (snapshots.empty() || snapshots.back().frame+1<frame)) {
++        send_inputs(); while(!f.known && !failed) wait_network();
++    }
++    if(f.known) f.used=f.remote;
++    else { auto it=fields.lower_bound(frame); f.used={}; while(it!=fields.begin()) { --it; if(it->second.known || it->second.simulated) { f.used=it->second.known?it->second.remote:it->second.used; break; } } }
++    f.simulated=true; raw[host?0:1]=f.local.raw; raw[host?1:0]=f.used.raw;
++    system=uint16_t(host?(f.local.sys|(f.used.sys<<1)):(f.used.sys|(f.local.sys<<1)));
++}
++void netplay_poll() {
++    if(!running) return;
++    uint64_t frame=sat_vblanks();
++    if(frame==seen) return;
++    extern bool arcade_continuation_ready(); if(!arcade_continuation_ready()) return;
++    present=std::max(present,frame);
++    if(target && frame<target) {
++        Snapshot s; s.frame=frame; s.samples=sound_sample_cursor();
++        auto t=Clock::now(); quick_net_capture(s.data); capture_ms+=std::chrono::duration<double,std::milli>(Clock::now()-t).count(); ++captures;
++        s.hash=(frame%60==0 || frame==g_cfg.stop_vblanks) ? state_crc() : 0; snapshots.push_back(std::move(s)); seen=frame; ++resim_fields; return;
++    }
++    if(target) { ++resim_fields; double ms=std::chrono::duration<double,std::milli>(Clock::now()-resim_start).count(); resim_ms+=ms; max_resim_ms=std::max(max_resim_ms,ms); target=0; }
++    receive(); send_inputs();
++    bool final=g_cfg.stop_vblanks && frame>=g_cfg.stop_vblanks;
++    while(!failed && mismatch==~0ull && (frame>=remote_through+window || (final && remote_through<frame))) wait_network();
++    if(failed) sat_stop("netplay failure");
++    if(mismatch!=~0ull) {
++        uint64_t wrong=mismatch; mismatch=~0ull;
++        auto it=std::find_if(snapshots.begin(),snapshots.end(),[&](auto& s){return s.frame+1==wrong;});
++        if(it==snapshots.end()) { fail("input arrived outside retained rollback window"); sat_stop("netplay window"); }
++        uint64_t depth=frame-it->frame; ++rollbacks; max_depth=std::max(max_depth,depth); target=frame;
++        while(!audio.empty() && audio.back().end>it->samples) audio.pop_back();
++        restoring=true; resim_start=Clock::now(); auto t=Clock::now(); quick_net_load(it->data);
++        load_start=t; ++loads;
++        seen=it->frame; snapshots.erase(std::next(it),snapshots.end());
++        throw QuickLoad{};
++    }
++    Snapshot s; s.frame=frame; s.samples=sound_sample_cursor(); auto t=Clock::now(); quick_net_capture(s.data);
++    capture_ms+=std::chrono::duration<double,std::milli>(Clock::now()-t).count(); ++captures; s.hash=(frame%60==0 || frame==g_cfg.stop_vblanks) ? state_crc() : 0; snapshots.push_back(std::move(s)); seen=frame;
++    confirm();
++    if(final && std::getenv("STV_NETPLAY_DUMP")) {
++        auto path=g_cfg.out+"/final-machine.bin"; FILE* f=std::fopen(path.c_str(),"wb");
++        if(f) { auto& b=snapshots.back().data; std::fwrite(b.data(),1,b.size(),f); std::fclose(f); }
++    }
++    while(snapshots.size()>window+2) snapshots.pop_front();
++    while(!fields.empty() && fields.begin()->first+128<remote_through && fields.begin()->first+128<peer_ack) fields.erase(fields.begin());
++    update_status();
++    if(final) {
++        send_inputs(); while(!failed && peer_hashes.find(frame)==peer_hashes.end()) wait_network(); check_hashes();
++        sat_note("netplay: final field=%llu CRC=%08x scene=%u joined=%u/%u",(unsigned long long)frame,latest_hash,ld32(0x06098668),ld8(0x06098674),ld8(0x06098675));
++        sat_stop(failed?"netplay desync":"netplay frame limit");
++    }
++}
++void netplay_restored() { restoring=false; load_ms+=std::chrono::duration<double,std::milli>(Clock::now()-load_start).count(); }
++bool netplay_audio(const int16_t* samples, int frames, uint64_t end) {
++    if(!running) return false;
++    audio.push_back({end,std::vector<int16_t>(samples,samples+frames*2)}); return true;
++}
++bool netplay_finish() {
++    if(!netplay_active()) return true;
++    if(failed && locked && sock!=none) {
++        // A peer may detect a CRC mismatch before sending its own checkpoint.
++        // Repeat the stop reason so the other end need not wait for a timeout.
++        uint64_t until=millis()+300, next=0;
++        while(millis()<until) { if(millis()>=next) { send_failure(); next=millis()+20; } receive(); std::this_thread::sleep_for(std::chrono::milliseconds(1)); }
++    }
++    if(running && !failed && g_cfg.stop_vblanks && sat_vblanks()>=g_cfg.stop_vblanks) {
++        uint64_t until=millis()+500; while(millis()<until) { receive(); if(millis()-last_send>=10) send_inputs(); std::this_thread::sleep_for(std::chrono::milliseconds(1)); }
++    }
++    double wall=std::chrono::duration<double>(Clock::now()-started).count();
++    sat_note("netplay: %llu rollbacks, %llu resim fields, max %llu; captures=%llu %.3f ms/save, loads=%llu %.3f ms/load; resim total %.3f ms max burst %.3f ms; wall %.3f s, waits %llu, desync/failure=%d",
++        (unsigned long long)rollbacks,(unsigned long long)resim_fields,(unsigned long long)max_depth,(unsigned long long)captures,captures?capture_ms/captures:0,(unsigned long long)loads,loads?load_ms/loads:0,resim_ms,max_resim_ms,wall,(unsigned long long)waits,int(failed));
++    if(sock!=none) { close_socket(sock); sock=none; }
++#ifdef _WIN32
++    WSACleanup();
++#endif
++    if(failed) host_player_error(status);
++    return !failed;
++}
+--- /dev/null
++++ b/runtime/src/machine/netplay.h
+@@ -0,0 +1,22 @@
++// P4.16: network state is host state, never part of a machine snapshot.
++#pragma once
++#include <cstdint>
++#include <string>
++#include <vector>
++bool netplay_active();
++bool netplay_open(uint64_t code, uint64_t program, uint64_t cartridge);
++void netplay_panel(uint64_t frame, uint16_t raw[2], uint16_t& system);
++void netplay_poll();
++bool netplay_replaying();
++bool netplay_hidden_frame();
++bool netplay_restoring();
++void netplay_restored();
++bool netplay_finish();
++const std::string& netplay_status();
++bool netplay_audio(const int16_t* samples, int frames, uint64_t end);
++// Complete local snapshots, using the same parts and restore path as rewind.
++void quick_net_capture(std::vector<uint8_t>&);
++void quick_net_load(const std::vector<uint8_t>&);
++void host_net_wait();
++void sound_output(const int16_t*, int);
++uint64_t sound_sample_cursor();
+--- a/runtime/src/machine/saturn.h
++++ b/runtime/src/machine/saturn.h
+@@ -32,6 +32,8 @@
+ 
+ // ---- the machine (machine.cpp) -------------------------------------------------------
+ struct SaturnConfig {
++    int netplay_host = 0, input_delay = 3;
++    std::string netplay_join;
+     std::string cue;                // the disc
+     std::string out = ".";          // logs, pictures and dumps go here
+     std::string save;               // the backup memory's file; "-": none; empty: one per game in the user's data directory
+--- a/runtime/src/machine/state.cpp
++++ b/runtime/src/machine/state.cpp
+@@ -13,6 +13,7 @@
+ // copy on a thread of its own, beside the file and renamed over it.
+ #include "saturn.h"
+ #include "state.h"
++#include "netplay.h"
+ #include "player.h"
+ #include "host.h"
+ #include <atomic>
+@@ -223,6 +224,7 @@
+     machine_continue_with(resume);
+ }
+ void quick_request(bool load) {
++    if (netplay_active()) { quick_message("Quick states disabled during netplay"); return; }
+     if (!quick_available()) return;
+     if (load && player_movie_active()) { quick_message("Quick load unavailable during input recording/replay; use rewind"); return; }
+     g_quick_request = load ? 2 : 1;
+@@ -344,6 +346,7 @@
+         (unsigned long long)g_rewind_captures, g_rewind_ms/g_rewind_captures, g_rewind_peak, g_rewind.size());
+ }
+ void quick_poll() {
++    if (netplay_active()) { netplay_poll(); return; }
+     if (!quick_available()) return;
+     if (!g_save_triggered && g_cfg.quick_save_at && sat_vblanks() >= g_cfg.quick_save_at) {
+         g_save_triggered = true; quick_request(false);
+@@ -394,6 +397,7 @@
+         if (s.pos != s.data.size()) state_fail("quick part layout mismatch");
+     }
+     g_quick_pending.clear();
++    if (netplay_restoring()) { netplay_restored(); return true; }
+     host_quick_reset();
+     if (g_rewind_loading) {
+         g_rewind_loading = false;
+@@ -455,6 +459,8 @@
+     }
+     if (at != b.size()) throw std::runtime_error("state trailing bytes");
+ }
++void quick_net_capture(std::vector<uint8_t>& b) { quick_payload(b); }
++void quick_net_load(const std::vector<uint8_t>& b) { movie_pending(b); }
+ bool player_movie_open(bool& resumed) {
+     if (g_cfg.movie_record.empty() && g_cfg.movie_play.empty()) return true;
+     if (!g_cfg.movie_record.empty() && !g_cfg.movie_play.empty()) { sat_note("input file: choose recording or replay"); return false; }
+--- a/runtime/src/sound/sound.cpp
++++ b/runtime/src/sound/sound.cpp
+@@ -23,6 +23,7 @@
+ #include "saturn.h"
+ #include "perf.h"
+ #include "state.h"
++#include "netplay.h"
+ #include "sound.h"
+ #include "host.h"
+ #include "video.h"
+@@ -166,16 +167,19 @@
+         ++g_samples;
+     }
+     if (g_out.empty()) return;
+-    if (g_audio) host_audio_push(g_out.data(), (int)g_out.size() / 2);
++    if (!netplay_audio(g_out.data(), int(g_out.size()/2), g_samples)) sound_output(g_out.data(), int(g_out.size()/2));
++    g_out.clear();
++}
++
++uint64_t sound_sample_cursor() { return g_samples; }
++void sound_output(const int16_t* pcm, int frames) {
++    if (g_audio) host_audio_push(pcm, frames);
+     if (g_wav) {
+-        std::vector<uint8_t> le(g_out.size() * 2);
+-        for (size_t i = 0; i < g_out.size(); ++i) { le[2 * i] = (uint8_t)g_out[i]; le[2 * i + 1] = (uint8_t)(g_out[i] >> 8); }
+-        std::fwrite(le.data(), 1, le.size(), g_wav);
+-        g_wav_frames += g_out.size() / 2;
+-    }
+-    g_out.clear();
+-}
+-
++        std::vector<uint8_t> le(size_t(frames)*4);
++        for (size_t i=0;i<size_t(frames)*2;++i) { le[2*i]=uint8_t(pcm[i]); le[2*i+1]=uint8_t(pcm[i]>>8); }
++        std::fwrite(le.data(),1,le.size(),g_wav); g_wav_frames += frames;
++    }
++}
+ void sound_close() {
+     sat_perf::report(sat_vblanks());
+     std::fprintf(stderr, "  sound: %llu samples, %llu not silent; 68000 %s, pc %06X\n", (unsigned long long)g_samples,
+--- a/runtime/src/video/video.cpp
++++ b/runtime/src/video/video.cpp
+@@ -14,6 +14,7 @@
+ #include "saturn.h"
+ #include "perf.h"
+ #include "state.h"
++#include "netplay.h"
+ #include "video.h"
+ #include "host.h"
+ #include <algorithm>
+@@ -150,6 +151,7 @@
+     if (sat_perf::enabled && g_vblanks % 600 == 0) sat_perf::report(g_vblanks);
+     extern void stv_scene_probe_tick(uint64_t vb);  // scene-director probe (diagnostic, default off)
+     stv_scene_probe_tick(g_vblanks);
++    if (!netplay_hidden_frame()) {
+     std::string n = std::to_string(g_vblanks);
+     // Read-only fidelity capture: retain every field of a selected director scene range.
+     // The ordinary --dump layout is followed by the displayed VDP1 dots in a separate file.
+@@ -192,10 +194,12 @@
+         movie_frame(g_frame);
+         host_present(g_frame);
+     }
+-    scenario_capture(); // Sample before raising the game's VBlank-IN interrupt.
++    scenario_capture();
++    } // Only the final recovered field is presented/captured.
++    // Sample before raising the game's VBlank-IN interrupt.
+     scu_raise(IRQ_VBLANK_IN);
+     scu_frame_event(0);
+-    host_pace(now);
++    if (!netplay_replaying()) host_pace(now);
+ }
+ 
+ void video_tick(uint64_t now) {

@@ -1,0 +1,2105 @@
+diff --git a/runtime/src/machine/bios.cpp b/runtime/src/machine/bios.cpp
+index 2771ccc..0bd94f3 100644
+--- a/runtime/src/machine/bios.cpp
++++ b/runtime/src/machine/bios.cpp
+@@ -172,6 +172,1340 @@ uint32_t bios_rom_read(uint32_t a, int size) {
+     return v;
+ }
+ 
++// ---- the ST-V control-panel BIOS service (real body) ----------------------------------
++// Die Hard Arcade (ST-V) has no SMPC-pad input path; it delegates its per-frame
++// coin / start / control read to an ST-V BIOS service at 0x06000660(buf). On real
++// hardware the BIOS fills `buf` (the game passes 0x060987D8) with the decoded
++// control-panel report. With no ST-V BIOS ROM the harness used to no-op the whole
++// 0x06000600 service window, so the buffer was never filled and the game could never
++// register a coin/start -> it sat in the attract/coin-wait fixed point forever (the
++// "round-start freeze"; see notes/port/spawn_diagnosis.md and stv_input_gameplay_status.md).
++//
++// Report byte layout, decoded from how the game CONSUMES the buffer (boot config
++// func_0201b92 @cart 0x0201b92 == runtime 0x06005b92, and the live coin-wait handler
++// @runtime 0x060089b8 that runs every frame during the freeze):
++//   buf[0x10] : status byte.  bit0 = no-data/invalid (set -> the game ignores the read),
++//               bit2 = 2-player control panel present.
++//   buf[0x03] : P1 action code (small enum). 2 == START/join. The handler does
++//               dispatch[buf[3]] through the RAM jump table at 0x06090304, and the
++//               boot config treats buf[3]==2 as "P1 start/present".
++//   buf[0x07] : P2 action code (buf+4 is the P2 record; +3 == buf[7]). 2 == START/join.
++// (The cooked direction/button bitmask the gameplay code reads lives separately at the
++//  0x060987BC work word; its exact bit map is not needed to deliver coin/start and is
++//  left idle here -- documented as the remaining unknown.)
++//
++// An all-zero report is a valid "no activity" read (bit0 clear), identical to the
++// zero-initialised baseline the game already tolerated; the one thing that was missing
++// was ever delivering a start. stv_input_script() drives buf[3]/buf[7]=2 as 1-VBlank
++// press pulses at scripted VBlanks.
++// kind: 1=START1 2=START2 3=COIN1 4=COIN2 5=SERVICE 6=P1 face/dir press 7=P2 face/dir press.
++// START/COIN are delivered faithfully through the game's own consumers (panel action codes /
++// coin-pending). SERVICE and the P1/P2 face/direction tokens exist so a --stvinput timeline can
++// *express* full ST-V control-panel state (the task's "carry buttons/directions"); their runtime
++// effect is bounded by what is actually decodable here -- see stv_panel_read and the notes file
++// notes/port/stv_panel_input_status.md for exactly which panel bits are verified vs unmapped.
++struct StvEvent { uint64_t vb; int kind; bool fired; };
++static std::vector<StvEvent> g_stv_events;
++
++// Faithful ST-V system-BIOS state (defined early so deliver_coin can bank a credit; the per-frame
++// maintenance + the full rationale are in the "FAITHFUL ST-V SYSTEM-BIOS LAYER" section below).
++static int      g_stv_credits    = 0;        // BIOS coin-credit bank; 0x06000664 consumes from it
++static uint32_t g_stv_frametimer = 0;        // 0x06000640 free-running frame timer
++
++void stv_input_script(const std::string& spec) {
++    g_stv_events.clear();
++    size_t i = 0;
++    while (i < spec.size()) {
++        size_t j = spec.find(',', i);
++        std::string item = spec.substr(i, j == std::string::npos ? std::string::npos : j - i);
++        i = (j == std::string::npos) ? spec.size() : j + 1;
++        size_t c = item.find(':');
++        if (c == std::string::npos) continue;
++        uint64_t vb = strtoull(item.c_str(), nullptr, 10);
++        std::string tok = item.substr(c + 1);
++        int kind = tok == "START1" || tok == "START" ? 1 : tok == "START2" ? 2
++                 : tok == "COIN" || tok == "COIN1"   ? 3 : tok == "COIN2"  ? 4
++                 : tok == "SERVICE" || tok == "SVC"  ? 5 : 0;
++        // P1/P2 face-button + direction tokens: "P1A".."P1C","P1UP".."P1RIGHT" (and P2*), or a bare
++        // face/dir token (defaults to P1). These are grouped to a single per-player "press" event
++        // because only the cooked "a-control-is-pressed" bit is verified decodable (see panel read).
++        if (!kind) {
++            const char* t = tok.c_str();
++            int player = 0;
++            if (tok.size() >= 2 && t[0] == 'P' && (t[1] == '1' || t[1] == '2')) { player = t[1] - '1'; t += 2; }
++            std::string b(t);
++            if (b == "A" || b == "B" || b == "C" || b == "X" || b == "Y" || b == "Z" ||
++                b == "UP" || b == "DOWN" || b == "LEFT" || b == "RIGHT")
++                kind = player == 0 ? 6 : 7;
++        }
++        if (kind) g_stv_events.push_back({vb, kind, false});
++    }
++    sat_note("ST-V input script: %zu events", g_stv_events.size());
++}
++
++// ---- the coin / credit path -----------------------------------------------------------
++// How a coin becomes a credit in this game (all traced from the game's own code):
++//   1. The ST-V BIOS coin-input service *0x06000664(player) reports a coin on a slot
++//      (r4=0 P1, r4=1 P2). The game's coin-detect fn @runtime 0x060065f0 polls it and,
++//      on a coin, raises the coin-pending flag 0x0609880C (word, =1).
++//   2. The game's credit-accrual fn @0x060045f8 (called every frame from the attract
++//      handler fn 06008868) gates on 0x0609880C==1 && 0x0609880E==1, then increments the
++//      credit byte 0x06098674, updates the BIOS coin meter via *0x06000640, and clears
++//      the pending flag. Credit display and the attract->play (START on the credit>0
++//      branch of the coin-wait handler @0x060089b8) are then the game's own logic.
++//
++// REACHABILITY NOTE (honest): in the attract sub-state the boot-shortcut harness lands in,
++// only 0x610/0x660/0x668 are polled per frame -- the coin-detect fn 0x060065f0 (and with it
++// the 0x664 read) is NOT scheduled (it belongs to the title/insert-coin state a fuller boot
++// would reach). So the 0x664 service below is implemented faithfully but is currently never
++// called. To actually deliver a coin we therefore raise the coin-pending flag 0x0609880C
++// directly (deliver_coin), i.e. we substitute ONLY the unrun hardware coin-switch -> 0x880C
++// detect step; everything downstream (accrual, meter, display, play-mode transition) is the
++// game's real code. If a future fuller boot reaches the 0x664-polling state, drop the direct
++// 0x880C raise in stv_panel_read to avoid double-crediting.
++static void deliver_coin(int player) {
++    // Faithful to the real coin-detect fn @runtime 0x060065f0 (cart 0x20faf8). That routine raises
++    // the per-slot coin-pending flag ONLY when (a) the pending flag is not already set and (b) the
++    // per-slot credit byte (0x06098674 P1 / 0x06098675 P2) is 0 or 3. The harness substitutes the
++    // unrun coin-switch -> pending-flag step, so it must apply the SAME gate. The old code latched
++    // 0x0609880C unconditionally (and, bug, used 0x0609880C for BOTH players): a 2nd coin re-raised
++    // the pending flag in a credit state the real coin-detect never would, corrupting the credit/
++    // arm bookkeeping and permanently parking the attract reel (2P-armed flag 0x06098670 held = 1).
++    // With the gate, each coin accrues one credit and the attract reel self-recovers (the game's own
++    // scene-81 reset-timeout clears 0x06098670 and the reel cascades) -- the faithful behaviour.
++    uint32_t pend   = player == 0 ? 0x0609880Cu : 0x06098810u;
++    uint32_t credit = player == 0 ? 0x06098674u : 0x06098675u;
++    uint8_t cb = (uint8_t)ld8(credit);
++    if (ld16(pend) == 0 && (cb == 0 || cb == 3)) {
++        g_stv_credits++;    // FAITHFUL: bank a BIOS coin-credit for the 0x06000664 consumer path
++        if (ld32(0x060987D0u) == 0u) {
++            st16(pend, 1);
++            sat_note("ST-V coin: P%d coin -> coin-pending 0x%08X=1, BIOS credit bank=%d at VB %llu (game accrues the credit)",
++                     player + 1, pend, g_stv_credits, (unsigned long long)sat_vblanks());
++        } else {
++            sat_note("ST-V coin: P%d coin -> banked in BIOS credit bank=%d (scene-1 0x060987D0=1 awaits START via 0x06000664) at VB %llu",
++                     player + 1, g_stv_credits, (unsigned long long)sat_vblanks());
++        }
++    } else {
++        sat_note("ST-V coin: P%d coin ignored by coin-detect gate (credit byte=%u, pending=%u) at VB %llu",
++                 player + 1, cb, (unsigned)ld16(pend), (unsigned long long)sat_vblanks());
++    }
++}
++
++// The ST-V BIOS coin-input read service body (0x06000664). Faithful but currently unreached
++// (see note above). Reports a scripted coin on the given slot for a short window.
++static int stv_coin_read(int player) {
++    int want = player == 0 ? 3 : 4;
++    uint64_t vb = sat_vblanks();
++    for (StvEvent& e : g_stv_events)
++        if (e.kind == want && vb >= e.vb && vb < e.vb + 2) return 1;
++    return 0;
++}
++
++// ======================================================================================
++// FAITHFUL ST-V SYSTEM-BIOS LAYER (the JAMMA control panel + coin/credit state the real
++// ST-V BIOS publishes into system work RAM every frame). Implemented because, with no ST-V
++// BIOS ROM, these system words were all left zero and the game sat in the attract/coin-wait
++// fixed point (the prior sessions' diagnostic knobs STV_STARTENABLE/STV_SCENEGATE/STV_CFG798
++// stood them in). This replaces those stand-ins with the real BIOS behavior, driven from the
++// always-on VBlank tick (the real BIOS maintains them from its per-frame SMPC/JAMMA scan).
++//
++// The system words and what the game reads them for (all decompiled, see project/src_functional):
++//   0x06000798  machine DIP / config word. bit5(0x20)=test/service mode (clear=normal),
++//               bit6(0x40)=sound-enable. Read by func_0201b92 (sound gate), func_02201590,
++//               func_022016ac, func_022058a8 (test/service branch). Faithful value for a
++//               normal 2P cabinet with sound: 0x60.
++//   0x06000654  BIOS panel/credit status word. bit9(0x200)=2-player control panel present,
++//               bit8(0x100)=auto-start/free-play dip, bits12/13(0x1000/0x2000)=force-coin
++//               P1/P2 dips, low 7 bits = insert-coin countdown timer (0x7F = idle). Read by
++//               func_022058a8 (scene bootstrap) + func_0220600e (credit/join scene). Faithful
++//               idle value for a 2P cabinet, coins-required, no force: 0x27F.
++//   0x06098798  cooked system control word (field +4 of struct 0x06098794). bit2(0x04)=panel
++//               poll-enable, bit4(0x10)=P1 control/start enable, bit5(0x20)=P2 control/start
++//               enable. A full image scan (prior session) found NO cart code sets bits 4/5 --
++//               they are BIOS/system-provided, cleared once by the game at boot (rt 0x06005580)
++//               then only READ: the scene-81 START gate (func_02206876), the credit-scene join
++//               (func_0220600e), and the per-frame controller SM (func_0220f9d4 coin latch) all
++//               gate on bits 0x30. The real BIOS re-publishes this from its SMPC panel scan each
++//               frame, so we re-assert it each frame AFTER the game's boot clear. For a connected
++//               2-player panel the value is 0x04|0x10|0x20 = 0x34.
++//               [FAITHFUL VALUE; the exact BIOS write-back address is fixed by this game's SDK
++//                link and is reproduced here directly -- the one piece whose hardware mechanism
++//                (how the BIOS learns the game's buffer address) is not pinned this session.]
++//
++// Coin path: the real BIOS coin service (0x06000664) consumes one coin-credit from a BIOS bank
++// the coin mechanism fills; 0x06000640 is a free-running frame timer. We maintain both so the
++// game's own credit code (func_0220600e credit scene, func_0220f9d4 controller SM) works if the
++// director reaches a frame-paced scene. During attract the game polls only 0x06000660 (the
++// coin-detect fn 0x060065f0 is not scheduled there), so deliver_coin still raises the coin-
++// pending flag 0x0609880C directly (the faithful substitute for the unrun hardware coin-switch),
++// and ALSO banks a credit here so both consumers agree. STV_NOSYSBIOS disables this whole layer
++// for A/B regression (restores the pre-change behavior). (g_stv_credits / g_stv_frametimer are
++// declared earlier so deliver_coin can bank a credit.)
++static const uint16_t kStvPanelCtrl = 0x0034u;  // 0x06098798: bit2 poll | bit4 P1 en | bit5 P2 en
++static bool stv_sysbios_on() {
++    static bool v = (std::getenv("STV_NOSYSBIOS") == nullptr);
++    return v;
++}
++
++// Called every frame (from stv_scene_probe_tick, which video.cpp's vblank_in runs every frame).
++// Re-publishes the BIOS-maintained system control word, exactly as the real BIOS's per-frame
++// SMPC panel scan would, so the game's START gates / coin latches see a connected 2-player panel.
++static void stv_system_bios_tick() {
++    if (!stv_sysbios_on()) return;
++    g_stv_frametimer++;
++    // Re-assert the cooked system control word (start-enable + panel-poll). The game clears it at
++    // boot and never sets bits 4/5; the BIOS owns them. Faithful for a 2-player panel.
++    uint16_t cw = (uint16_t)ld16(0x06098798u);
++    if ((cw & kStvPanelCtrl) != kStvPanelCtrl)
++        st16(0x06098798u, (uint16_t)(cw | kStvPanelCtrl));
++
++    // FAITHFUL SUB-FIX #1 (default, not a knob): the BIOS insert-coin / attract countdown timer.
++    // 0x06000654 low 7 bits are the BIOS coin/attract countdown; the real ST-V BIOS decrements this
++    // field every frame while attract is running. main_stv seeds the word as 0x037F (2P panel |
++    // credit-required | low7=0x7F). The credit-wait scene (func_0220600e scene_credit_join_sm, scene
++    // index 1) reads `timer = (u16)0x06000654 & 0x7F`: it displays the countdown digit while
++    // timer != 0x7F, and COMMITS the scene (-> attract_handler -> the attract demo reel) once
++    // timer == 0 (with entity+0x40 == 0). With the field left STATIC at 0x7F the credit-wait scene
++    // never commits and the attract reel never starts (scene 1 FREEZES). Decrementing the low 7 bits
++    // to 0 each frame is the real BIOS behaviour: scene 1 auto-advances into the attract demo reel
++    // (scene 1 -> 2 (demo) -> 3 (fade) -> ...). We hold at 0 once reached; the attract reel loops
++    // 2->..->73->..->2 (scene 0 selector -1 -> 2) and never re-enters scene 1, so no reload is needed.
++    // A coin is still genuinely required to ENTER PLAY (the credit-join path); only the attract reel
++    // now runs without one, exactly as a real cabinet. Preserves the high bits (0x100 credit-required,
++    // 0x200 2P panel) that scene_bootstrap / credit-wait also read. STV_NOSYSBIOS disables the whole
++    // layer (restores the static-idle behaviour for A/B).
++    static const bool countdown_en = (std::getenv("STV_ATTRACT_COUNTDOWN") != nullptr);
++    if (countdown_en) {
++        uint16_t pc = (uint16_t)ld16(0x06000654u);
++        uint16_t low7 = pc & 0x7Fu;
++        if (low7 != 0)
++            st16(0x06000654u, (uint16_t)((pc & 0xFF80u) | (low7 - 1)));
++    }
++}
++
++// Fill the panel report at `buf` with the current control-panel state. Called from the
++// 0x06000660 service every frame. Writes a full zeroed report (so a one-frame press
++// pulse releases on the next frame -> a clean rising edge), then stamps any scripted
++// event active on this VBlank.
++// Scene-director probe driver (diagnostic, default off). Called EVERY frame from video.cpp's
++// vblank_in -- the ST-V panel service (stv_panel_read) is NOT scheduled once the game-enter
++// scenes run, so the scene walk must be driven from the always-on VBlank tick, not the panel
++// read. Purpose: LOCATE which setup scene (73-80) installs the player spawn-script. STV_SCENEJUMP
++// forces the hardcoded game scene 81 via the unk13<0 lever and SKIPS the setup scenes; these
++// knobs instead drop the scene-director onto / step it through a chosen scene index so each setup
++// scene's per-frame setup runs. The director reads the active scene from g_06098668 (index) +
++// g_0609866c (descriptor = 0x06072660 + idx*0x50) and, on each advance (director-entity->unk3c
++// bit0 set), runs the game-enter install block for idx>=76. All default-off => byte-identical.
++//   STV_SCENESEED="vb:idx"        ONCE at VB>=vb: g_06098668=idx, g_0609866c=desc(idx)
++//   STV_SCENEADV ="vb:count:intv" from VB>=vb, every intv frames, force 1 director advance, count times
++//   STV_SCENEPIN ="idx"           every frame: pin g_06098668=idx, g_0609866c=desc(idx)
++//   STV_SCENEJOIN="startvb"       from VB>=startvb: g_06098674=g_06098675=2 (scene-73 branch -> 74)
++//   STV_SCENECHAR="v"             every frame: g_0609856c=v (scene-75 branch -> 76 + (v&3))
++static bool s_playroute_fired = false;   // set once STV_PLAYROUTE seeds the director; read by STV_JOINHOLD
++void stv_scene_probe_tick(uint64_t vb) {
++    stv_system_bios_tick();            // FAITHFUL: re-publish the BIOS system control word every frame
++    // STV_DESCDUMP="vb" (diagnostic, default off; byte-identical when unset): one-shot dump of the
++    // scene descriptor table (base 0x06072660, stride 0x50) for scenes 0..89. For each scene prints
++    // desc+0x10 (the play-definition pointer scene_obj_handler case-0 dereferences) and, when that
++    // points into data RAM, the def's unk0 (step callback), unk4/unk8 (args), unkC (substate seed),
++    // unkE (countdown). Lets us find which scenes carry a genuine play-definition layout vs attract
++    // scene 3 (desc+0x10 = cart code 0x0600F1C0). Read-only.
++    if (const char* e_dd = std::getenv("STV_DESCDUMP")) {
++        static bool dd_done = false;
++        uint64_t dd_at = (uint64_t)std::strtoull(e_dd, nullptr, 0);
++        if (!dd_done && vb >= dd_at) {
++            dd_done = true;
++            sat_note("STV_DESCDUMP at VB %llu (desc base 0x06072660 stride 0x50)", (unsigned long long)vb);
++            for (uint32_t idx = 0; idx <= 89; idx++) {
++                uint32_t desc = 0x06072660u + idx * 0x50u;
++                uint32_t p10  = ld32(desc + 0x10u);    // play-def pointer
++                uint32_t p14  = ld32(desc + 0x14u);    // func_0220fece tail arg
++                uint32_t p1c  = ld32(desc + 0x1Cu);    // spawn-list ptr
++                uint8_t  s2b  = ld8(desc + 0x2Bu);     // selector cur[43]
++                bool pdata = (p10 >> 24) == 0x06 && (p10 & 0xF00000u) >= 0x900000u; // 0x0609xxxx/0x060Axxxx/...
++                // treat anything pointing above 0x06090000 as data RAM; below is code/const
++                bool isdata = p10 >= 0x06004000u && p10 < 0x06092000u;
++                uint32_t u0=0,u4=0,u8=0,u10v=0; uint16_t uC=0,uE=0;
++                if (isdata) { u0=ld32(p10+0u); u4=ld32(p10+4u); u8=ld32(p10+8u);
++                              uC=(uint16_t)ld16(p10+0xCu); uE=(uint16_t)ld16(p10+0xEu); u10v=ld32(p10+0x10u); }
++                bool u0_code = (u0 >= 0x06004000u && u0 < 0x0604A000u); // plausible cart-code step callback
++                (void)u10v;
++                // stage-config fields that scene81_stage_setup (func_02206e2e) reads from a node:
++                uint32_t s30 = ld32(desc + 0x30u);   // flags (bit0 = DMA gate)
++                uint32_t s34 = ld32(desc + 0x34u);   // 2nd-layer flags
++                uint32_t s38 = ld32(desc + 0x38u);   // layer select / tile base
++                uint16_t s3a = (uint16_t)ld16(desc + 0x3Au); // cell-column count
++                uint32_t s3c = ld32(desc + 0x3Cu);   // stage-asset bundle ptr
++                sat_note("  sc%2u +14=%08X +1C=%08X sel=%d +10=%08X def{u0=%08X%s} STG{30=%08X 34=%08X 38=%08X 3A=%04X 3C=%08X}",
++                         idx, p14, p1c, (int)(int8_t)s2b, p10,
++                         u0, u0_code?"*CODE":"     ", s30, s34, s38, s3a, s3c);
++                (void)pdata; (void)u4; (void)u8; (void)uC; (void)uE;
++            }
++            // Also dump the SPECIAL scene-81 descriptor (0x06073fb0, NOT in the stride-0x50 table)
++            // the director's timeout-jump installs; it carries the real first-stage config.
++            for (uint32_t d = 0x06073fb0u, k = 0; k < 2; d += 0x50u, k++) {
++                sat_note("  SPECIAL %08X +10=%08X +14=%08X STG{30=%08X 34=%08X 38=%08X 3A=%04X 3C=%08X}",
++                         d, ld32(d+0x10u), ld32(d+0x14u), ld32(d+0x30u), ld32(d+0x34u),
++                         ld32(d+0x38u), (uint16_t)ld16(d+0x3Au), ld32(d+0x3Cu));
++            }
++        }
++    }
++    // STV_SYNTHDEF="dst[:src]" (LABELED default-off bridge; byte-identical when unset): route-(b)
++    // SYNTHESIS of a play-definition layout. Overwrites scene `dst`'s descriptor +0x10 (the def
++    // pointer scene_obj_handler case-0 dereferences and whose unk0 it CALLS) with scene `src`'s
++    // def pointer (src defaults to 2, a real stage scene). Attract scenes (3,5,7,9,15,...) carry
++    // a def at 0x0600F1C0/F6B2/FC20 whose unk0 = 0x2FE62FD6 (raw instruction data, NOT a function
++    // pointer) -> scene_run -> func_02218038 -> scene_obj_handler case-0 FATALs "call to 0FE62FD6".
++    // A real stage scene's def (scene 2 @0x06063F40) has unk0 = 0x060125BC (cart func_0220e5bc, the
++    // real play scene-object step callback) + valid unk4/unk8 data-block args + substate seed. Writing
++    // it onto the held attract scene's +0x10 converts the FATAL into a clean scene_obj_handler step.
++    // Applied every frame (idempotent). Read scene 2's +0x10 each frame in case the table relocates.
++    if (const char* e_sd = std::getenv("STV_SYNTHDEF")) {
++        uint32_t dst = (uint32_t)std::strtoul(e_sd, nullptr, 0);
++        uint32_t src = 2; uint64_t sd_start = 0;
++        if (const char* c = std::strchr(e_sd, ':')) { src = (uint32_t)std::strtoul(c + 1, nullptr, 0);
++            if (const char* c2 = std::strchr(c + 1, ':')) sd_start = (uint64_t)std::strtoull(c2 + 1, nullptr, 0); }
++        if (vb < sd_start) { /* wait: attract scenes use desc+0x10 as a DIRECT code ptr; only patch after the morph */ } else {
++        uint32_t ddesc = 0x06072660u + dst * 0x50u;
++        uint32_t sdesc = 0x06072660u + src * 0x50u;
++        uint32_t sdef  = ld32(sdesc + 0x10u);
++        if (sdef && ld32(ddesc + 0x10u) != sdef) {
++            st32(ddesc + 0x10u, sdef);
++            static bool noted = false;
++            if (!noted) { noted = true;
++                sat_note("STV_SYNTHDEF: scene %u desc+0x10 <- scene %u def %08X (unk0=%08X) at VB %llu [route-b synthesis]",
++                         dst, src, sdef, ld32(sdef + 0u), (unsigned long long)vb); }
++        }
++        }
++    }
++    // STV_STAGEDMA="vb[:src[:intv]]" (LABELED default-off bridge; byte-identical when unset): the FLOOR
++    // fix for route-b. On route-b the director is HELD on attract scene 3 whose VDP2 background is the
++    // night-skyline (scene 3's stage bundle 0x0607238C, DMA'd at its bootstrap). scene_run installs
++    // scene_obj_handler (func_0220f6f6), which steps the SYNTHDEF'd play content but NEVER re-DMAs a
++    // stage -- so the fighters render over scene 3's skyline instead of SRC's real stage floor.
++    //
++    // Every play scene's descriptor (base 0x06072660 stride 0x50) carries the stage-config fields
++    // scene81_stage_setup (func_02206e2e) reads from a node: +0x30 flags (bit0=DMA gate), +0x34 2nd-layer
++    // flags, +0x38 layer/tile-base, +0x3A cell-column count, +0x3C stage-asset bundle ptr. e.g. SRC
++    // scene 8: {30=0x21,34=0x30001,38=8,3A=8,3C=0x06072378}. This knob builds a scratch ctx with SRC's
++    // stage config and CALLS the game's own scene81_stage_setup (recomp 0x0600AE2E) -- the exact DMA +
++    // VDP2 RBG0 plane/palette setup the real scene-81 game SM runs -- so SRC's real floor tiles + RBG0
++    // plane replace scene 3's skyline. (The bundle-keyed DMA cache 0x06098690/94 makes the heavy DMA
++    // run once; re-applying each `intv` frames re-asserts the RBG0 plane regs in case content writes
++    // VDP2.) Also mirrors SRC's stage-config into the HELD descriptor (scene 3 / g_0609866c) so any
++    // code reading the live descriptor's +0x30/0x3C sees SRC's stage. FORCED because the faithful
++    // selection chain (75-80) that would copy this config is not driven here. Default off => no effect.
++    static const char* e_stagedma = std::getenv("STV_STAGEDMA");
++    if (e_stagedma) {
++        static bool sdma_busy = false;
++        if (!sdma_busy) {
++            static bool parsed = false; static uint64_t sd_vb = 0; static uint32_t sd_src = 8; static uint32_t sd_intv = 0;
++            if (!parsed) { sd_vb = (uint64_t)std::strtoull(e_stagedma, nullptr, 0);
++                if (const char* c = std::strchr(e_stagedma, ':')) { sd_src = (uint32_t)std::strtoul(c+1,nullptr,0);
++                    if (const char* c2 = std::strchr(c+1, ':')) sd_intv = (uint32_t)std::strtoul(c2+1,nullptr,0); }
++                parsed = true; }
++            static bool first = true;
++            bool fire = vb >= sd_vb && (first || (sd_intv && ((vb - sd_vb) % sd_intv) == 0));
++            if (fire) {
++                uint32_t sdesc = (sd_src >= 0x06000000u) ? sd_src : (0x06072660u + sd_src * 0x50u);  // src>=0x06000000 => literal desc addr (e.g. 0x06073FB0 special)
++                uint32_t s30 = ld32(sdesc + 0x30u), s34 = ld32(sdesc + 0x34u), s38 = ld32(sdesc + 0x38u);
++                uint16_t s3a = (uint16_t)ld16(sdesc + 0x3Au); uint32_t s3c = ld32(sdesc + 0x3Cu);
++                if (s3c && (s3c >> 24) == 0x06 && (s30 & 1u)) {
++                    // build a minimal ctx at scratch 0x060FA100 (scene81_stage_setup reads only +0x30..0x3C)
++                    const uint32_t CTX = 0x060FA100u;
++                    for (uint32_t i = 0; i < 0x40; i += 4) st32(CTX + i, 0);
++                    st32(CTX + 0x30u, s30); st32(CTX + 0x34u, s34); st32(CTX + 0x38u, s38);
++                    st16(CTX + 0x3Au, s3a); st32(CTX + 0x3Cu, s3c);
++                    // mirror into the live HELD descriptor too (the task's "point held desc at SRC's stage")
++                    uint32_t hdesc = ld32(0x0609866Cu);
++                    if (hdesc && (hdesc >> 24) == 0x06) {
++                        st32(hdesc + 0x30u, s30); st32(hdesc + 0x34u, s34); st32(hdesc + 0x38u, s38);
++                        st16(hdesc + 0x3Au, s3a); st32(hdesc + 0x3Cu, s3c);
++                    }
++                    sdma_busy = true;
++                    SH2Context& c = g_master; SH2Context save = c;
++                    c.r[4] = CTX; c.r[5] = 0; c.pr = kRet; c.pc = 0; c.budget = 0x40000000;
++                    sh2_call(c, 0x0600AE2Eu);                 // func_02206e2e scene81_stage_setup(ctx, 0)
++                    bool ok = (c.pc == kRet);
++                    c = save; sdma_busy = false;
++                    if (first) sat_note("STV_STAGEDMA: scene81_stage_setup(src=%08X bundle=%08X s30=%08X s38=%08X s3A=%04X) ret_ok=%d at VB %llu [route-b FLOOR]",
++                                        sdesc, s3c, s30, s38, s3a, ok, (unsigned long long)vb);
++                    first = false;
++                }
++            }
++        }
++    }
++    // STV_MTXPEEK="startvb[:intv]" (diagnostic, default off; byte-identical when unset): dump the
++    // 3D model/view matrix state at vblank_in. Persistent slots (survive to end of frame): the
++    // default/view matrix template @0x0604ec64 (what load_matrix_default copies), the fwd/inv caches
++    // @0x06098aec/0x06098abc (mtx_build_fwd_inv output; mtx_load_abc loads the inv into actor draws),
++    // the active matrix-stack ptr @0x06098878 + the matrix it points at, the stack base @0x0609887c,
++    // the camera translation @0x06098b9c, the projection scratch @0x06098b1c, and the reversed
++    // model->screen matrix @0x060da040 (matrix_copy_reverse output, last model this frame). Read-only.
++    if (const char* e_mtx = std::getenv("STV_MTXPEEK")) {
++        static uint64_t mstart = 0; static uint64_t mintv = 100; static bool mp = false;
++        if (!mp) { mstart = strtoull(e_mtx,nullptr,0); const char* c = std::strchr(e_mtx,':');
++                   if (c) { mintv = strtoull(c+1,nullptr,0); if(!mintv) mintv=1; } mp = true; }
++        if (vb >= mstart && (vb % mintv) == 0) {
++            auto dmat = [&](const char* nm, uint32_t a, int n){
++                char line[256]; int o = std::snprintf(line,sizeof line,"  %s @%08X:",nm,a);
++                for (int i=0;i<n;i++) o += std::snprintf(line+o,sizeof(line)-o," %08X",(uint32_t)ld32(a+i*4));
++                sat_note("%s", line);
++            };
++            uint32_t sp = (uint32_t)ld32(0x06098878u);
++            sat_note("MTXPEEK VB %llu stackptr(0x6098878)=%08X scene=%u",
++                     (unsigned long long)vb, sp, (unsigned)ld32(0x06098668u));
++            dmat("default/view @ec64", 0x0604ec64u, 12);
++            dmat("fwd cache   aec",    0x06098aecu, 12);
++            dmat("inv cache   abc",    0x06098abcu, 12);
++            if (sp && (sp>>24)==0x06) dmat("active top  *sp", sp, 12);
++            dmat("stackbase   887c",   0x0609887cu, 12);
++            dmat("cam-trans   b9c",    0x06098b9cu, 3);
++            dmat("proj-scratch b1c",   0x06098b1cu, 3);
++            dmat("rev-out     da040",  0x060da040u, 15);
++        }
++    }
++    // STV_SCENETRACE (diagnostic, default off): log the director scene index 0x06098668, the 2P-arm
++    // flag 0x06098670, the credit byte 0x06098674 and the cooked ctrl word 0x06098798 whenever any of
++    // them changes. Read-only; used to watch the coin->director routing walk (scene 1 -> 2). No effect
++    // when unset (byte-identical).
++    if (std::getenv("STV_SCENETRACE")) {
++        static uint32_t p_scene = 0xFFFFFFFFu, p_arm = 0xFFFFFFFFu; static uint8_t p_cr = 0xFF; static uint16_t p_cw = 0xFFFF;
++        static uint8_t p_gate = 0xFF; static uint16_t p_cp = 0xFFFF, p_cready = 0xFFFF;
++        uint32_t scene = ld32(0x06098668u), arm = ld32(0x06098670u);
++        uint8_t  cr = (uint8_t)ld8(0x06098674u); uint16_t cw = (uint16_t)ld16(0x06098798u);
++        uint8_t  gate = (uint8_t)ld8(0x0609868Eu);          // join-spawn gate = scene desc[+42]
++        uint16_t cp = (uint16_t)ld16(0x0609880Cu);          // P1 coin-pending
++        uint16_t cready = (uint16_t)ld16(0x0609880Eu);      // P1 coin-ready (fade-armed companion)
++        if (scene != p_scene || arm != p_arm || cr != p_cr || cw != p_cw ||
++            gate != p_gate || cp != p_cp || cready != p_cready) {
++            sat_note("SCENETRACE VB %llu scene=%u arm(0x670)=%u credit(0x674)=%u ctrl(0x798)=%04X gate(0x86e)=%u cpend(0x80c)=%u cready(0x80e)=%u",
++                     (unsigned long long)vb, scene, arm, cr, cw, gate, cp, cready);
++            p_scene = scene; p_arm = arm; p_cr = cr; p_cw = cw; p_gate = gate; p_cp = cp; p_cready = cready;
++        }
++    }
++    // STV_JOINTEST ("vb", default off): LABELED test that reproduces the exact FAITHFUL condition
++    // for the credit-join COORDINATOR to spawn -- a fresh coin accepted while the scene director is
++    // on a gate=1 (attract fade) scene. TRACED FACT: player_join_spawn (cart 0x02228168) is called
++    // by attract_credit_join_service (cart 0x022045f8) ONLY when join byte 0x06098674==1 AND the
++    // per-scene gate g_0609868E (= current scene descriptor byte +42) == 1; +42==1 only on the
++    // attract fade scenes 3/5/7/9 (off14 0x02232610). On every boot path the credit byte is consumed
++    // to 2 on a gate=0 scene (credit-wait scene 1 / demo stage scene 2 / demo auto-credit @VB200)
++    // BEFORE any fade scene is reached, so the coordinator never spawns. This one-shot, ONCE at
++    // VB>=vb when gate(0x86E)==1, clears the (demo-)join byte back to 0 and delivers a coin via the
++    // real coin-detect substitute (deliver_coin) so the game\'s OWN f_22045f8 accepts it on the fade
++    // scene -> byte 0->1 with gate==1 -> player_join_spawn -> func_02229c00 raises 0x06098688 via
++    // REAL cart code (NO STV_STARTFLAG). FORCED only in the INPUT (byte reset + synthetic coin on a
++    // fade scene = what a real coin would produce if timed to a fade); the downstream chain is real.
++    // Default off => byte-identical.
++    static const char* e_jointest = std::getenv("STV_JOINTEST");
++    if (e_jointest) {
++        static bool jt_done = false;
++        uint64_t jt_vb = (uint64_t)std::strtoull(e_jointest, nullptr, 10);
++        if (!jt_done && vb >= jt_vb) {
++            st8(0x0609868Eu, 1);           // FORCED (empty-slot isolation test): assert the fade-scene gate
++            st8(0x06098674u, 0);           // undo any demo-join so a fresh credit is acceptable
++            st16(0x0609880Eu, 1);          // coin-ready companion (director raises this on content frames)
++            deliver_coin(0);               // real coin-detect substitute -> coin-pending 0x0609880C=1
++            jt_done = true;
++            sat_note("STV_JOINTEST: fresh coin on fade scene (gate=1) at VB %llu -> expect player_join_spawn", (unsigned long long)vb);
++        }
++    }
++    // FAITHFUL SUB-FIX #2 (STV_COINSEQ="vb", default off): the credit-join COIN SEQUENCING. A real
++    // coin only drives the join COORDINATOR (player_join_spawn 0x02228168) when it is accepted while
++    // the scene director is on an attract FADE scene (gate g_0609868E==1) with the P1 slot still EMPTY
++    // (join byte 0x06098674==0). On the standard coin route (--stvinput "...:COIN") the coin lands on
++    // scene 1/2 (gate==0) and attract_credit_join_service (0x022045f8) consumes the join byte 0->1->2
++    // there, LOCKING it before the first fade scene so the coordinator never fires. This knob models a
++    // player inserting their coin DURING the attract fade: from VB>=vb it waits for the first frame
++    // where gate==1 AND byte==0 AND no coin is already pending, then delivers ONE coin via the real
++    // coin-detect substitute (deliver_coin). The SAME frame, the game's own f_022045f8 runs the
++    // coin-accept edge (byte 0->1) then the join-confirm edge: byte==1 && gate==1 -> player_join_spawn
++    // -> func_0222a300/a418 init the actor into join state -> func_02229c00 raises start flag
++    // 0x06098688 by REAL cart code (NO STV_STARTFLAG). FAITHFUL: the only harness action is CHOOSING
++    // WHEN to inject the coin (the stand-in for the player's hand); the coin itself and the whole
++    // downstream join->commit->executive morph are the game's own code. Pairs with sub-fix #1 (the
++    // countdown that runs the attract reel so fade scenes are reached). One-shot; default off =>
++    // byte-identical. Note: deliver_coin's own gate only accepts when byte is 0 or 3, consistent here.
++    static const char* e_coinseq = std::getenv("STV_COINSEQ");
++    if (e_coinseq) {
++        static bool cs_done = false;
++        uint64_t cs_vb = (uint64_t)std::strtoull(e_coinseq, nullptr, 10);
++        if (!cs_done && vb >= cs_vb &&
++            (uint8_t)ld8(0x0609868Eu) == 1 &&          // director on an attract FADE scene (gate=1)
++            (uint8_t)ld8(0x06098674u) == 0 &&          // P1 join slot empty
++            (uint16_t)ld16(0x0609880Cu) == 0) {        // no coin already pending
++            deliver_coin(0);                           // real coin-detect substitute -> pending=1
++            cs_done = true;
++            sat_note("STV_COINSEQ: coin sequenced onto fade scene (gate=1, slot empty) at VB %llu -> faithful player_join_spawn", (unsigned long long)vb);
++        }
++    }
++    // FAITHFUL SUB-FIX #3 (STV_DEMOSTOP="vb", default off): the "A COIN EXITS THE ATTRACT DEMO" coupling,
++    // the faithful replacement for the FORCED STV_CLEARSLOT2 poke. Pairs with STV_COINSEQ (which times the
++    // coin onto an attract fade scene so the game's own join chain runs). TRACED FACT: the attract fade
++    // scene (off14 func_02232610, scenes 3/5/7/9) spawns TWO demo auto-players via the entity-slot
++    // registrar func_02227bc4 -> id[1]=1 (g_06099594) and id[2]=2 (g_06099598). The coin's join repurposes
++    // the AI-DRIVEN demo P1 (id[1]) as the real join actor (it reaches player_join_commit_fsm on its own);
++    // the commit FSM (func_02229c00) clears only id[1], so the demo P2 (id[2]=2) persists and
++    // attract_handler's dual-vs-join test (g_06099594 + g_06099598) != 0 picks round_controller_JOIN ->
++    // never reaches scene_run. On real hardware a coin STOPS the attract demo, so the demo P2 fighter is
++    // gone before the join. The faithful teardown of ONE demo actor is the game's OWN per-slot despawn
++    // func_02227c5c (cart 0x02227c5c / rt 0x0602BC5C) -- the exact routine a player-actor's terminal FSM
++    // runs (func_0222a418, idx<3 path, unk3c==16) to clear its own entity slot (id[]+ptr[]). We invoke it
++    // via sh2_call (the game's real code, full context save/restore) on the demo P2 entity only, leaving
++    // the demo P1 (id[1]) -> join actor untouched so its real commit still fires. Trigger: once, at
++    // VB>=vb, when the join is in progress on a gate=1 scene (a coin has been accepted, join byte != 0)
++    // and the demo P2 slot id[2] is still live. Result: id[2] -> 0, the demo P2 actor despawns exactly as
++    // it would on its own death; at commit id[1]=0 (commit) + id[2]=0 -> attract_handler sees (0+0)==0 ->
++    // round_controller_dual -> scene_run_handler (ENTER PLAY) -> scene81, all real cart code, NO
++    // STV_CLEARSLOT2. FAITHFUL: the despawn AND the whole join/commit/morph chain are the game's own
++    // routines; the only harness action is CHOOSING to despawn the demo P2 on the coin (the BIOS/director
++    // coin->demo-stop coupling absent in the harness, same class as sub-fix #1/#2). One-shot; default off
++    // => byte-identical.
++    static const char* e_demostop = std::getenv("STV_DEMOSTOP");
++    if (e_demostop) {
++        static bool ds_busy = false;
++        if (!ds_busy) {
++            static bool ds_done = false;
++            uint64_t ds_vb = (uint64_t)std::strtoull(e_demostop, nullptr, 10);
++            uint32_t obj2 = ld32(0x06099584u + 0x2Cu + 2u * 4u);   // entity-slot ptr[] id[2] = demo P2 object
++            if (!ds_done && vb >= ds_vb &&
++                (uint8_t)ld8(0x0609868Eu) == 1 &&          // director on an attract FADE scene (gate=1)
++                ld32(0x06099598u) != 0 &&                  // demo P2 fighter slot id[2] still live
++                obj2 != 0 &&                               // its object pointer is valid
++                (uint8_t)ld8(0x06098674u) != 0) {          // a coin has been accepted (join in progress)
++                ds_done = true;
++                uint32_t ent2 = ld32(obj2 + 8u);           // demo P2 entity (obj->unk8); unk34 = id[2] = 2
++                // --- run the game's OWN per-slot despawn func_02227c5c(entity) via sh2_call ---
++                ds_busy = true;
++                SH2Context& c = g_master;
++                SH2Context save = c;
++                c.r[4] = ent2; c.pr = kRet; c.pc = 0; c.budget = 0x40000000;
++                sh2_call(c, 0x0602BC5Cu);                  // func_02227c5c (clears slot[entity->unk34])
++                bool ok = (c.pc == kRet);
++                c = save;                                  // restore interrupted master state
++                ds_busy = false;
++                sat_note("STV_DEMOSTOP: func_02227c5c(demo P2 entity %08X) ret_ok=%d -> id[2]=%u at VB %llu -> expect round_controller_dual at commit",
++                         ent2, ok, ld32(0x06099598u), (unsigned long long)vb);
++            }
++        }
++    }
++    // STV_CLEARSLOT2 (FORCED diagnostic, default off): PIN-CONFIRMATION for the scene_run gap. The
++    // faithful credit-join (sub-fix #2) commits start flag 0x06098688 by real code, but attract_handler
++    // (0x02204868) then morphs the executive to round_controller_JOIN (0x02204afa), not round_controller_
++    // DUAL (0x02205232), because its dual-vs-join test is `(g_06099594 + g_06099598) == 0 ? dual : join`
++    // and the attract DEMO on the fade scene spawns TWO auto-players (func_02227bc4 stamps entity-slot
++    // id[1]=1 AND id[2]=2 = g_06099594/g_06099598). The commit FSM clears only id[1] (P1); id[2]
++    // (g_06099598=2, the demo P2) persists -> test != 0 -> join. Only round_controller_dual installs
++    // scene_run_handler (0x02205812 == ENTER PLAY) on its countdown expiry; round_controller_join for a
++    // single player (only P1 countdown active) returns to attract_handler on expiry (it needs a CROSS-
++    // player start edge to go dual). So the sole remaining gate to a faithful ENTER PLAY is: the attract
++    // demo's id[2] slot must be clear when attract_handler consumes the start flag. On real hardware the
++    // BIOS/director STOPS the attract demo on a coin (clears both demo players) before the credit/join
++    // screen; that "coin exits attract demo" coupling is genuinely absent in the harness (no real
++    // director). This knob FORCES that one effect for confirmation: while the start flag is pending it
++    // zeroes g_06099598 so attract_handler sees (0 + 0) == 0 -> round_controller_dual -> scene_run. It is
++    // a LABELED stand-in for the missing demo-stop, NOT a faithful fix. Default off => byte-identical.
++    // STV_SLOTTRACE (diagnostic, default off): log the entity-slot id[] table (0x06099584+0xC),
++    // the ptr[] table (+0x2C), the join byte 0x06098674 and the start flag 0x06098688 whenever any
++    // changes. Used to trace when the attract demo stamps id[1]/id[2] and whether/when they clear.
++    if (std::getenv("STV_SLOTTRACE")) {
++        static uint32_t p_id1=0xFFFFFFFF,p_id2=0xFFFFFFFF,p_pt1=0xFFFFFFFF,p_pt2=0xFFFFFFFF;
++        static uint8_t p_byte=0xFF,p_sf=0xFF; static uint32_t p_scene=0xFFFFFFFF;
++        uint32_t id1=ld32(0x06099594u),id2=ld32(0x06099598u);
++        uint32_t pt1=ld32(0x06099584u+0x2Cu+1u*4u),pt2=ld32(0x06099584u+0x2Cu+2u*4u);
++        uint8_t  byte=(uint8_t)ld8(0x06098674u),sf=(uint8_t)ld8(0x06098688u);
++        uint32_t scene=ld32(0x06098668u);
++        if(id1!=p_id1||id2!=p_id2||pt1!=p_pt1||pt2!=p_pt2||byte!=p_byte||sf!=p_sf||scene!=p_scene){
++            sat_note("SLOTTRACE VB %llu scene=%u id1(0x594)=%u id2(0x598)=%u ptr1=%08X ptr2=%08X byte(0x674)=%u startflag(0x688)=%u",
++                     (unsigned long long)vb,scene,id1,id2,pt1,pt2,byte,sf);
++            p_id1=id1;p_id2=id2;p_pt1=pt1;p_pt2=pt2;p_byte=byte;p_sf=sf;p_scene=scene;
++        }
++    }
++    static const char* e_clearslot2 = std::getenv("STV_CLEARSLOT2");
++    if (e_clearslot2 && (ld8(0x06098688u) != 0 || ld8(0x06098689u) != 0)) {
++        if (ld32(0x06099598u) != 0) {
++            st32(0x06099598u, 0);
++            sat_note("STV_CLEARSLOT2: FORCED clear g_06099598 (demo P2 slot) while start flag pending at VB %llu -> expect round_controller_dual", (unsigned long long)vb);
++        }
++    }
++    static const char* e_seed = std::getenv("STV_SCENESEED");
++    static const char* e_adv  = std::getenv("STV_SCENEADV");
++    static const char* e_pin  = std::getenv("STV_SCENEPIN");
++    static const char* e_join = std::getenv("STV_SCENEJOIN");
++    static const char* e_char = std::getenv("STV_SCENECHAR");
++    static const char* e_gate = std::getenv("STV_SCENEGATE");  // from VB>=val: 0x06098798 |= 0x30 (open scene-81 START gate)
++    // STV_STARTENABLE: faithful BIOS-start-enable synthesis (default off => byte-identical).
++    // FINDING (this session): NO cart code anywhere sets bits 4/5 of the cooked control word
++    // 0x06098798 (= field +4 of struct 0x06098794). A full multi-base dataflow scan of the whole
++    // 2MB program (every pool literal in 0x06098758..0x0609879c, incl. the panel-buffer base
++    // 0x060987D8 and r0-indexed stores) found exactly ONE store to 0x06098798 in the image: a
++    // clear-to-0 at rt 0x06005580 (fn rt 0x060071c4, a boot/HW-ready routine; it writes r14, and
++    // r14==0 from the fn prologue `mov #0,r14` at cart 0x22013c6). Every other reference is a READ.
++    // So bits 4/5 (P1/P2 start-enable) are a SYSTEM/BIOS-provided status the game only consumes --
++    // there is no in-cart panel->cooked decoder for them. With no real ST-V BIOS, the harness must
++    // synthesize this signal, exactly as it already synthesizes the 0x06000660 panel service /
++    // 0x060987D8 buffer. Faithful condition: start is enabled when a credit is present
++    // (credit counter 0x06098674 > 0), mirroring real-arcade start-enable logic.
++    static const char* e_senable = std::getenv("STV_STARTENABLE");
++    // STV_FORCEARM ("vb", default off): FORCED stand-in for "a credit is present / a player has joined".
++    // From VB>=vb it holds the 2P-arm flag g_06098670 = 1 EVERY frame, BEFORE the scene director
++    // func_02205b20 runs. Purpose: the faithful credit route is scene_bootstrap -> scene 1 (credit-wait,
++    // func_0220600e) --[selector-4: arm!=0 -> cur45=2]--> scene 2 (stage). In the port the credit-wait
++    // scene's aux object (cart 0x0220686A) is a recomp-coverage wall, so the director cannot DWELL on
++    // scene 1. By forcing the arm before the director first evaluates scene 1's selector, the director
++    // reads scene-1's descriptor and transitions STRAIGHT to scene 2 (the stage) WITHOUT ever spawning
++    // the walled scene-1 handler. This is a FORCED demo shortcut (it asserts the arm without a real
++    // credit-wait commit); the scene-2 stage load + the real stage spawn-list (0x06063e20 -> the human
++    // player via func_02227bc4) that follow are all the game's own code. Pairs with boot mode 0
++    // (STV_BOOTMODE=0: scene_bootstrap at state 0) + the 0x06000654/0x06000798 credit-config fix.
++    static const char* e_forcearm = std::getenv("STV_FORCEARM");
++    // STV_SPAWNPLAYER ("vb[:type]", default off): DIAGNOSTIC round-swing experiment. Once at VB>=vb,
++    // synthesize a 24-byte spawn-descriptor (type 1 = P1 player; see notes/port/round_spawn_experiment.md)
++    // plus a minimal cfg record + context, and run it through the GAME'S OWN process_spawn_list
++    // (rt 0x0602E5D0) via sh2_call on the master, with full context save/restore. The descriptor/cfg
++    // are SYNTHESIZED; the registrar, slot pool and actor-entry func_0222a300 are the real game code.
++    static const char* e_spawn = std::getenv("STV_SPAWNPLAYER");
++    // STV_SPAWNJOIN (default off): after a successful STV_SPAWNPLAYER, FORCE the spawned actor into the
++    // player-join STATE to test the downstream chain. Sets task handler=func_022863e (player main state),
++    // entity->unk43=0x1D (table 0x06091100 index of player_join_arm), entity->unk54|=2 (ready), and
++    // g_0609978c[idx-1]=1 (commit on first cycle). These fields are FORCED (synthetic) -- the real game
++    // sets them from the credit-join trigger, which is not yet located; everything each state then runs is
++    // real game code. See notes/port/round_spawn_experiment.md.
++    static const char* e_joinforce = std::getenv("STV_SPAWNJOIN");
++    // STV_SM81DIAG (diagnostic, default off): when the active scene (g_06098668) == target (default 81),
++    // every N frames (default 30) walk the active object list (sentinel 0x06092244, linked via node->unk4)
++    // and dump each node: handler/def (node->unk0), entity (node->unk8), state byte (node->unk10), and the
++    // entity's recoil/busy fields unk3c / unk50 / unk34(s16). Pure read-only observation of the scene-81
++    // intro state machine and its spawned recoil objects. Format "STV_SM81DIAG=target[:intv]".
++    static const char* e_diag = std::getenv("STV_SM81DIAG");
++    if (e_diag) {
++        static bool dparsed = false; static uint32_t dtarget = 81, dintv = 30;
++        if (!dparsed) { dtarget = (uint32_t)std::strtoul(e_diag, nullptr, 0);
++            const char* dc = std::strchr(e_diag, ':'); if (dc) dintv = (uint32_t)std::strtoul(dc + 1, nullptr, 0);
++            if (dintv == 0) dintv = 1; dparsed = true; }
++        if (ld32(0x06098668u) == dtarget && (vb % dintv) == 0) {
++            sat_note("SM81DIAG VB %llu scene=%u ---- active object list ----", (unsigned long long)vb, dtarget);
++            {
++                uint32_t d = ld32(0x0609866Cu);
++                sat_note("  SCENE81_DESC g_0609866c=%08X desc.30=%08X desc.34=%08X desc.38=%08X desc.3C=%08X",
++                         d, d?ld32(d+0x30u):0u, d?ld32(d+0x34u):0u, d?ld32(d+0x38u):0u, d?ld32(d+0x3Cu):0u);
++            }
++            uint32_t node = ld32(0x06092244u + 4u);
++            for (int i = 0; i < 48 && node && node != 0x06092244u && (node >> 24) == 0x06; ++i) {
++                uint32_t hdl = ld32(node + 0u);
++                uint32_t ent = ld32(node + 8u);
++                uint32_t st  = ld8(node + 0x10u);
++                uint32_t f3c = ent ? ld32(ent + 0x3Cu) : 0u;
++                uint32_t sp  = ent ? ld32(ent + 0x50u) : 0u;
++                int32_t  r34 = ent ? (int32_t)(int16_t)ld16(ent + 0x34u) : 0;
++                uint32_t ph  = ld8(node + 0x10u); (void)ph;
++                sat_note("  node=%08X hdl=%08X ent=%08X st=%u ent.3c=%08X ent.50=%d ent.34=%d",
++                         node, hdl, ent, st, f3c, (int32_t)sp, r34);
++                // TASK-peek (read-only): for the scene81_game_sm node (hdl rt 0x0600A876) dump the
++                // stage-config the stage_setup gate reads: ctx->unk30 bit0 gates the DMA; unk3C = bundle.
++                if (hdl == 0x0600A876u) {
++                    sat_note("    SCENE81_CTX unk30=%08X unk34=%08X unk38=%08X unk3A=%d unk3C=%08X (bit0=%d)",
++                             ld32(node + 0x30u), ld32(node + 0x34u), ld32(node + 0x38u),
++                             (int32_t)(int16_t)ld16(node + 0x3Au), ld32(node + 0x3Cu),
++                             (int)(ld32(node + 0x30u) & 1u));
++                }
++                node = ld32(node + 4u);
++            }
++        }
++    }
++    // STV_FOCUSTRACK (FORCED-HLE, default off; byte-identical when unset): the UNIFIED visual wire.
++    // Both the RBG0 rotation camera (My) and the P1 player-sprite affine transform read their view
++    // source from src = (*0x0609882c)->unk8 -- the "focus" entity (sprite_transform_setup
++    // func_022225f6: dx/dy/dz = src.0x8/0xC/0x10 - cam, angles src.0x24/0x26). On the credit-route
++    // faithful scene 3 the focus object (*0x0609882c = 0x060922A4) keeps unk8 = the STATIC boot camera
++    // entity (0x060E13B0), off-map (My~1998 -> black floor; player sprite transformed off the play
++    // area), never re-wired to the live player. Each frame we COPY the live P1 player entity's world
++    // position (+8/+0xC/+0x10) and view angles (+0x24/+0x26) INTO the focus entity, so both consumers
++    // read the live player. We copy fields (not the pointer) so the focus object's per-frame handler
++    // graph (task_list_run walk) stays intact -- repointing unk8 splices the player entity into that
++    // walk and faults (call to a data field as a handler). The live P1 player is found via the game's
++    // own entity-slot table g_06099584 (ptr[] at +0x2C, id=1 = P1; player_obj->unk8 = entity, as
++    // func_02227bc4 stamps). HLEs the live-stage -> focus wiring the real ST-V BIOS/director performs
++    // once a round goes live; FORCED because that coupling signal is BIOS-synthesized, absent from
++    // cart code. No-op until a P1 player object exists in the slot (attract/intro scenes untouched).
++    static const char* e_focustrack = std::getenv("STV_FOCUSTRACK");
++    if (e_focustrack) {
++        uint32_t focus = ld32(0x0609882cu);                    // *0x0609882c = focus object (0x060922A4)
++        uint32_t pobj  = ld32(0x06099584u + 0x2Cu + 1u * 4u);  // entity-slot ptr[] id=1 = P1 player object
++        if (focus && (focus >> 24) == 0x06 && pobj && (pobj >> 24) == 0x06) {
++            uint32_t fent = ld32(focus + 8u);                  // focus entity (static boot camera, 0x060E13B0)
++            uint32_t pent = ld32(pobj + 8u);                   // live player entity (obj->unk8, e.g. 0x060E1AA0)
++            if (fent && (fent >> 24) == 0x06 && pent && (pent >> 24) == 0x06 && fent != pent) {
++                static unsigned fmask = []{ const char* e = std::getenv("STV_FOCUSFIELDS"); return e ? (unsigned)std::strtoul(e,nullptr,0) : 3u; }();  // default X|Y; Z (bit4) depth-culls sprites
++                if (fmask & 1) st32(fent + 0x08u, ld32(pent + 0x08u));  // FORCED-HLE: X world position
++                if (fmask & 2) st32(fent + 0x0Cu, ld32(pent + 0x0Cu));  //             Y world position
++                if (fmask & 4) st32(fent + 0x10u, ld32(pent + 0x10u));  //             Z world position
++                // STV_CAMTRACK (FORCED experiment, default off): the stale credit-route stage camera
++                // (0x060755D4: A at +0, B at +0xC) sits at Z~0x788000 (attract context) -> every sprite
++                // parks off-screen + My off-map. Force both camera vectors to track the live player so
++                // the frustum contains the stage. STV_CAMZ / STV_CAMY offset the camera back/up.
++                if (std::getenv("STV_CAMTRACK")) {
++                    int32_t px = (int32_t)ld32(pent + 0x08u), py = (int32_t)ld32(pent + 0x0Cu), pz = (int32_t)ld32(pent + 0x10u);
++                    static int32_t cz = []{ const char* e=std::getenv("STV_CAMZ"); return e?(int32_t)std::strtol(e,nullptr,0):0; }();
++                    static int32_t cy = []{ const char* e=std::getenv("STV_CAMY"); return e?(int32_t)std::strtol(e,nullptr,0):0; }();
++                    for (uint32_t base = 0x060755D4u; base <= 0x060755E0u; base += 0xCu) {
++                        st32(base + 0x0u, (uint32_t)px);
++                        st32(base + 0x4u, (uint32_t)(py + cy));
++                        st32(base + 0x8u, (uint32_t)(pz + cz));
++                    }
++                }
++                // NOTE: view angles (+0x24/+0x26) are DELIBERATELY NOT copied -- those are the
++                // player entity's FACING, not a camera orientation; copying them collapses the RBG0
++                // rotation matrix (A 1.0 -> ~0.03). The camera keeps its own orientation and only
++                // tracks the player's world position. (STV_FOCUSANG=1 re-enables angle copy for A/B.)
++                if (std::getenv("STV_FOCUSANG")) {
++                    st16(fent + 0x24u, ld16(pent + 0x24u));
++                    st16(fent + 0x26u, ld16(pent + 0x26u));
++                }
++                if ((vb % 200u) == 0u)
++                    sat_note("FOCUSTRACK VB %llu focus=%08X fent=%08X <- pent=%08X pos(%08X,%08X,%08X)",
++                             (unsigned long long)vb, focus, fent, pent,
++                             ld32(pent + 0x08u), ld32(pent + 0x0Cu), ld32(pent + 0x10u));
++            }
++        }
++    }
++    // STV_ACTORPOS (FORCED diagnostic, default off; byte-identical when unset): EXPERIMENT to test
++    // whether the live P1 fighter actor off-map world position (X~0x12640D) collapses its VDP1
++    // sprite geometry to zero. Each frame write the live P1 entity world position (+8/+0xC/+0x10)
++    // from STV_ACTORPOS="Xhex:Yhex:Zhex". Same slot lookup as FOCUSTRACK; real actor, no fake sprite.
++    static const char* e_actorpos = std::getenv("STV_ACTORPOS");
++    if (e_actorpos) {
++        uint32_t pobj = ld32(0x06099584u + 0x2Cu + 1u * 4u);
++        if (pobj && (pobj >> 24) == 0x06) {
++            uint32_t pent = ld32(pobj + 8u);
++            if (pent && (pent >> 24) == 0x06) {
++                static uint32_t ax=0,ay=0,az=0; static bool parsed=false;
++                if (!parsed) { char buf[64]; std::strncpy(buf,e_actorpos,63); buf[63]=0;
++                    char* c1=std::strchr(buf,':'); char* c2=c1?std::strchr(c1+1,':'):nullptr;
++                    ax=(uint32_t)std::strtoul(buf,nullptr,16);
++                    ay=c1?(uint32_t)std::strtoul(c1+1,nullptr,16):0;
++                    az=c2?(uint32_t)std::strtoul(c2+1,nullptr,16):0; parsed=true; }
++                st32(pent + 0x08u, ax);
++                st32(pent + 0x0Cu, ay);
++                st32(pent + 0x10u, az);
++                // STV_ACTORANIM=hexidx: force the live actor animation record indices unk5A/unk5C
++                // (table 0x0607D124 stride 28, read by actor_anim_frame_update) to a real idle pose so
++                // the model parts transform with real offsets instead of the null rest pose (idx 0).
++                static const char* e_anim=std::getenv("STV_ACTORANIM");
++                if (e_anim) { uint16_t ai=(uint16_t)std::strtoul(e_anim,nullptr,16);
++                    st16(pent + 0x5Au, ai); st16(pent + 0x5Cu, ai); }
++                if ((vb % 200u) == 0u)
++                    sat_note("STV_ACTORPOS VB %llu pent=%08X <- pos(%08X,%08X,%08X)",
++                             (unsigned long long)vb, pent, ax, ay, az);
++            }
++        }
++    }
++    // STV_PLAYERPEEK (read-only diagnostic, default off => byte-identical when unset): log the live
++    // P1/P2 fighter world position + cooked input record every STV_PLAYERPEEK vblanks (default 60).
++    // Player object via the game entity-slot table (same lookup as FOCUSTRACK): pobj=ld32(0x060995B4)
++    // (id=1 P1 / 0x060995B8 id=2 P2), entity=pobj->unk8; world pos at entity +8/+0xC/+0x10, facing
++    // angles +0x24/+0x26. Cooked input record P1 @0x06098734 / P2 @0x0609874c (+0 cur,+2 inject,
++    // +4 press-edge,+0x16 latched dir). Pure reads; nothing is written.
++    static const char* e_ppeek = std::getenv("STV_PLAYERPEEK");
++    if (e_ppeek) {
++        static uint32_t ivl = []{ unsigned long v = std::strtoul(std::getenv("STV_PLAYERPEEK"), nullptr, 10); return v ? (uint32_t)v : 60u; }();
++        if ((vb % ivl) == 0u) {
++            for (int id = 1; id <= 2; ++id) {
++                uint32_t pobj = ld32(0x06099584u + 0x2Cu + (uint32_t)id * 4u);
++                uint32_t pent = (pobj && (pobj >> 24) == 0x06) ? ld32(pobj + 8u) : 0u;
++                uint32_t crec = (id == 1) ? 0x06098734u : 0x0609874cu;
++                if (pent && (pent >> 24) == 0x06)
++                    sat_note("PLAYERPEEK VB %llu P%d ent=%08X pos(%08X,%08X,%08X) ang(%04X,%04X) cook cur=%04X inj=%04X pe=%04X lat=%04X HP=%04X busy=%02X unk34=%u",
++                             (unsigned long long)vb, id, pent,
++                             ld32(pent+0x08u), ld32(pent+0x0Cu), ld32(pent+0x10u),
++                             (unsigned)ld16(pent+0x24u), (unsigned)ld16(pent+0x26u),
++                             (unsigned)ld16(crec+0u), (unsigned)ld16(crec+2u), (unsigned)ld16(crec+4u),
++                             (unsigned)ld16(crec+0x16u), (unsigned)ld16(pent+0x56u), (unsigned)ld8(pent+0x4Cu), (unsigned)ld8(pent+0x34u));
++                else
++                    sat_note("PLAYERPEEK VB %llu P%d no-entity (pobj=%08X)", (unsigned long long)vb, id, pobj);
++            }
++            for (int id = 3; id <= 6; ++id) {
++                uint32_t act  = ld32(0x06099584u + 0x0Cu + (uint32_t)id * 4u);
++                uint32_t eobj = ld32(0x06099584u + 0x2Cu + (uint32_t)id * 4u);
++                uint32_t eent = (eobj && (eobj >> 24) == 0x06) ? ld32(eobj + 8u) : 0u;
++                if (act && eent && (eent >> 24) == 0x06)
++                    sat_note("PLAYERPEEK VB %llu E%d ent=%08X type=%u pos(%08X,%08X,%08X) ang(%04X,%04X) HP=%04X busy=%02X unk34=%u",
++                             (unsigned long long)vb, id, eent, (unsigned)ld32(eent+0xE4u),
++                             ld32(eent+0x08u), ld32(eent+0x0Cu), ld32(eent+0x10u),
++                             (unsigned)ld16(eent+0x24u), (unsigned)ld16(eent+0x26u),
++                             (unsigned)ld16(eent+0x56u), (unsigned)ld8(eent+0x4Cu), (unsigned)ld8(eent+0x34u));
++            }
++        }
++    }
++    // STV_STAGECFG (FORCED labeled, default off; byte-identical when unset): supply the character/
++    // stage-SELECTION result that scenes 75-80 (skipped on the credit/scene_run route) would have
++    // written into the scene-81 GAME task node. scene81_stage_setup (func_02206e2e) reads the stage
++    // config from its ctx (= the scene81_game_sm task node, hdl rt 0x0600A876): ctx->unk30 bit0 GATES
++    // the whole stage DMA (if clear it early-returns), unk38=layer select, unk3A=cell count, unk3C=
++    // stage-asset bundle. The scene-81 DESCRIPTOR (g_0609866c=0x06073FB0) already holds the real
++    // default stage config (desc.30=0x101, desc.38=1, desc.3A=1, desc.3C=0x06072350), but nothing on
++    // the scene_run path copies it into the node (the copy is a stage-select side effect). This knob
++    // performs that copy every frame while scene==81 until the gate bit is set, so stage_setup DMAs the
++    // real cart-ROM stage bundle to VDP2. It is FORCED because the faithful selection chain (75-80) is
++    // not driven here; it supplies exactly the fields a real selection would. Default off => no effect.
++    static const char* e_stagecfg = std::getenv("STV_STAGECFG");
++    static const char* e_playroute = std::getenv("STV_PLAYROUTE");
++    static const char* e_joinhold = std::getenv("STV_JOINHOLD");   // two-task arbitration (see block below)
++    static const char* e_liveround = std::getenv("STV_LIVEROUND"); // sustained live-stage DUAL round (see block below)
++    if (!(e_seed || e_adv || e_pin || e_join || e_char || e_gate || e_senable || e_spawn || e_joinforce || e_diag || e_forcearm || e_stagecfg || e_playroute || e_joinhold || e_liveround || std::getenv("STV_RAWINPUT"))) return;  // default off: no effect (STV_RAWINPUT self-enables so cooked input reaches the faithful route)
++    auto scn_desc = [](uint32_t idx) -> uint32_t { return 0x06072660u + idx * 0x50u; };
++    if (e_stagecfg) {
++        if (ld32(0x06098668u) == 81u) {
++            uint32_t desc = ld32(0x0609866Cu);
++            // walk the active object list for the scene81_game_sm node (hdl rt 0x0600A876)
++            uint32_t node = ld32(0x06092244u + 4u);
++            for (int i = 0; i < 48 && node && node != 0x06092244u && (node >> 24) == 0x06; ++i) {
++                if (ld32(node + 0u) == 0x0600A876u) {
++                    if (!(ld32(node + 0x30u) & 1u) && desc && (desc >> 24) == 0x06) {
++                        st32(node + 0x30u, ld32(desc + 0x30u));   // flags (bit0 = DMA gate)
++                        st32(node + 0x34u, ld32(desc + 0x34u));   // 2nd-layer flags (0 => off)
++                        st32(node + 0x38u, ld32(desc + 0x38u));   // layer select / tile base
++                        st16(node + 0x3Au, ld16(desc + 0x3Au));   // cell-column count
++                        st32(node + 0x3Cu, ld32(desc + 0x3Cu));   // stage-asset bundle ptr
++                        sat_note("STV_STAGECFG: copied desc stage-config into game node %08X (unk30=%08X unk3C=%08X) at VB %llu",
++                                 node, ld32(node + 0x30u), ld32(node + 0x3Cu), (unsigned long long)vb);
++                    }
++                    break;
++                }
++                node = ld32(node + 4u);
++            }
++        }
++    }
++    if (e_forcearm) {
++        uint64_t fat = (uint64_t)std::strtoull(e_forcearm, nullptr, 10);
++        if (vb >= fat) {
++            st32(0x06098670u, 1);              // FORCED: hold the 2P-arm so scene-1 selector-4 -> scene 2
++            // FORCED: seed the P1 join byte (credit-wait commit stand-in). The stage spawn-list selector
++            // func_0222a878 (g_06098670==1 path) -> func_0222a8d8 counts players whose join byte
++            // 0x06098674[i]==2; it needs exactly ONE (P1) to return sel==1 and pick the human 1P list
++            // (rec->unk0) instead of the 2P-demo list (rec->unk8). func_0222a878 promotes a byte of 1->2,
++            // so seed 1 only while the byte is 0 and let the game promote/keep it (==2). P2 left 0 => count 1.
++            if (ld8(0x06098674u) == 0) st8(0x06098674u, 1);
++        }
++    }
++    if (e_join) {
++        uint64_t jat = (uint64_t)std::strtoull(e_join, nullptr, 10);
++        if (vb >= jat) { st8(0x06098674u, 2); st8(0x06098675u, 2); }  // "1" = from boot
++    }
++    if (e_char) st32(0x0609856Cu, (uint32_t)std::strtoul(e_char, nullptr, 0));
++    // STV_RAWINPUT (faithful cooked-input injection, default off => byte-identical when unset).
++    // Feeds REAL raw per-player control words into the BIOS raw-input array 0x06000708 (P1) /
++    // 0x06000710 (P2) that the cart's OWN per-frame input cook func_0220f9d4 (rt 0x060139d4) reads
++    // and decodes into the cooked per-player records at 0x06098734 (P1) / 0x0609874c (P2). Faithful:
++    // the harness supplies only the raw word the real ST-V SMPC/BIOS peripheral handler would write;
++    // the cart computes press/release edges, hold timers and the direction latch itself. The cook
++    // only processes the P1/P2 records while the 2P-arm g_06098670 != 0 (scene-75 states 3/4/5, and
++    // attract). Bit layout (identical in raw and cooked; from the cook + consumers 0220e1e2/0222c220):
++    //   bit0(0x001)=button A, bit1(0x002)=button B, bit2(0x004)=button C/gate, bits6-9(0x3C0)=directions.
++    // Timeline grammar "VB:P:HEX,..." (P: 0=P1, 1=P2): at VB>=VB set that player's held raw word=HEX;
++    // it HOLDS until the next event for that player (HEX=0 releases => a clean edge for the cook).
++    static const char* e_rawin = std::getenv("STV_RAWINPUT");
++    if (e_rawin) {
++        struct RawEv { uint64_t vb; int p; uint16_t v; };
++        static std::vector<RawEv> rawevs;
++        static bool rawparsed = false;
++        static uint16_t rawheld[2] = {0, 0};
++        if (!rawparsed) {
++            rawparsed = true;
++            const char* s = e_rawin;
++            while (*s) {
++                char* end;
++                uint64_t vbn = std::strtoull(s, &end, 10);
++                if (*end != ':') break;
++                int p = (int)std::strtol(end + 1, &end, 10);
++                if (*end != ':') break;
++                uint16_t v = (uint16_t)std::strtoul(end + 1, &end, 0);
++                if (p == 0 || p == 1) rawevs.push_back({vbn, p, v});
++                while (*end == ',' || *end == ' ') ++end;
++                s = end;
++            }
++            sat_note("STV_RAWINPUT: %zu raw-input events parsed (faithful cook path via 0x06000708/0x06000710)", rawevs.size());
++        }
++        for (size_t k = 0; k < rawevs.size(); ++k)
++            if (vb == rawevs[k].vb) rawheld[rawevs[k].p] = rawevs[k].v;
++        st16(0x06000708u, rawheld[0]);    // P1 raw control word (cook -> 0x06098734)
++        st16(0x06000710u, rawheld[1]);    // P2 raw control word (cook -> 0x0609874c)
++    }
++    if (e_gate) {
++        uint64_t gat = (uint64_t)std::strtoull(e_gate, nullptr, 10);
++        if (vb >= gat) st16(0x06098798u, (uint16_t)(ld16(0x06098798u) | 0x30u));  // bits4/5: enable panel poll + START accept (scene 81)
++    }
++    if (e_senable) {
++        // Faithful start-enable: set cooked bits 4/5 only while a credit is present. This runs every
++        // frame after the game's own clear (rt 0x06005580 / per-frame reset), so the enable persists
++        // like the real BIOS status would. Threshold VB optional ("STV_STARTENABLE=vb"; default 0).
++        uint64_t sat = (uint64_t)std::strtoull(e_senable, nullptr, 10);
++        if (vb >= sat && ld8(0x06098674u) > 0) {
++            st16(0x06098798u, (uint16_t)(ld16(0x06098798u) | 0x30u));
++        }
++    }
++    if (e_seed) {
++        static bool parsed = false, done = false;
++        static uint64_t at = 0; static uint32_t idx = 81;
++        if (!parsed) { const char* c = std::strchr(e_seed, ':');
++            at = (uint64_t)std::strtoull(e_seed, nullptr, 10);
++            if (c) idx = (uint32_t)std::strtoul(c + 1, nullptr, 10); parsed = true; }
++        if (!done && vb >= at) {
++            st32(0x06098668u, idx); st32(0x0609866Cu, scn_desc(idx)); done = true;
++            sat_note("STV_SCENESEED: g_06098668=%u g_0609866c=%08X at VB %llu",
++                     idx, scn_desc(idx), (unsigned long long)vb);
++        }
++    }
++    // STV_PLAYROUTE (default off => byte-identical when unset): FAITHFUL-TRIGGER bridge for the
++    // attract->setup-chain routing coupling. A real coin+START credit-join raises the start flag
++    // g_06098688 (P1) / g_06098689 (P2) via the game OWN player_join_commit_fsm (cart 0x02229c00).
++    // On hardware that routes the scene director into the character/stage SETUP CHAIN entry (scene 73);
++    // in the HLE harness the director is instead PARKED on the attract reel (scene 3: arm g_06098670=1
++    // stalls the fade transition-timeline -- func_0222a8d8 leaves the channel mask 0x06098564=0 so
++    // func_022463c8 early-returns and scene 3 never completes) and then fires the reset-timeout lever
++    // (director task->unk13<0 in func_02205b20) STRAIGHT to scene 81, skipping 73-80 -> empty stage.
++    // This knob watches the REAL start-flag edge and, on it, seeds the director to scene 73 and sets
++    // both join bytes g_06098674/75 = 2 so the scene-73 selector (func_02205b20 case 3) takes the
++    // 2P setup branch -> real cart code then walks 73->74->75->78->79->80->81. Chain-entry is thus
++    // tied to the real coin+START commit (not a fixed VB, cf. STV_SCENESEED). Fires once. The absent
++    // piece it bridges is the BIOS/director live-stage-activation coupling (no cart code writes the
++    // director scene index on a credit-join -- the coupling is genuinely BIOS/system-synthesized).
++    if (e_playroute) {
++        static bool armed = false, done = false;
++        // Two-phase trigger. PHASE 1 (arm): the durable REAL credit-join -- join byte 0x06098674/75
++        // reaches 2 (a player confirmed a credit) or a start flag is set, while the director is on an
++        // attract fade scene (3..72). PHASE 2 (seed): the director index must be written only at a
++        // CLEAN director-handshake boundary -- i.e. on a frame where the boot-SM (func_022016ac,
++        // *0x060987B8) is in state 4 AND the director entity's unk3c bit0 is SET. func_02205b20 runs
++        // its scene-selector + content-spawn (func_0220fece) body ONLY when unk3c bit0 is set
++        // (otherwise it early-returns, just ticking entity->unk50). The old one-phase seed overwrote
++        // g_06098668 mid-attract while bit0 was CLEAR, so func_02205b20 never ran its body for scene
++        // 73 and the walk stalled at 73 (observed: boot-SM state=4, ent unk3c=0 at the seed frame).
++        // Seeding at a bit0-set boundary lets the director spawn scene-73 content and advance, exactly
++        // as the clean no-coin STV_SCENESEED path does.
++        uint32_t sc = ld32(0x06098668u);
++        bool joined = (ld8(0x06098674u) == 2u || ld8(0x06098675u) == 2u || ld8(0x06098688u) != 0u || ld8(0x06098689u) != 0u);
++        if (!armed && joined && sc >= 3u && sc < 73u) {
++            armed = true;
++            sat_note("STV_PLAYROUTE: armed by real credit-join at VB %llu scene=%u -- awaiting clean director boundary", (unsigned long long)vb, sc);
++        }
++        if (armed && !done) {
++            uint32_t dtask = ld32(0x060987B8u);
++            uint32_t dent  = dtask ? ld32(dtask + 8u) : 0u;
++            uint8_t  dstate = dtask ? (uint8_t)ld8(dtask + 0x10u) : 0xFFu;
++            uint32_t scn = ld32(0x06098668u);
++            // Seed as soon as the boot-SM is in director state 4 and we are still on the attract reel
++            // (scene < 73). An ARMED coin freezes the attract fade reel (arm g_06098670=1 stalls the
++            // transition timeline -> fade scenes never complete -> the director never reaches a normal
++            // advance boundary; the only motion is the reset-timeout jump straight to 81), so there is
++            // NO clean bit0-set boundary to wait for. Instead we MANUFACTURE the boundary faithfully:
++            //   (a) write the director index/desc to scene 73 + the 2P join bytes (the credit-select
++            //       result a real coin+START would produce);
++            //   (b) SET the director entity's unk3c bit0 so func_02205b20 runs its selector + content
++            //       spawn (func_0220fece) for scene 73 this frame (the scene-content object then owns
++            //       the per-scene busy/done handshake, exactly as on the clean STV_SCENESEED walk);
++            //   (c) CLEAR the reset-timeout lever: force the director task->unk13 (s8 @+0xd) >= 0 so
++            //       func_02205b20 takes its scene-selector branch (walk 73->74->...) instead of the
++            //       `(s8)unk13 < 0` force-jump-to-81. JOINHOLD then keeps the executive from re-morphing.
++            if (dstate == 4u && scn >= 3u && scn < 73u) {
++                st32(0x06098668u, 73u); st32(0x0609866Cu, scn_desc(73u));
++                st8(0x06098674u, 2u); st8(0x06098675u, 2u);
++                if (dent && (dent >> 24) == 0x06) st32(dent + 0x3Cu, ld32(dent + 0x3Cu) | 1u);  // (b) ack bit0
++                if (dtask) st8(dtask + 0x0Du, 0);                                                // (c) kill reset-timeout
++                done = true;
++                s_playroute_fired = true;
++                sat_note("STV_PLAYROUTE: seeded dir->73 + set ack bit0 + cleared reset-timeout at VB %llu | boot-SM state=%u ent=%08X exo=%08X exoh=%08X",
++                         (unsigned long long)vb, dstate, dent,
++                         ld32(0x06098678u), ld32(0x06098678u) ? ld32(ld32(0x06098678u)+0u) : 0u);
++            }
++        }
++    }
++    // STV_JOINHOLD (two-task ARBITRATION, default off => byte-identical when unset): resolves the
++    // director-vs-executive competition on the STV_PLAYROUTE (real-coin) setup-chain walk. On a real
++    // coin TWO tasks race: (1) the SCENE DIRECTOR (func_02205b20, run from boot-SM func_022016ac
++    // state 4) that STV_PLAYROUTE seeds to scene 73 to WALK the chain 73->74->75->78->79->80->81;
++    // (2) the EXECUTIVE object *g_06098678, which the same coin morphs attract_handler (func_02204868)
++    // -> round_controller_join (func_02204afa, "credits present") via attract_handler's start-flag
++    // branch. round_controller_join runs a PRESS-START countdown that rewrites the join bytes
++    // g_06098674/75 (sets them to 3, then 0 on countdown expiry) -- which collides with the director's
++    // scene-73 selector (func_02205b20 case 3 reads g_06098674==2 && g_06098675==2 to pick the 74
++    // branch) and STALLS the walk at 73. On the no-coin STV_SCENESEED path the executive never morphs
++    // (COV round_controller_join=0), so there is no collision and the walk is clean; this knob makes
++    // the real-coin path behave the same by HOLDING the executive in its pre-morph ATTRACT handler --
++    // the exact state the clean SCENESEED walk runs in. While PLAYROUTE has fired and the director
++    // index is in the selection window [73,76): if the executive handler is round_controller_join/dual
++    // it is reverted to attract_handler (undo the coin morph) and the executive entity's player
++    // countdowns (unk40/unk44) are zeroed; the P1/P2 start flags g_06098688/89 are consumed (cleared)
++    // so attract_handler will not immediately re-morph; and the 2P join bytes g_06098674/75 are
++    // re-asserted = 2 so the case-3 selector takes the 74 branch. At index >= 76 the director itself
++    // installs scene_run_handler (func_02205812) into *g_06098678 and resets the join bytes, so
++    // JOINHOLD stops touching the executive there (mirrors the clean SCENESEED hand-off). This bridges
++    // the BIOS/director coin->setup-chain sequencing the HLE harness lacks; default off => no effect.
++    if (e_joinhold && s_playroute_fired) {
++        uint32_t sc = ld32(0x06098668u);
++        // Keep the director's reset-timeout lever disarmed for the whole walk 73..81: an armed coin
++        // leaves the director task->unk13 counting toward the <0 force-jump-to-81, which would abort
++        // the walk mid-chain. Clearing it each frame lets func_02205b20 run its real scene selector.
++        if (sc >= 73u && sc <= 81u) {
++            uint32_t dtask = ld32(0x060987B8u);
++            if (dtask && (int8_t)ld8(dtask + 0x0Du) < 0) st8(dtask + 0x0Du, 0);
++        }
++        // In the selection window [73,76) hold the executive in its pre-morph ATTRACT state (the exact
++        // state the clean no-coin STV_SCENESEED walk runs in) and keep the 2P join bytes asserted so
++        // the director's scene-73 case-3 selector takes the 74 branch. At >=76 the director installs
++        // scene_run_handler itself and resets the join bytes, so we stop touching the executive there.
++        if (sc >= 73u && sc < 76u) {
++            uint32_t exo = ld32(0x06098678u);              // executive object (*g_06098678)
++            if (exo && (exo >> 24) == 0x06) {
++                uint32_t h = ld32(exo + 0u);               // its per-frame handler slot
++                if (h == 0x02204AFAu || h == 0x02205232u) {   // round_controller_join / round_controller_dual
++                    st32(exo + 0u, 0x02204868u);           // revert the coin-driven morph -> attract_handler
++                    uint32_t ent = ld32(exo + 8u);
++                    if (ent && (ent >> 24) == 0x06) { st32(ent + 0x40u, 0); st32(ent + 0x44u, 0); }
++                    sat_note("STV_JOINHOLD: reverted executive morph (handler %08X -> attract_handler) at VB %llu scene=%u", h, (unsigned long long)vb, sc);
++                }
++                st8(0x06098688u, 0); st8(0x06098689u, 0);      // consume the coin start-flag edge
++                st8(0x06098674u, 2u); st8(0x06098675u, 2u);    // keep the 2P join for the case-3 selector
++            }
++        }
++    }
++    // STV_LIVEROUND="vb[:stage]" (LABELED BRIDGE for the two absent executive/director couplings;
++    // default off => byte-identical when unset). Drives the plain faithful stage route (STV_BOOTMODE=0
++    // STV_CFG798=40) from ATTRACT-on-a-stage into a SUSTAINED live DUAL round WITHOUT tearing down the
++    // input-responsive stage player. It bridges exactly the two gaps every prior pass converged on:
++    //
++    //  (1) MORPH GATE (coupling #1). On this route the director sits on a gameplay STAGE scene (2..72,
++    //      here scene 3) whose spawn-list has built the live, input-responsive demo P1 actor (ent
++    //      060E1AA0, unk34=1), kept responsive because the 2P-arm g_06098670==1 makes the cart cook
++    //      func_0220f9d4 feed the P1/P2 cooked records (consumed by STV_RAWINPUT). The executive
++    //      (*g_06098678) never leaves attract_handler on its own (no START flag is ever committed), so
++    //      the "INSERT COIN(S)" overlay persists. attract_handler's dual-vs-join gate picks
++    //      round_controller_JOIN whenever the demo entity slots (g_06099594 id[1] + g_06099598 id[2])
++    //      are non-zero -- which they ARE while the responsive demo P1 is alive. So we CANNOT clear the
++    //      slots to reach DUAL directly without despawning the player. Instead this knob presses START
++    //      for the two players the way a player's hand would -- it sets the cart's own per-player START
++    //      edge flags g_06098688 (P1) then g_06098689 (P2) across two frames so REAL cart code morphs
++    //      attract_handler -> round_controller_join (P1 START, demo slots present) -> round_controller_
++    //      dual (P2 START seen mid-countdown: func_02204afa's "other player pressed start" branch). The
++    //      demo actors are NEVER cleared, so the responsive P1 (060E1AA0) survives the morph. The
++    //      round-controller countdown (entity->unk40/unk44, armed to 0x27f by the cart on the START
++    //      edge) then expires and func_02205232 installs scene_run_handler (0x02205812) == ENTER PLAY,
++    //      all by the game's own code. The only harness action is CHOOSING when to press START (the
++    //      stand-in for the player's hand + the BIOS start-enable signal, same class as STV_COINSEQ).
++    //
++    //  (2) POST-MORPH ROUTING (coupling #2). scene_run_handler tail-steps whatever scene the DIRECTOR
++    //      holds (g_0609867c steps g_0609866c). To keep it stepping a LIVE STAGE (not advancing to the
++    //      terminal ENTER-PLAY intro scene 81) we HOLD the director parked on the stage scene: keep the
++    //      2P-arm g_06098670==1 (which freezes the attract fade so the director entity's unk3c bit0 is
++    //      never set -> func_02205b20's main body, incl. its reset-timeout force-jump-to-81, never
++    //      runs) and pin g_06098668 + g_0609866c to the held stage scene as belt-and-suspenders, and
++    //      disarm the director reset-timeout (task *0x060987B8 unk13) if it ever goes negative. Holding
++    //      arm==1 ALSO keeps the input cook feeding the player -- the same flag serves both couplings.
++    //      Result: executive in round_controller_dual -> scene_run_handler stepping stage scene 3 with
++    //      the live input-responsive P1, HUD, and the attract insert-coin overlay gone (attract_handler
++    //      no longer runs; its blank-HUD prints during the join/dual phase clear the overlay lines).
++    //
++    // HONESTY: both presses and the director hold are LABELED bridges for BIOS/director-synthesized
++    // couplings the HLE harness does not reproduce; the morph chain, the countdown, the scene stepping
++    // and the player movement are all the game's own code. Default off => byte-identical.
++    if (e_liveround) {
++        static bool lr_parsed = false;
++        static uint64_t lr_vb = 0;
++        static uint32_t lr_stage = 0;          // 0 => capture current director scene at trigger
++        static int lr_phase = 0;               // 0 wait vb; 1 pressed P1; 2 pressed P2; 3 in dual; 4 in scene_run
++        static uint32_t lr_held = 3;           // the stage scene we pin the director to
++        if (!lr_parsed) {
++            lr_parsed = true;
++            lr_vb = (uint64_t)std::strtoull(e_liveround, nullptr, 10);
++            const char* c = std::strchr(e_liveround, ':');
++            if (c) lr_stage = (uint32_t)std::strtoul(c + 1, nullptr, 0);
++        }
++        uint32_t exo = ld32(0x06098678u);                 // executive object (*g_06098678)
++        uint32_t h = (exo && (exo >> 24) == 0x06) ? ld32(exo + 0u) : 0;  // its per-frame handler (RECOMP addr)
++        // Handler slots hold RECOMP addresses (cart+0x03E04000): attract 0x06008868, join 0x06008AFA,
++        // dual 0x06009232, scene_run 0x06009812 (the same addresses main_stv.cpp's STV_COV table uses).
++        if (lr_phase == 0 && vb >= lr_vb && h == 0x06008868u) {   // attract_handler running
++            uint32_t sc = ld32(0x06098668u);
++            lr_held = lr_stage ? lr_stage : ((sc >= 2u && sc <= 72u) ? sc : 3u);
++            st8(0x06098688u, 1);                          // press P1 START -> attract morphs to join
++            lr_phase = 1;
++            sat_note("STV_LIVEROUND: pressed P1 START at VB %llu (held stage scene=%u) -> expect round_controller_join", (unsigned long long)vb, lr_held);
++        } else if (lr_phase == 1 && h == 0x06008AFAu) {           // round_controller_join running
++            st8(0x06098689u, 1);                          // press P2 START mid-countdown -> join morphs to dual
++            lr_phase = 2;
++            sat_note("STV_LIVEROUND: pressed P2 START at VB %llu -> expect round_controller_dual", (unsigned long long)vb);
++        } else if (lr_phase == 2 && h == 0x06009232u) {          // round_controller_dual running
++            lr_phase = 3;
++            sat_note("STV_LIVEROUND: executive in round_controller_dual at VB %llu -> awaiting countdown -> scene_run", (unsigned long long)vb);
++        } else if (lr_phase >= 2 && h == 0x06009812u) {          // scene_run_handler installed (ENTER PLAY)
++            if (lr_phase != 4)
++                sat_note("STV_LIVEROUND: executive in scene_run_handler at VB %llu -- SUSTAINED LIVE ROUND on stage scene %u", (unsigned long long)vb, lr_held);
++            lr_phase = 4;
++        }
++
++        // Director hold (coupling #2): active from the first press onward. Keep the stage parked.
++        if (lr_phase >= 1) {
++            st32(0x06098670u, 1);                                 // hold 2P-arm: director parked + cook feeds input
++            if (ld32(0x06098668u) != lr_held) {
++                st32(0x06098668u, lr_held);
++                st32(0x0609866Cu, scn_desc(lr_held));
++            }
++            uint32_t dtask = ld32(0x060987B8u);
++            if (dtask && (dtask >> 24) == 0x06 && (int8_t)ld8(dtask + 0x0Du) < 0)
++                st8(dtask + 0x0Du, 0);                            // disarm director reset-timeout (force-jump-to-81)
++        }
++        // NEGATIVE RESULT (recorded, not re-implemented): once the dual countdown expires the game
++        // installs scene_run_handler, and the game's setup-scene SM (func_02218038, cart 0x02218076 ->
++        // store fn cart 0x02213A70) reinstalls the PLAY scene-object handler scene_obj_handler (recomp
++        // 0x060136F6) into the scene node *g_0609882C within the SAME frame; its case-0 "restart" reads
++        // scene 3's ATTRACT descriptor desc+0x10 (= cart CODE 0x0600F1C0) as a play DEFINITION and calls
++        // its garbage unk0 (0x2FE62FD6) -> FATAL. Scene 3 is an attract-demo descriptor with no play-
++        // definition layout, and the install+call happen mid-frame so a vblank-in revert is too late.
++        // A faithful clean play round therefore needs a real PLAY-scene descriptor (play-definition
++        // layout + play HUD + both-joined), which only the absent setup chain 73-80 builds. The reachable
++        // crash-free sustained state is the DUAL window (executive in round_controller_dual stepping the
++        // live stage with the input-responsive player; scene81 never reached) -- still carrying scene 3's
++        // own coin/continue HUD (CONTINUE? countdown + INSERT COIN for the unjoined P2).
++        //
++        // UPDATE 2026-10-23c: the scene_run FATAL is SOLVED (route-b synthesis, STV_SYNTHDEF). The
++        // crash was ONLY that scene 3's desc+0x10 is an ATTRACT def (a DIRECT code ptr 0x0600F1C0 the
++        // attract handler calls) that scene_obj_handler case-0 misreads as a play-def and calls its
++        // non-fn-ptr unk0 (0x2FE62FD6). Two crash-free routes now exist, both default-off:
++        //   (i)  STV_LIVEROUND="vb:STAGE" with STAGE a native play-def scene (2/4/6/8..): the held
++        //        descriptor is itself a scene_obj_handler scene (its +0x10 def has unk0 = a real cart-
++        //        code step callback e.g. 0x060125BC), so scene_run steps it without FATAL -- but
++        //        func_02218038's play-enter bootstrap blanks VDP2 + tears down the demo actors, so the
++        //        frame goes black (the clean round is downstream of that intro completing).
++        //   (ii) STV_LIVEROUND=vb + STV_SYNTHDEF="3:SRC:1210": hold the FAITHFUL scene 3, and AFTER
++        //        the morph (attract no longer using scene 3) overwrite scene 3's +0x10 with a real
++        //        play-def from scene SRC. scene_run -> scene_obj_handler steps SRC's content over scene
++        //        3's still-rendering skyline/stage bg: NO FATAL, the INSERT COIN/CONTINUE overlay is
++        //        GONE, the scene animates, TWO actors spawn and respond to injected input. SRC=2 ->
++        //        POLICE-helicopter intro; SRC=6/8 -> the two player fighters (Kris + McClane) rendered
++        //        over the skyline. Cosmetic residue: VDP1 sprite overdraw at screen-top (the unfinalized
++        //        live-stage camera/VDP1-local anchor -- same item the notes track). Evidence:
++        //        run/TASK_EVIDENCE_playdesc/.
++    }
++    if (e_adv) {
++        static bool parsed = false;
++        static uint64_t at = 0, intv = 60; static uint32_t left = 1; static uint64_t next_fire = 0;
++        if (!parsed) { at = (uint64_t)std::strtoull(e_adv, nullptr, 10);
++            const char* c1 = std::strchr(e_adv, ':');
++            if (c1) { left = (uint32_t)std::strtoul(c1 + 1, nullptr, 10);
++                const char* c2 = std::strchr(c1 + 1, ':');
++                if (c2) intv = (uint64_t)std::strtoull(c2 + 1, nullptr, 10); }
++            next_fire = at; parsed = true; }
++        if (left > 0 && vb >= next_fire) {
++            uint32_t task = ld32(0x060987B8u);
++            uint32_t ent = task ? ld32(task + 0x8u) : 0;
++            if (ent) { st32(ent + 0x3Cu, ld32(ent + 0x3Cu) | 1u); left--; next_fire = vb + intv;
++                sat_note("STV_SCENEADV: forced advance (entity %08X), %u left, next VB %llu, at VB %llu",
++                         ent, left, (unsigned long long)next_fire, (unsigned long long)vb); }
++        }
++    }
++    if (e_pin) {
++        uint32_t idx = (uint32_t)std::strtoul(e_pin, nullptr, 10);
++        st32(0x06098668u, idx); st32(0x0609866Cu, scn_desc(idx));
++    }
++    if (e_spawn) {
++        static bool parsed = false, done = false, busy = false;
++        static uint64_t at = 0; static uint32_t ptype = 1; static uint32_t rcfg = 0;
++        if (busy) return;                               // re-entrancy guard
++        if (!parsed) {
++            at = (uint64_t)std::strtoull(e_spawn, nullptr, 10);
++            const char* cc = std::strchr(e_spawn, ':');
++            if (cc) { ptype = (uint32_t)std::strtoul(cc + 1, nullptr, 0);
++                const char* c2 = std::strchr(cc + 1, ':');
++                if (c2) rcfg = (uint32_t)std::strtoul(c2 + 1, nullptr, 0); }
++            parsed = true;
++        }
++        if (!done && vb >= at) {
++            done = true;
++            const uint32_t SCR = 0x060FA000u;
++            bool clean = true;
++            for (uint32_t i = 0; i < 0x100; i += 4) if (ld32(SCR + i) != 0) { clean = false; break; }
++            if (!clean) {
++                sat_note("STV_SPAWNPLAYER: scratch %08X not clean (first nonzero word %08X) -- aborting (no spawn)",
++                         SCR, ld32(SCR));
++            } else {
++                const uint32_t CTX = SCR + 0x00u, DESC = SCR + 0x40u, TERM = SCR + 0x58u, CFG = SCR + 0x80u;
++                // cfg: 8-byte anim-script record. cfg[4]=0 => no match key (func_0222a418 stays benign),
++                // cfg[6]=0xffff => func_0222a300 skips the unk26 write; cfg[2]=2 countdown; cfg[0]=0 anim id.
++                st16(CFG + 0, 0); st16(CFG + 2, 2); st16(CFG + 4, 0); st16(CFG + 6, 0xffff);
++                // 24-byte descriptor. desc[0]=type (1=P1 -> func_02227bc4 -> entity->unk34=1 -> player gate).
++                st8(DESC + 0, (uint8_t)ptype); st8(DESC + 1, 0); st8(DESC + 2, 0); st8(DESC + 3, 0);
++                st32(DESC + 4, 0);            // hi16 -> entity->unk98 (unused unless unk6d set)
++                st32(DESC + 8, 0);            // -> entity->unk8
++                st32(DESC + 12, 0);           // -> entity->unk0c
++                st32(DESC + 16, 0);           // -> entity->unk10
++                st32(DESC + 20, rcfg ? rcfg : CFG);  // -> entity->unk d0 (cfg ptr); real ROM cfg if given
++                for (uint32_t i = 0; i < 24; i += 4) st32(TERM + i, 0);   // terminator desc (next+4==0, next+20==0)
++                st32(CTX + 0x30u, DESC);      // process_spawn_list reads arg0->unk30 as the descriptor list
++                uint32_t cnt0  = ld32(0x0609958Cu);
++                uint32_t fp0   = ld32(0x060911B4u);
++                uint32_t slot0 = ld32(0x06099590u + 1u * 4u);
++                sat_note("STV_SPAWNPLAYER: type=%u cfg=%08X(%s) desc=%08X ctx=%08X slotcount=%u animfp[0]=%08X slot[1]=%08X at VB %llu",
++                         ptype, rcfg ? rcfg : CFG, rcfg ? "real" : "synth", DESC, CTX, cnt0, fp0, slot0, (unsigned long long)vb);
++                busy = true;
++                SH2Context& c = g_master;
++                SH2Context save = c;
++                c.r[4] = CTX; c.pr = kRet; c.pc = 0; c.budget = 0x40000000;
++                sh2_call(c, 0x0602E5D0u);     // the game's own process_spawn_list
++                bool ok = (c.pc == kRet);
++                uint32_t cnt1   = ld32(0x0609958Cu);
++                uint32_t slot1  = ld32(0x06099590u + 1u * 4u);
++                uint32_t task1  = ld32(0x060995B0u + 1u * 4u);
++                uint32_t ent1   = task1 ? ld32(task1 + 8u) : 0u;
++                uint32_t hdl1   = task1 ? ld32(task1) : 0u;
++                uint32_t unk34  = ent1 ? ld8(ent1 + 0x34u) : 0u;
++                uint32_t unkd0  = ent1 ? ld32(ent1 + 0xd0u) : 0u;
++                c = save;                     // restore the interrupted master state
++                busy = false;
++                sat_note("STV_SPAWNPLAYER: process_spawn_list ret_ok=%d slotcount %u->%u slot[1]=%08X task[1]=%08X entity=%08X handler=%08X unk34=%u unkd0=%08X",
++                         ok, cnt0, cnt1, slot1, task1, ent1, hdl1, unk34, unkd0);
++            }
++        }
++    }
++    if (e_joinforce) {
++        // Time-gated (STV_SPAWNJOIN="vb"): once at VB>=vb (after func_0222a300 has initialised the
++        // spawned actor), FORCE it into the join state and let the real dispatcher tick it.
++        static bool jdone = false; static uint64_t jat = 0; static bool jparsed = false; static uint32_t jhdl = 0x0602863Eu;
++        if (!jparsed) { jat = (uint64_t)std::strtoull(e_joinforce, nullptr, 10); if (jat < 2) jat = 330;
++            const char* jc = std::strchr(e_joinforce, ':'); if (jc) jhdl = (uint32_t)std::strtoul(jc + 1, nullptr, 0); jparsed = true; }
++        if (!jdone && vb >= jat) {
++            jdone = true;
++            uint32_t task1 = ld32(0x060995B0u + 1u * 4u);
++            uint32_t ent1  = task1 ? ld32(task1 + 8u) : 0u;
++            uint32_t u34   = ent1 ? ld8(ent1 + 0x34u) : 0u;
++            uint32_t hdl   = task1 ? ld32(task1) : 0u;
++            if (task1 && ent1 && u34 == 1) {
++                st8(ent1 + 0x43u, 0x1Du);                                 // join-arm state (table 0x06091100 idx 0x1D)
++                st16(ent1 + 0x54u, (uint16_t)(ld16(ent1 + 0x54u) | 2u));   // ready bit (player_join_arm gate)
++                st16(0x0609978Cu, 1);                                      // g_0609978c[0]: commit on first countdown
++                st32(task1, jhdl);                                         // forced handler (default func_022863e)
++                sat_note("STV_SPAWNJOIN: forced task %08X ent %08X (prev handler %08X) into join state at VB %llu (unk43=0x1D, unk54|=2, g_0609978c[0]=1, handler=0602863E)",
++                         task1, ent1, hdl, (unsigned long long)vb); (void)jhdl;
++            } else {
++                sat_note("STV_SPAWNJOIN: no eligible actor in slot 1 at VB %llu (task=%08X ent=%08X unk34=%u) -- skipped",
++                         (unsigned long long)vb, task1, ent1, u34);
++            }
++        }
++    }
++}
++
++static void stv_panel_read(uint32_t buf) {
++    if (!buf) return;
++    // FAITHFUL: the ST-V BIOS/SMPC owns the control-panel start-enable bits
++    // (0x06098798 bits 4/5 = kStvPanelCtrl). The game clears them each frame; the vblank
++    // re-assert (stv_system_bios_tick) lands before the game's clear, so the credit/join
++    // handler func_0220600e would read them clear and skip the START-join coin-consume
++    // (0x06000664) -> no credit latched -> no round. Re-assert here, in the panel service
++    // the handler calls immediately before the guard, matching the real BIOS keeping the
++    // panel/start-enable bits live. Without this the faithful coin+START never enters a stage.
++    st16(0x06098798u, (uint16_t)(ld16(0x06098798u) | kStvPanelCtrl));
++    for (uint32_t i = 0; i < 0x20; ++i) st8(buf + i, 0);   // valid idle (bit0 of buf[0x10] clear)
++    if (g_stv_credits > 0) st8(buf + 0x00, (uint8_t)g_stv_credits);  // BIOS credit count for panel slot
++    uint64_t vb = sat_vblanks();
++
++    // STV_SCENEJUMP (diagnostic, default off): the FAITHFUL scene-director game trigger. The boot/
++    // scene-director task (*0x060987B8) picks the active scene in scene_director_build (cart
++    // 0x02205b20); when its task->unk13 (byte at +0xd) is negative it forces g_06098668=81 and
++    // g_0609866c=0x06073fb0 (the GAME scene descriptor, table base 0x06072660 + 81*0x50) at the
++    // NEXT natural scene advance, running the scene-81 setup (off14=0x0600a876) that is supposed to
++    // install the game spawn-script (-> player actor 0x0602Dxxx -> start-flag 0x06098688 -> morph).
++    // This sets that exact field once at VB=STV_SCENEJUMP -- the real round-start lever into the
++    // scene director -- NOT a force-write of 0x06098688. Default off => byte-identical baseline.
++    static const char* scenejump = std::getenv("STV_SCENEJUMP");
++    if (scenejump) {
++        static bool sj_done = false;
++        static uint64_t sj_at = (uint64_t)std::strtoull(scenejump, nullptr, 10);
++        if (!sj_done && vb >= sj_at) {
++            uint32_t task = ld32(0x060987B8u);
++            if (task) {
++                uint8_t cur = (uint8_t)(ld16(task + 0x0Cu) & 0xFF); // byte at task+0xd (BE low half)
++                st8(task + 0x0Du, (uint8_t)(cur | 0x80u));
++                sj_done = true;
++                sat_note("STV_SCENEJUMP: scene-director task(*060987B8=%08X)->unk13 |= 0x80 at VB %llu",
++                         task, (unsigned long long)vb);
++            }
++        }
++    }
++
++    // STV_ATTRACTARM (diagnostic, default off): root-cause test for the attract-reel PARK at scene 3.
++    // The attract fade/transition scenes (off14 0x06036610 = f_232610, scenes 3,5,7,9,15,...) advance
++    // only when their content task reaches its completion state, which requires the transition-timeline
++    // interpreter f_2463c8 (cart 0x243628, rt 0x0604a3c8) to run to end-of-script and set the content
++    // entity unk3c bit3. That interpreter early-returns (switch on 0x06098564: case 0) unless
++    // 0x06098564 != 0, which f_22a8d8 (cart 0x22a8d8) only sets when the "2 players armed" flag
++    // 0x06098670 == 0 (pure attract, both channels). Under the harness 0x06098670 is left = 1 (set
++    // once at VB201 by f_201cae, guarded by 0x06000798 bit5 / 0x0609880c==1), so the timeline never
++    // advances and the reel stalls at scene 3. Semantically 0x06098670 should be 0 during attract
++    // (no players). This holds it 0 so the real completion path runs. NOT a force of the completion
++    // bit (director unk3c bit0) -- it only restores the attract arm-flag the real path reads.
++    // SUPERSEDED (2026-10-20, coin_arm_and_reel.md): the coin-path permanent park is now fixed
++    // faithfully in deliver_coin (the real coin-detect credit-byte gate), so this force is no
++    // longer needed for the coin path. Kept default-off for the completion-mechanism diagnostic.
++    static const char* attractarm = std::getenv("STV_ATTRACTARM");
++    if (attractarm) {
++        st32(0x06098670u, 0);
++    }
++
++    // STV_STARTFLAG (diagnostic, default off): the old pre-coin behaviour -- raise the player
++    // start-present flag 0x06098688/89 directly, which drives the game out of the attract freeze
++    // into the start/continue sequence WITHOUT a credit (reaches the demo continue flow, not a
++    // paid round). Kept for comparison; see notes/port/stv_input_gameplay_status.md. The faithful
++    // path leaves this off: START is a panel action and only begins a game when a credit exists.
++    static const char* startflag = std::getenv("STV_STARTFLAG");
++    // STV_PANELBTN (experimental, default off): inject face/direction tokens as the ONE cooked
++    // input bit that is verified decodable here -- bit0 of the cooked "a-control-is-pressed" word
++    // 0x0609879A (= MU16(g_06098794,6)), read as "&3 => pressed" by e.g. func_0201f20 state 1 and
++    // the scene-skip handlers. This lets a --stvinput timeline satisfy "press to continue/skip"
++    // gates. It writes the cooked word directly (bypassing the game's panel decoder) because the
++    // full panel-buffer direction/button bit map is NOT resolved -- see the notes file. Default off
++    // so the baseline is byte-identical. The per-button/direction identity is intentionally NOT
++    // faked: every face/dir token collapses to the same verified "pressed" bit.
++    static const char* panelbtn = std::getenv("STV_PANELBTN");
++    // START events are delivered as the real control-panel action code (buf[3]/buf[7]=2). The
++    // coin-wait handler @0x060089b8 latches buf[3] into 0x0609868C and dispatches 0x06090304[buf3].
++    // Each press is held for a 2-VBlank window so exactly one alternate-frame handler read sees a
++    // clean edge. NOTE (traced this session): the start-present flag 0x06098688 is NOT set by any
++    // panel consumer -- it is set by a player-character actor FSM (cart 0x2229cac / runtime
++    // 0x0602DCAC: 0x06098688[entity[0x34]-1]=1), which only runs once a player actor is spawned. So
++    // a panel START cannot raise it without the round's actor-spawn path (the STV_STARTFLAG diag
++    // forces it directly as a stand-in). See notes/port/stv_panel_input_status.md.
++    for (StvEvent& e : g_stv_events) {
++        bool held = vb >= e.vb && vb < e.vb + 2;
++        if (held) {
++            if (e.kind == 1) st8(buf + 0x03, 2);           // P1 START action code
++            if (e.kind == 2) st8(buf + 0x07, 2);           // P2 START action code
++            if (panelbtn && (e.kind == 6 || e.kind == 7))
++                st16(0x0609879Au, (uint16_t)(ld16(0x0609879Au) | 1));  // verified cooked "pressed" bit
++        }
++        if (held && !e.fired) {
++            e.fired = true;
++            if (e.kind == 3) deliver_coin(0);              // P1 coin -> coin-pending flag (see note)
++            else if (e.kind == 4) deliver_coin(1);         // P2 coin
++            else if (e.kind == 5)                          // SERVICE: expressible; 0x688 svc is inert here
++                sat_note("ST-V panel: SERVICE at VB %llu (expressed; BIOS 0x688 service inert)",
++                         (unsigned long long)vb);
++            else if (e.kind == 6 || e.kind == 7)
++                sat_note("ST-V panel: P%d face/dir press at VB %llu%s", e.kind - 5,
++                         (unsigned long long)vb, panelbtn ? " (cooked bit0 set)" : " (expressed; STV_PANELBTN off)");
++            else if (startflag) {
++                if (e.kind == 1) st8(0x06098688u, 1);      // DIAG: P1 start-present flag (no-credit path)
++                else if (e.kind == 2) st8(0x06098689u, 1); // DIAG: P2 start-present flag
++                sat_note("ST-V panel: START kind %d via start-present flag (diag) at VB %llu",
++                         e.kind, (unsigned long long)vb);
++            } else {
++                sat_note("ST-V panel: START kind %d (panel action buf[3]=2) at VB %llu",
++                         e.kind, (unsigned long long)vb);
++            }
++        }
++    }
++}
++
+ bool bios_call(SH2Context& c, uint32_t addr) {
+     addr &= 0x1FFFFFFFu;
+     if (addr == kRomLogo + 0x5E4 || addr == kRomLogo + 0x5E8) {
+@@ -184,6 +1518,50 @@ bool bios_call(SH2Context& c, uint32_t addr) {
+         c.r[15] = mstack ? mstack : 0x06002000u;
+         sh2_program_start(c, ld32(0x060020F0u));
+     }
++    // ---- ST-V BIOS service window (0x06000600..0x06000700) --------------------------------
++    // main_stv routes this whole window at the sentinel base (0x4000+off); a Saturn disc boot
++    // never points here, so reaching this branch IS the ST-V harness path. The per-frame
++    // control-panel read 0x06000660 gets the real body (stv_panel_read, above); every other
++    // service stays a benign no-op (r0 unchanged), which is how the game already progressed
++    // (the 0x610/0x668/0x640/0x688/... services are inert here). STV_STVBIOS keeps the old
++    // DIAGNOSTIC overrides (log / fill / join) when set.
++    static const uint32_t kStvSvcBase = 0x00004000u;   // harness sentinel for the 0x06000600 window
++    if (addr >= kStvSvcBase && addr < kStvSvcBase + 0x100) {
++        uint32_t sp = 0x06000600u + (addr - kStvSvcBase);
++        static const char* mode = std::getenv("STV_STVBIOS");
++        if (mode) {
++            sat_note("STVBIOS svc %08X r4=%08X r5=%08X from pr %08X VB %llu",
++                     sp, c.r[4], c.r[5], c.pr, (unsigned long long)sat_vblanks());
++            if (!std::strcmp(mode, "join") && sp == 0x06000660u) {   // DIAG: force P1 start flag once
++                static bool armed = false;
++                static uint64_t at = [](){ const char* e = std::getenv("STV_JOINVB"); return e ? strtoull(e,nullptr,10) : 300ull; }();
++                if (!armed && sat_vblanks() >= at) { st8(0x06098688u, 1); armed = true;
++                    sat_note("STVBIOS join: set P1 start flag 0x06098688=1 at VB %llu", (unsigned long long)sat_vblanks()); }
++            } else if (!std::strncmp(mode, "fill", 4) && (sp == 0x06000660u || sp == 0x0600066Cu) && c.r[4]) {
++                const char* fv = std::getenv("STV_FILLVAL");
++                uint32_t v = fv ? (uint32_t)std::strtoul(fv, nullptr, 16) : 0x01u;
++                for (int i = 0; i < 16; ++i) st8(c.r[4] + i, v);
++                c.r[0] = 1;
++            } else if (sp == 0x06000660u) {              // "log" (and any other) keep the real read
++                stv_panel_read(c.r[4]);
++            }
++        } else if (sp == 0x06000660u || sp == 0x0600066Cu) {  // DEFAULT: the control-panel read
++            // Both the 0x660 (coin-wait / scene-81 / attract) and 0x66C (per-frame controller SM
++            // func_0220f9d4) panel-read services fill their caller's buffer with the decoded panel
++            // report. Same faithful body for both.
++            stv_panel_read(c.r[4]);
++        } else if (sp == 0x06000664u) {                  // DEFAULT: the coin-input read / consume (per player)
++            // FAITHFUL: the real BIOS coin service returns nonzero and consumes one banked coin-
++            // credit. deliver_coin banks a credit per inserted coin. Fall back to the scripted
++            // window read if the bank is empty (so a scripted coin still reads at its VBlank).
++            if (stv_sysbios_on() && g_stv_credits > 0) { g_stv_credits--; c.r[0] = 1; }
++            else c.r[0] = (uint32_t)stv_coin_read((int)c.r[4]);
++        } else if (sp == 0x06000640u) {                  // DEFAULT: free-running frame timer read
++            c.r[0] = g_stv_frametimer;
++        }
++        c.pc = c.pr;
++        return true;
++    }
+     if (addr >= kDefaultHandler && addr < kDefaultHandler + 0x200) {   // an SCU default handler
+         c.pc = c.pr;
+         return true;
+diff --git a/runtime/src/machine/machine.cpp b/runtime/src/machine/machine.cpp
+index edd047f..6ed652d 100644
+--- a/runtime/src/machine/machine.cpp
++++ b/runtime/src/machine/machine.cpp
+@@ -600,6 +600,13 @@ void sh2_call_unknown(SH2Context& c, uint32_t addr) {
+             return;
+         }
+     }
++    // ST-V port (Die Hard): the slave SH-2 (entry 0x060051B0) is the game's command/VDP1 worker; it
++    // jsr's through a handler table at 0x06090274. That table used to resolve to null because the
++    // A-bus cartridge ROM was unmapped (reads returned 0xFFFFFFFF), so the slave called 0 and faulted;
++    // a scoped cpu==1 no-op papered over it during render bring-up. With the cartridge mapped at the
++    // source (mmio.cpp) the table holds real pointers and the slave dispatches real handlers, so the
++    // no-op is removed here -- the slave now faults on a genuinely-missing recomp target exactly like
++    // the master (seed it via autolearn), rather than being silently neutralised. UN-STUBBED.
+     mmio_log_call(addr, c.pr);
+     sat_fatal("call to %08X, not an entry of an active module (from pr %08X)", addr, c.pr);
+ }
+diff --git a/runtime/src/machine/mmio.cpp b/runtime/src/machine/mmio.cpp
+index b9dd332..c06f8c0 100644
+--- a/runtime/src/machine/mmio.cpp
++++ b/runtime/src/machine/mmio.cpp
+@@ -29,6 +29,13 @@ uint32_t mem_rd(const uint8_t* p, uint32_t o, int size) {
+     return v;
+ }
+ 
++// The A-bus cartridge ROM (CS0 window at 0x02000000, cache-through 0x22000000), mapped linearly:
++// cart byte k is at 0x02000000 + k. An ST-V title reads code, assets and the sound/sequence tables
++// straight out of here; with no cart mapped the bus floats high (0xFF). The harness points this at
++// the full cart.bin so those reads return real data. Big-endian bytes, like the guest's memory.
++const uint8_t* g_cart_rom = nullptr;
++uint32_t g_cart_rom_size = 0;
++
+ void mem_wr(uint8_t* p, uint32_t o, uint32_t v, int size) {
+     for (int i = size - 1; i >= 0; --i, v >>= 8) p[o + i] = (uint8_t)v;
+ }
+@@ -137,7 +144,11 @@ uint32_t sh2_mmio_read(uint32_t a, int size) {
+         log_area(n, a, 'R');
+         if (a >= 0x00180000u && a < 0x00190000u) return mem_rd(g_backup, a & 0xFFFF, size);
+         if (video_owns(a)) return video_read(a, size);
+-        if (a >= 0x02000000u && a < 0x05000000u) return size == 1 ? 0xFF : size == 2 ? 0xFFFF : 0xFFFFFFFFu;
++        if (a >= 0x02000000u && a < 0x05000000u) {
++            uint32_t off = a - 0x02000000u;
++            if (g_cart_rom && off + (uint32_t)size <= g_cart_rom_size) return mem_rd(g_cart_rom, off, size);
++            return size == 1 ? 0xFF : size == 2 ? 0xFFFF : 0xFFFFFFFFu;
++        }
+         return bios_rom_read(a, size);          // the BIOS ROM is not here
+     }
+     log_reg(a, size, 'R');
+diff --git a/runtime/src/machine/onchip.cpp b/runtime/src/machine/onchip.cpp
+index b28d256..0d36e29 100644
+--- a/runtime/src/machine/onchip.cpp
++++ b/runtime/src/machine/onchip.cpp
+@@ -170,6 +170,12 @@ static void divide(OnChip& o, bool wide) {
+     }
+     wr(o, 0x104, (uint32_t)q, 4); wr(o, 0x114, (uint32_t)q, 4);
+     wr(o, 0x110, (uint32_t)r, 4);
++    // DVDNTUH (0x118) / DVDNTUL (0x11C) are same-block aliases of DVDNTH/DVDNTL on the SH-2
++    // division unit: a 64/32 divide publishes the remainder/quotient to them too. The 3D
++    // perspective projector (func_022135a0 and siblings) reads the reciprocal back from
++    // DVDNTUL (0xFFFFFF1C); without this it read stale 0 -> all projected sprite vertices
++    // collapsed to the screen origin (zero-geometry VDP1 commands, invisible models).
++    wr(o, 0x118, (uint32_t)r, 4); wr(o, 0x11C, (uint32_t)q, 4);
+     // the unit's registers are mirrored at +0x20
+     for (uint32_t k = 0x100; k < 0x120; k += 4) wr(o, k + 0x20, rd(o, k, 4), 4);
+ }
+diff --git a/runtime/src/machine/saturn.h b/runtime/src/machine/saturn.h
+index d185c5a..cdba7ed 100644
+--- a/runtime/src/machine/saturn.h
++++ b/runtime/src/machine/saturn.h
+@@ -124,6 +124,7 @@ void bios_boot();                   // the state the BIOS leaves, the 1st read f
+ uint32_t bios_first_read();         // where it was loaded (the entry)
+ bool bios_pal();                    // IP.BIN's areas: Europe alone, a PAL disc
+ bool bios_call(SH2Context& c, uint32_t addr);        // a BIOS ROM address: true if handled
++void stv_input_script(const std::string& spec);      // ST-V control-panel coin/start timeline "VB:START1,..." (bios.cpp)
+ uint32_t bios_rom_read(uint32_t a, int size);   // the few BIOS ROM words a program reads
+ bool bios_is_dispatcher(uint32_t vec, uint32_t target);
+ void bios_dispatch(SH2Context& c, uint32_t vec);     // the handler SYS_SETUINT installed
+@@ -226,6 +227,7 @@ uint64_t video_draws();
+ // ---- sound (sound.cpp, scsp.cpp through sound.h) ----------------------------------------------
+ void sound_init();
+ void sound_power(bool on);            // SMPC SNDON/SNDOFF: the 68000 runs or is held
++void sound_stv_autostart(bool on);    // ST-V harness: issue the BIOS's SNDON once the driver is loaded
+ void sound_tick();                    // the samples due by now, the 68000 between them
+ void sound_close();                   // the report line, the WAV file finished
+ uint32_t sound_read(uint32_t a, int size);    // 0x05A00000-0x05B00FFF from the SH-2
+diff --git a/runtime/src/sound/sound.cpp b/runtime/src/sound/sound.cpp
+index 319a3f3..644df37 100644
+--- a/runtime/src/sound/sound.cpp
++++ b/runtime/src/sound/sound.cpp
+@@ -43,6 +43,15 @@ static FILE* g_wav;
+ static uint64_t g_wav_frames;
+ static uint64_t g_peak_frames;                   // samples not silent: the stop report
+ 
++// ST-V port (Die Hard) only: the cart-boot harness enters the game past the ST-V BIOS boot stub,
++// which on real hardware issues SMPC SNDON to release the sound 68000 before the game runs. The
++// game's own sound_init copies the Sega SCSP driver into sound RAM but never issues SNDON (it
++// assumes the 68000 is already live). With no SNDON the 68000 stays held, the driver never runs,
++// and the SH-2<->68000 handshake (sound RAM 0x3C20/0x3EFE) times out. When the harness sets this,
++// sound_tick releases the 68000 as SNDON would, the moment the driver is in sound RAM. FORCED.
++static bool g_stv_autostart;
++void sound_stv_autostart(bool on) { g_stv_autostart = on; }
++
+ // ---- the 68000's bus -----------------------------------------------------------------------------
+ static uint32_t bus_read(uint32_t a, int size) {
+     a &= 0xFFFFFF;
+@@ -120,7 +129,27 @@ void sound_power(bool on) {
+ }
+ 
+ void sound_tick() {
++    // ST-V SNDON bridge (see g_stv_autostart): release the 68000 once sound_init has copied the
++    // driver into sound RAM. The Sega driver's build string "Ver..." lands at sound RAM 0x100,
++    // after the reset SP (offset 0) and PC (offset 4); its presence means the driver image is in.
++    if (g_stv_autostart && !g_on && g_sound_ram[0x100] == 'V' && g_sound_ram[0x101] == 'e') {
++        uint32_t sp = (uint32_t)g_sound_ram[0] << 24 | g_sound_ram[1] << 16 | g_sound_ram[2] << 8 | g_sound_ram[3];
++        uint32_t pc = (uint32_t)g_sound_ram[4] << 24 | g_sound_ram[5] << 16 | g_sound_ram[6] << 8 | g_sound_ram[7];
++        sat_note("STV: sound driver loaded (reset SP %06X PC %06X); starting 68000 (SNDON equivalent)", sp, pc);
++        sound_power(true);
++    }
+     uint64_t due = sat_now() * 441 / 10000000;   // samples at 44 100 Hz
++    // DIAG (STV_SND_DIAG): periodic snapshot of the sound 68000 + SCSP so we can see whether the
++    // driver is processing the SH-2's play commands (mailbox 0x3C20) and keying slots. Temporary.
++    static const char* diag = std::getenv("STV_SND_DIAG");
++    static uint64_t next_diag;
++    if (diag && g_on && g_samples >= next_diag) {
++        next_diag = g_samples + 11025;           // ~4 Hz
++        auto rd32 = [](uint32_t a){ return (uint32_t)g_sound_ram[a]<<24|g_sound_ram[a+1]<<16|g_sound_ram[a+2]<<8|g_sound_ram[a+3]; };
++        sat_note("SNDDIAG smp=%llu 68kpc=%06X irq=%d slots=%08X mbox3C20=%08X seq3ECC=%02X ack3EFE=%04X",
++                 (unsigned long long)g_samples, m68k_get_reg(nullptr, M68K_REG_PC), scsp_cpu_level(), scsp_active_slots(),
++                 rd32(0x3C20), g_sound_ram[0x3ECC], (g_sound_ram[0x3EFE]<<8|g_sound_ram[0x3EFF]));
++    }
+     while (g_samples < due) {
+         if (g_on) {
+             g_debt += 256;
+diff --git a/runtime/src/video/vdp1.cpp b/runtime/src/video/vdp1.cpp
+index 8589d33..31b1604 100644
+--- a/runtime/src/video/vdp1.cpp
++++ b/runtime/src/video/vdp1.cpp
+@@ -62,6 +62,10 @@ static int g_local_x, g_local_y;
+ uint64_t vdp1_frame_changes() { return g_frame_changes; }
+ uint64_t vdp1_draws() { return g_draws; }
+ 
++// STV_VDP1DIAG (diagnostic, default off): per-draw textured-sprite screen-coord bounds + count.
++static bool  g_v1diag = (std::getenv("STV_VDP1DIAG") != nullptr);
++static int   g_v1_ntex; static int g_v1_minx, g_v1_maxx, g_v1_miny, g_v1_maxy;
++
+ void vdp1_init() {
+     g_reg[MODR] = 0x1000;                       // version 1
+     g_reg[EDSR] = 0x0002;                       // the last draw has ended
+@@ -256,6 +260,13 @@ static void command(const uint8_t* cmd, uint32_t a) {
+     }
+     for (Pt& q : p) { q.x += g_local_x; q.y += g_local_y; }
+     draw_shape(c, cmd, comm, p);
++    if (g_v1diag && c.textured) {
++        int x = p[0].x, y = p[0].y;
++        if (g_v1_ntex == 0) { g_v1_minx = g_v1_maxx = x; g_v1_miny = g_v1_maxy = y; }
++        if (x < g_v1_minx) g_v1_minx = x; if (x > g_v1_maxx) g_v1_maxx = x;
++        if (y < g_v1_miny) g_v1_miny = y; if (y > g_v1_maxy) g_v1_maxy = y;
++        ++g_v1_ntex;
++    }
+ }
+ 
+ // ---- the frames in between (--interp) -------------------------------------------------------
+@@ -328,6 +339,7 @@ static void draw() {
+     uint32_t a = 0, ret = 0, last = 0;
+     int n = 0;
+     g_draw_steps = 0;
++    if (g_v1diag) g_v1_ntex = 0;
+     for (int guard = 0; guard < 20000; ++guard) {
+         if (g_draw_steps >= kDrawSteps) {
+             static bool told;
+@@ -364,6 +376,10 @@ static void draw() {
+     g_drawing = true;
+     g_draw_end = sat_now() + 1000000;           // 1 ms
+     sat_trace("VDP1 draw %llu: %d commands", (unsigned long long)g_draws, n);
++    if (g_v1diag)
++        sat_note("VDP1DIAG VB %llu draw %llu: %d cmds, %d textured sprites, p0 bounds x[%d..%d] y[%d..%d] (screen ~352x240)",
++                 (unsigned long long)sat_vblanks(), (unsigned long long)g_draws, n, g_v1_ntex,
++                 g_v1_minx, g_v1_maxx, g_v1_miny, g_v1_maxy);
+ }
+ 
+ static bool matchable(const uint8_t* b) { return (cw(b, 0) & 0xF) <= 7; }
+@@ -634,6 +650,16 @@ void vdp1_vblank_out() {
+             g_rec_last.vram.assign(g_vdp1_vram, g_vdp1_vram + sizeof g_vdp1_vram);
+         }
+         if (one_cycle) g_erase_field = true;
++        // STV_VDP1ERASE (labeled, default off; byte-identical when unset): in MANUAL frame-change
++        // mode (FBCR FCM=1) the game may trigger a buffer change (FCT=1, FBCR=0x0003) WITHOUT a
++        // separate erase arm (FBCR=0x0002). The current model then leaves the new draw buffer
++        // holding 2-frames-ago sprites, which accumulate as stale overdraw when the live draw
++        // covers only part of the screen (e.g. a route-b round whose fighters are a compact group
++        // over a VDP2 background). Setting this arms an erase on every manual change, exactly as
++        // one-cycle mode does, so each field starts from a cleared buffer. Default off => the
++        // erase gating is unchanged (byte-identical).
++        static const bool force_erase = (std::getenv("STV_VDP1ERASE") != nullptr);
++        if (force_erase) g_erase_field = true;
+         sat_trace("VDP1 frame change %llu", (unsigned long long)g_frame_changes);
+         if ((g_reg[PTMR] & 3) == 2) draw();
+     }
+diff --git a/runtime/src/video/vdp2.cpp b/runtime/src/video/vdp2.cpp
+index 4c8bcb1..bc5049b 100644
+--- a/runtime/src/video/vdp2.cpp
++++ b/runtime/src/video/vdp2.cpp
+@@ -21,7 +21,14 @@
+ // fields' lines (448, 480 or 512), the scroll screens a dot row a line;
+ // shadows (normal, MSB and transparent) on the scroll screens, the back
+ // screen and the sprite itself.
+-// What is not: RBG0 and RBG1 (rotation), line and vertical-cell scroll,
++// Also RBG0 and RBG1 (rotation parameter A/B, the matrix, viewpoint/centre, the screen start and
++// its per-line/per-dot deltas, and the coefficient table for Kx/Ky), in cell or bitmap mode, each
++// as its own priority layer. RBG1 borrows NBG0's cell/pattern/colour registers and always uses
++// rotation parameter set B; it and NBG0 are mutually exclusive, as on the hardware.
++// Rotation screen-over (OVRx): repeat (0), transparent-outside (2) and clamp-to-512 (3) are done;
++// the over-pattern mode (1) falls back to repeat.
++// What is not: the rotation over-pattern mode (1), rotation-BG gradation/line-colour and coefficient
++// line-colour data, line and vertical-cell scroll,
+ // mosaic, the sprite window, special priority and colour calculation by dot
+ // (the special function codes), gradation of RBG0, extended colour
+ // calculation, the exclusive resolutions. A register that asks for one of them is noted once.
+@@ -29,6 +36,8 @@
+ #include "state.h"
+ #include "video.h"
+ #include <algorithm>
++#include <cmath>
++#include <cstdlib>
+ #include <cstring>
+ #include <vector>
+ 
+@@ -100,7 +109,7 @@ struct Pix {
+     bool shade;                                 // an MSB shadow: the sprite dot at half brightness
+ };
+ 
+-enum { L_SPRITE, L_NBG0, L_NBG1, L_NBG2, L_NBG3, L_COUNT };
++enum { L_SPRITE, L_NBG0, L_NBG1, L_NBG2, L_NBG3, L_RBG0, L_RBG1, L_COUNT };
+ 
+ // ---- the scroll screens ---------------------------------------------------------------------
+ struct Nbg {
+@@ -186,8 +195,10 @@ static void setup_nbg(int n, Nbg& s) {
+     s.offset_b = reg(0x112) >> n & 1;
+ }
+ 
+-// the dot of a character (or bitmap) at (x, y) in its own pixels: false if transparent
+-static bool dot(const Nbg& s, uint32_t base, int x, int y, int width, uint32_t pal, Pix& p) {
++// the dot of a character (or bitmap) at (x, y) in its own pixels: false if transparent.
++// Templated so the rotation background (Rbg) can share it: it only reads .colors, .opaque, .caos.
++template <class S>
++static bool dot(const S& s, uint32_t base, int x, int y, int width, uint32_t pal, Pix& p) {
+     uint32_t i = (uint32_t)(y * width + x);
+     uint32_t v;
+     switch (s.colors) {
+@@ -267,6 +278,335 @@ static bool nbg_pixel(const Nbg& s, int x, int y, Pix& p) {
+     return dot(s, base, px & 7, py & 7, 8, pal, p);
+ }
+ 
++// ---- RBG0: the rotation background (the beat-em-up stage floor) ------------------------------
++// Rotation parameter A (RPMD selects A or B), the full matrix, viewpoint/centre, the screen
++// start and its per-line/per-dot deltas, and the per-dot coefficient table (Kx/Ky scaling, the
++// perspective). The tile/plane/pattern-name/cell lookup reuses the scroll-screen machinery
++// (dot(), the same PN decode) over a 4x4 plane map (A..P). This is "correct-enough", not
++// cycle-accurate: it composes the rotated/scaled tilemap the game programs. What is partial:
++// bitmap-mode RBG, screen-over modes other than repeat, RBG gradation/line-colour, and
++// coefficient modes that carry line-colour data -- each is noted or falls back cleanly.
++// Diagnostic env STV_RBG_FLATK=1 forces Kx=Ky=1 (ignores the coefficient table) to visualise
++// the raw affine tilemap; default (unset) is faithful.
++struct Rbg {
++    bool on, opaque, bitmap, cell2x2, word1, cnsm;
++    int colors;
++    uint16_t supp;
++    int plane_w, plane_h;                       // pages per plane
++    int over;                                   // screen-over process (OVRx): 0 repeat, 2 transparent, 3 clamp-512
++    uint32_t plane[16];                         // the 4x4 plane map A..P, VRAM byte addresses
++    uint32_t page_bytes;
++    int bm_w, bm_h; uint32_t bm_addr; uint16_t bm_pal; bool bm_spr, bm_scc;
++    uint32_t caos;
++    uint8_t prio, ratio;
++    bool cc, offset, offset_b;
++    // rotation parameter (as real numbers)
++    double A, B, C, D, E, F;
++    double Px, Py, Pz, Cx, Cy, Cz, Mx, My, kx, ky;
++    double Xst, Yst, Zst, dXst, dYst, dX, dY;
++    double Xp, Yp;                              // precomputed constant screen offset
++    bool kt_enable, kt_1word; int kt_mode;
++    double KAst, dKAst, dKAx;                   // coefficient address (table-entry units) + deltas
++    uint32_t kt_base;                           // coefficient table VRAM byte base
++};
++
++// Reads one rotation parameter set into s: the matrix, viewpoint/centre, the screen start and its
++// deltas, the constant screen offset, and the coefficient-table controls. param_off is 0 for set A
++// or 0x80 for set B (the table holds both sets back to back); coef_shift is 0 for set A's KTCTL/KTAOF
++// fields or 4 for set B's. Shared by RBG0 (picks the set via RPMD) and RBG1 (always uses set B).
++static void read_rot_param(Rbg& s, uint32_t param_off, int coef_shift) {
++    uint32_t rpt = ((((uint32_t)(reg(0xBC) & 7) << 16) | reg(0xBE)) & ~0x41u) * 2;
++    uint32_t b = (rpt + param_off) & 0x7FFFF;
++    auto raw = [&](uint32_t o) { return (uint32_t)((uint32_t)vw(b + o) << 16 | vw(b + o + 2)); };
++    // signed fixed-point: mask the field, sign-extend above it, /65536 (the low bits the chip
++    // ignores read back as 0, so this recovers the real value).
++    auto sfix = [&](uint32_t o, uint32_t m, int signbit) -> double {
++        uint32_t v = raw(o) & m;
++        if (v & (1u << signbit)) v |= ~m;
++        return (double)(int32_t)v / 65536.0;
++    };
++    auto s16 = [&](uint32_t o) -> double { return (double)(int16_t)vw(b + o); };
++    s.Xst  = sfix(0x00, 0x1FFFFFC0, 28); s.Yst = sfix(0x04, 0x1FFFFFC0, 28); s.Zst = sfix(0x08, 0x1FFFFFC0, 28);
++    s.dXst = sfix(0x0C, 0x0003FFC0, 17); s.dYst = sfix(0x10, 0x0003FFC0, 17);
++    s.dX   = sfix(0x14, 0x0003FFC0, 17); s.dY   = sfix(0x18, 0x0003FFC0, 17);
++    s.A = sfix(0x1C, 0x000FFFFF, 19); s.B = sfix(0x20, 0x000FFFFF, 19); s.C = sfix(0x24, 0x000FFFFF, 19);
++    s.D = sfix(0x28, 0x000FFFFF, 19); s.E = sfix(0x2C, 0x000FFFFF, 19); s.F = sfix(0x30, 0x000FFFFF, 19);
++    s.Px = s16(0x34); s.Py = s16(0x36); s.Pz = s16(0x38);
++    s.Cx = s16(0x3C); s.Cy = s16(0x3E); s.Cz = s16(0x40);
++    s.Mx = sfix(0x44, 0x3FFFFFC0, 29); s.My = sfix(0x48, 0x3FFFFFC0, 29);
++    // DIAGNOSTIC/FORCED (STV_RBG_MY / STV_RBG_MX, default off): directly override the rotation-BG
++    // viewpoint-centre My/Mx that the game's stage-camera driver writes into the VDP2 rot-param
++    // table. On a stage scene the live camera writes an OFF-MAP My (~1990, ~4x past the 512px
++    // populated page 0) so the floor samples cleared planes -> black. This FORCES a fixed valid
++    // anchor (e.g. STV_RBG_MY=256) to frame the loaded RBG0 plane for a labelled forced floor demo.
++    // Cleaner than STV_RBG_YOFF (which hacks the derived Yp): these are the real camera fields.
++    if (const char* my = std::getenv("STV_RBG_MY")) s.My = std::atof(my);
++    if (const char* mx = std::getenv("STV_RBG_MX")) s.Mx = std::atof(mx);
++    s.kx = sfix(0x4C, 0x00FFFFFF, 23); s.ky = sfix(0x50, 0x00FFFFFF, 23);
++    // the constant screen offset (manual's Xp/Yp)
++    s.Xp = s.A * (s.Px - s.Cx) + s.B * (s.Py - s.Cy) + s.C * (s.Pz - s.Cz) + s.Cx + s.Mx;
++    s.Yp = s.D * (s.Px - s.Cx) + s.E * (s.Py - s.Cy) + s.F * (s.Pz - s.Cz) + s.Cy + s.My;
++    // DIAGNOSTIC (STV_RBG_XOFF/YOFF, default off): forcibly offset the rotation-BG screen origin.
++    // Used ONLY to prove the RBG tile data is loaded and the renderer draws it when the camera is
++    // pointed at the populated plane -- the game's own camera (My) is stale in the not-yet-live round.
++    if (const char* yo = std::getenv("STV_RBG_YOFF")) s.Yp -= std::atof(yo);
++    if (const char* xo = std::getenv("STV_RBG_XOFF")) s.Xp -= std::atof(xo);
++    // coefficient table: KTCTL bit0 enable, bits1-2 mode, bit3 data size (0:2-word,1:1-word)
++    uint16_t ktctl = reg(0xB4);
++    s.kt_enable = ktctl >> coef_shift & 1;
++    s.kt_mode = ktctl >> (coef_shift + 1) & 3;
++    s.kt_1word = ktctl >> (coef_shift + 3) & 1;
++    // KAst 1.15.10, deltas 1.9.10 (address steps). Keep the table-entry units (1 entry = 1 coeff).
++    s.KAst  = (double)(int32_t)(raw(0x54) & 0xFFFFFFC0) / 65536.0;
++    // DIAGNOSTIC/FORCED (STV_RBG_KAST, default off): override the coefficient-table start address.
++    // The live stage camera writes KAst=31872 (table-entry units) -- outside any real coefficient
++    // table -> garbage Kx/Ky perspective. Force an in-table KAst (e.g. 0) for the forced floor demo.
++    if (const char* ka = std::getenv("STV_RBG_KAST")) s.KAst = std::atof(ka);
++    s.dKAst = sfix(0x58, 0x03FFFFC0, 25);
++    s.dKAx  = sfix(0x5C, 0x03FFFFC0, 25);
++    uint32_t ktaof = reg(0xB6) >> coef_shift & 7;           // coefficient table address offset
++    // Coefficient-table VRAM base. The cart encodes the table byte address as KTAOF=addr>>18
++    // (attr_dispatch cmd6: ins=(addr>>2)>>16) and KAst=addr<<14, so the decode is KTAOF<<18, not
++    // <<16: Die Hard builds its live 1/z coefficient ramp at VRAM 0x5F200 (KTAOF=1, KAst=0x7C80 ->
++    // 0x40000 + 0x7C80*4 = 0x5F200). The old <<16 read 0x2F200 (unrelated tile data) -> no floor.
++    // FAITHFUL correctness fix, validated against the driver-built ramp (func_02222c08 -> 0x5F200).
++    s.kt_base = (ktaof << 18) & 0x7FFFF;
++    // DIAGNOSTIC (STV_RBG_DIAG="[intv]", default off): read-only log of the live rotation-param
++    // set the game writes into the VDP2 rot-param table (VRAM base `b`). Used to see whether the
++    // live stage-camera driver feeds a valid floor anchor on a real stage scene. Byte-identical
++    // when unset. Logs every `intv` frames (default 120). Prints the director scene index too.
++    if (const char* rd = std::getenv("STV_RBG_DIAG")) {
++        static uint64_t last = (uint64_t)-1; static uint32_t intv = 0;
++        if (intv == 0) { intv = (uint32_t)std::strtoul(rd, nullptr, 0); if (intv == 0) intv = 120; }
++        uint64_t f = sat_vblanks();
++        if (f != last && (f % intv) == 0) {
++            last = f;
++            sat_note("RBG_DIAG VB %llu set=%s scene=%u table=%05X  My=%.1f Mx=%.1f Xst=%.1f Yst=%.1f Zst=%.1f "
++                     "Yp=%.1f Xp=%.1f KAst=%.1f dKAst=%.3f kt_en=%d kt_mode=%d kt_base=%05X A=%.3f E=%.3f",
++                     (unsigned long long)f, param_off ? "B" : "A", ld32(0x06098668u), b,
++                     s.My, s.Mx, s.Xst, s.Yst, s.Zst, s.Yp, s.Xp, s.KAst, s.dKAst,
++                     (int)s.kt_enable, s.kt_mode, s.kt_base, s.A, s.E);
++        }
++    }
++    if (std::getenv("STV_RBG_FLATK")) s.kt_enable = false;  // diag: force Kx=Ky=1
++}
++
++static void setup_rbg(Rbg& s) {
++    s = Rbg{};
++    uint16_t bgon = reg(0x20);
++    s.on = bgon >> 4 & 1;                        // R0ON
++    if (!s.on) return;
++    s.opaque = bgon >> 12 & 1;                   // R0TPON
++    uint16_t chb = reg(0x2A);
++    s.cell2x2 = chb >> 8 & 1;                    // R0CHSZ
++    s.bitmap  = chb >> 9 & 1;                    // R0BMEN
++    int bmsz  = chb >> 10 & 3;                   // R0BMSZ
++    s.colors  = chb >> 12 & 7;                   // R0CHCN
++    s.bm_w = bmsz & 2 ? 1024 : 512;
++    s.bm_h = bmsz & 1 ? 512 : 256;
++    uint16_t pncr = reg(0x38);
++    s.word1 = pncr >> 15 & 1;
++    s.cnsm = pncr >> 14 & 1;
++    s.supp = pncr & 0x3FF;
++    int plsz = reg(0x3A) >> 8 & 3;              // RAPLSZ
++    s.plane_w = plsz == 0 ? 1 : 2;
++    s.plane_h = plsz == 3 ? 2 : 1;
++    s.over = reg(0x3A) >> 10 & 3;              // RAOVR screen-over process
++    s.page_bytes = (s.cell2x2 ? 0x800u : 0x2000u) * (s.word1 ? 1 : 2);
++    uint32_t mpofr = reg(0x3E) & 7;            // RAMPOF
++    uint32_t mask = (uint32_t)(s.plane_w * s.plane_h - 1);
++    // the 16 plane numbers: MPABRA..MPOPRA (0x48..0x56), each word = two bytes (low byte first,
++    // as the scroll-screen map registers), A..P.
++    for (int i = 0; i < 16; ++i) {
++        uint16_t w = reg(0x48 + (i / 2) * 2);
++        uint32_t pn = w >> ((i & 1) * 8) & 0xFF;
++        uint32_t m = ((mpofr << 6) | pn) & ~mask;
++        s.plane[i] = m * s.page_bytes;
++    }
++    if (s.bitmap) s.bm_addr = mpofr * 0x20000;
++    s.caos = (uint32_t)(reg(0xE6) & 7) << 8;    // CRAOFB R0 colour RAM offset
++    s.prio = (uint8_t)(reg(0xFC) & 7);          // PRIR
++    s.ratio = (uint8_t)(reg(0x10C) & 0x1F);     // CCRR
++    s.cc = reg(0xEC) >> 4 & 1;                   // CCCTL R0CCEN
++    s.offset = reg(0x110) >> 4 & 1;
++    s.offset_b = reg(0x112) >> 4 & 1;
++
++    // DIAGNOSTIC/FORCED (STV_RBG_PLANE="hex", default off): override every RBG0 plane-map entry to a
++    // single VRAM page. On the credit-route scene 3 the stage-floor upload only partially populates the
++    // RBG0 floor planes (plane 0x38 @0x070000 ~65%; plane 0x2E @0x05C000 empty) and the live camera My
++    // (~1991) samples the empty far planes -> black floor. Forcing all 16 planes at the populated floor
++    // page (e.g. STV_RBG_PLANE=070000) lets the whole rotation screen sample the loaded floor tiles for a
++    // labelled FORCED floor demo (pairs with STV_RBG_MY + STV_RBG_FLATK). Byte-identical when unset. This
++    // is a FORCED render aid, NOT a faithful fix (the real fix is the full stage-setup floor upload +
++    // coefficient table + camera anchor, which the credit route does not run).
++    if (const char* pf = std::getenv("STV_RBG_PLANE")) {
++        uint32_t pa = (uint32_t)std::strtoul(pf, nullptr, 16) & 0x7FFFFu;
++        for (int i = 0; i < 16; ++i) s.plane[i] = pa;
++    }
++
++    // RBG0 uses the rotation parameter set RPMD names (A, B, or A with per-dot/window switching).
++    int rpmd = reg(0xB0) & 3;                    // 0:A 1:B 2/3:per-coefficient/window (A used; partial)
++    read_rot_param(s, rpmd == 1 ? 0x80u : 0u, rpmd == 1 ? 4 : 0);
++}
++
++// RBG1: the second rotation background. It occupies NBG0's slot -- reusing NBG0's character control
++// (CHCTLA), pattern name (PNCN0), bitmap palette (BMPNA), colour-RAM offset (CRAOFA N0), priority
++// (PRINA N0), colour-calculation (CCRNA N0, CCCTL N0CCEN) and colour-offset (N0) registers -- but it
++// is a rotation screen: it always uses rotation parameter set B, with parameter-B plane size
++// (RBPLSZ), map offset (RBMPOF) and the 16-plane map MPABRB..MPOPRB. R1ON (BGON bit5) turns it on
++// and R1TPON (bit13) makes it opaque. RBG1 and NBG0 are mutually exclusive on the hardware; when it
++// is on, NBG0 is suppressed (in vdp2_compose). The rotation maths and the cell/bitmap lookup are the
++// same as RBG0's -- rbg_pixel/rbg_coef operate on the shared Rbg struct, so they are reused as is.
++static void setup_rbg1(Rbg& s) {
++    s = Rbg{};
++    uint16_t bgon = reg(0x20);
++    s.on = bgon >> 5 & 1;                        // R1ON
++    if (!s.on) return;
++    s.opaque = bgon >> 13 & 1;                   // R1TPON
++    uint16_t cha = reg(0x28);                    // CHCTLA (NBG0 fields)
++    s.colors  = cha >> 4 & 7;                    // N0CHCN
++    s.bitmap  = cha >> 1 & 1;                    // N0BMEN
++    s.cell2x2 = cha & 1;                         // N0CHSZ
++    int bmsz  = cha >> 2 & 3;                    // N0BMSZ
++    s.bm_w = bmsz & 2 ? 1024 : 512;
++    s.bm_h = bmsz & 1 ? 512 : 256;
++    uint16_t pncn0 = reg(0x30);                  // PNCN0
++    s.word1 = pncn0 >> 15 & 1;
++    s.cnsm = pncn0 >> 14 & 1;
++    s.supp = pncn0 & 0x3FF;
++    int plsz = reg(0x3A) >> 12 & 3;             // RBPLSZ (parameter B plane size)
++    s.plane_w = plsz == 0 ? 1 : 2;
++    s.plane_h = plsz == 3 ? 2 : 1;
++    s.over = reg(0x3A) >> 14 & 3;              // RBOVR screen-over process
++    s.page_bytes = (s.cell2x2 ? 0x800u : 0x2000u) * (s.word1 ? 1 : 2);
++    uint32_t mpofr = reg(0x3E) >> 4 & 7;        // RBMPOF (parameter B map offset)
++    uint32_t mask = (uint32_t)(s.plane_w * s.plane_h - 1);
++    // parameter B's 16 plane numbers: MPABRB..MPOPRB (0x58..0x66), low byte first, A..P
++    for (int i = 0; i < 16; ++i) {
++        uint16_t w = reg(0x58 + (i / 2) * 2);
++        uint32_t pn = w >> ((i & 1) * 8) & 0xFF;
++        uint32_t m = ((mpofr << 6) | pn) & ~mask;
++        s.plane[i] = m * s.page_bytes;
++    }
++    if (s.bitmap) {
++        s.bm_addr = mpofr * 0x20000;
++        uint16_t bmpn = reg(0x2C);               // BMPNA (NBG0 fields)
++        s.bm_pal = (uint16_t)((bmpn & 7) << 4);
++        s.bm_spr = bmpn >> 5 & 1;
++        s.bm_scc = bmpn >> 4 & 1;
++    }
++    s.caos = (uint32_t)(reg(0xE4) & 7) << 8;    // CRAOFA N0 colour RAM offset
++    s.prio = (uint8_t)(reg(0xF8) & 7);          // PRINA N0
++    s.ratio = (uint8_t)(reg(0x108) & 0x1F);     // CCRNA N0
++    s.cc = reg(0xEC) & 1;                         // CCCTL N0CCEN
++    s.offset = reg(0x110) & 1;                    // CLOFEN N0
++    s.offset_b = reg(0x112) & 1;                  // CLOFSL N0
++    read_rot_param(s, 0x80u, 4);                  // RBG1 always uses parameter set B
++}
++
++// the coefficient at table-entry index k: returns false (transparent, line not drawn) when the
++// entry's top bit is set; otherwise sets kv to the Kx/Ky factor.
++static bool rbg_coef(const Rbg& s, double kaddr, double& kv) {
++    if (!s.kt_enable) { kv = 1.0; return true; }
++    uint32_t idx = (uint32_t)(int32_t)kaddr;
++    if (s.kt_1word) {
++        uint32_t a = (s.kt_base + idx * 2) & 0x7FFFE;
++        uint16_t w = vw(a);
++        if (w & 0x8000) return false;
++        int32_t v = (w & 0x4000) ? (int32_t)(w | 0xFFFF8000u) : (w & 0x7FFF);
++        kv = (double)v / 1024.0;                 // 1.6.? 1-word coefficient: 10-ish frac
++    } else {
++        uint32_t a = (s.kt_base + idx * 4) & 0x7FFFC;
++        uint32_t w = (uint32_t)vw(a) << 16 | vw(a + 2);
++        if (w & 0x80000000u) return false;
++        int32_t v = (w & 0x00800000u) ? (int32_t)(w | 0xFF000000u) : (int32_t)(w & 0x00FFFFFF);
++        kv = (double)v / 65536.0;                // 2-word coefficient: 16 frac
++    }
++    return true;
++}
++
++// RBG0's dot at display column x, line y: false if transparent / off the map.
++static bool rbg_pixel(const Rbg& s, int x, int y, Pix& p) {
++    // the screen-space pre-transform at this line, and the per-dot increments (through the matrix)
++    double Xstv = s.Xst + s.dXst * y, Ystv = s.Yst + s.dYst * y;
++    double Xsp = s.A * (Xstv - s.Px) + s.B * (Ystv - s.Py) + s.C * (s.Zst - s.Pz);
++    double Ysp = s.D * (Xstv - s.Px) + s.E * (Ystv - s.Py) + s.F * (s.Zst - s.Pz);
++    double dXd = s.A * s.dX + s.B * s.dY, dYd = s.D * s.dX + s.E * s.dY;
++    double kx = 1.0, ky = 1.0;
++    if (s.kt_enable) {
++        double kaddr = s.KAst + s.dKAst * y + s.dKAx * x;
++        double kv;
++        if (!rbg_coef(s, kaddr, kv)) return false;
++        // mode 0: Kx=Ky; 1: Kx only; 2: Ky only; 3: Kx=Ky (data may carry line colour -- partial)
++        if (s.kt_mode == 0 || s.kt_mode == 3) kx = ky = kv;
++        else if (s.kt_mode == 1) kx = kv;
++        else ky = kv;
++    }
++    double X = kx * (Xsp + dXd * x) + s.Xp;
++    double Y = ky * (Ysp + dYd * x) + s.Yp;
++
++    if (s.bitmap) {                              // bitmap-mode rotation BG: partial (repeat-wrap only)
++        int fbx = (int)std::floor(X), fby = (int)std::floor(Y);
++        if (s.over == 2) { if (fbx < 0 || fbx >= s.bm_w || fby < 0 || fby >= s.bm_h) return false; }
++        else if (s.over == 3) { if ((unsigned)fbx >= 512u || (unsigned)fby >= 512u) return false; }
++        int bx = fbx % s.bm_w, by = fby % s.bm_h;
++        if (bx < 0) bx += s.bm_w;
++        if (by < 0) by += s.bm_h;
++        p.spr = s.bm_spr; p.scc = s.bm_scc;
++        return dot(s, s.bm_addr, bx, by, s.bm_w, s.bm_pal, p);
++    }
++    int map_w = 4 * s.plane_w * 512, map_h = 4 * s.plane_h * 512;
++    int fX = (int)std::floor(X), fY = (int)std::floor(Y);
++    // screen-over process: 2 = transparent outside the map, 3 = only a 512x512 area shows (outside
++    // transparent). 0 = repeat (wrap), 1 = over-pattern (not wired; falls back to repeat). Without this
++    // a rotation BG whose coordinates leave the map wraps and samples unrelated VRAM as garbage.
++    if (s.over == 2) { if (fX < 0 || fX >= map_w || fY < 0 || fY >= map_h) return false; }
++    else if (s.over == 3) { if ((unsigned)fX >= 512u || (unsigned)fY >= 512u) return false; }
++    int ix = fX % map_w, iy = fY % map_h;
++    if (ix < 0) ix += map_w;
++    if (iy < 0) iy += map_h;
++    uint32_t plane_px = (uint32_t)s.plane_w * 512, plane_py = (uint32_t)s.plane_h * 512;
++    int slot = (iy / (int)plane_py) * 4 + ix / (int)plane_px;
++    uint32_t planebase = s.plane[slot];
++    uint32_t lx = (uint32_t)ix % plane_px, ly = (uint32_t)iy % plane_py;
++    uint32_t page = (ly / 512) * (uint32_t)s.plane_w + lx / 512;
++    int cs = s.cell2x2 ? 16 : 8;
++    uint32_t cx = (lx % 512) / (uint32_t)cs, cy = (ly % 512) / (uint32_t)cs;
++    uint32_t cpr = 512 / (uint32_t)cs;
++    uint32_t pnd_addr = planebase + page * s.page_bytes + (cy * cpr + cx) * (s.word1 ? 2 : 4);
++    uint32_t chr, pal;
++    bool hf, vf;
++    if (s.word1) {
++        uint16_t w = vw(pnd_addr);
++        p.spr = s.supp >> 9 & 1;
++        p.scc = s.supp >> 8 & 1;
++        pal = s.colors == 0 ? (uint32_t)(w >> 12 & 0xF) | (s.supp >> 1 & 0x70) : (uint32_t)(w >> 8 & 0x70);
++        if (!s.cnsm) {
++            hf = w & 0x400; vf = w & 0x800;
++            chr = s.cell2x2 ? ((w & 0x3FFu) << 2) | (s.supp & 3u) | ((s.supp & 0x1Cu) << 10)
++                            : (w & 0x3FFu) | ((s.supp & 0x1Fu) << 10);
++        } else {
++            hf = vf = false;
++            chr = s.cell2x2 ? ((w & 0xFFFu) << 2) | (s.supp & 3u) | ((s.supp & 0x10u) << 10)
++                            : (w & 0xFFFu) | ((s.supp & 0x1Cu) << 10);
++        }
++    } else {
++        uint16_t w0 = vw(pnd_addr), w1 = vw(pnd_addr + 2);
++        hf = w0 & 0x4000; vf = w0 & 0x8000;
++        p.spr = w0 >> 13 & 1;
++        p.scc = w0 >> 12 & 1;
++        pal = w0 & 0x7F;
++        chr = w1 & 0x7FFF;
++    }
++    int px = (int)(lx % (uint32_t)cs), py = (int)(ly % (uint32_t)cs);
++    if (hf) px = cs - 1 - px;
++    if (vf) py = cs - 1 - py;
++    static const uint32_t kCellBytes[] = {32, 64, 128, 128, 256};
++    uint32_t base = chr * 0x20;
++    if (s.cell2x2) base += (uint32_t)((py >> 3) * 2 + (px >> 3)) * kCellBytes[s.colors];
++    return dot(s, base, px & 7, py & 7, 8, pal, p);
++}
++
+ // ---- the sprite layer -----------------------------------------------------------------------
+ struct SpriteType { int pr_shift, pr_mask, cc_shift, cc_mask, dc_mask; };
+ static const SpriteType kTypes[16] = {
+@@ -367,7 +707,7 @@ static void note_unsupported() {
+     auto once = [&](int i, bool cond, const char* what, uint16_t v) {
+         if (cond && !noted[i]) { noted[i] = fresh = true; sat_note("VDP2: %s (%04X) is not done", what, v); }
+     };
+-    once(0, reg(0x20) & 0x30, "RBG0/RBG1", reg(0x20));
++    // RBG0 (BGON bit4) and RBG1 (bit5) are both done now.
+     once(1, reg(0x9A) & 0x3F3F, "line or vertical cell scroll (SCRCTL)", reg(0x9A));
+     once(2, reg(0x22) & 0xF, "mosaic (MZCTL)", reg(0x22));
+     once(3, (reg(0xD0) | reg(0xD2) | reg(0xD4) | reg(0xD6)) & 0x2020, "the sprite window (WCTL)", reg(0xD0));
+@@ -401,10 +741,40 @@ void vdp2_compose(Frame& f) {
+     bool dd = (tvmd >> 6 & 3) == 3;              // double-density interlace
+     f.h = vdp2_lines() * (dd ? 2 : 1);
+     f.px.assign((size_t)f.w * f.h, 0);
+-    if (!(tvmd & 0x8000)) return;                // display off
++    // STV_HOLDDISP (labeled bridge, default off): scene81_game_sm (func_02206876) state 5 is the
++    // ENTER-PLAY commit -- it DISABLES TVMD display-enable (*0x25F80000 = DISP.0 & 0x7FFF), tears
++    // down objects and hands off to the director; with no successor round scene installed the screen
++    // stays blanked. STV_HOLDDISP=<scene-threshold> keeps composing once g_06098668 >= threshold
++    // (e.g. 81) so whatever the scene-81 stage setup left in VDP2 VRAM is visible BEHIND the blank.
++    // Default off (unset) => byte-identical (the real display-off gate is honoured).
++    {
++        static const char* s_hd = std::getenv("STV_HOLDDISP");
++        static uint32_t s_thr = s_hd ? (uint32_t)std::strtoul(s_hd, nullptr, 0) : 0;
++        bool hold = s_hd && ld32(0x06098668u) >= s_thr;
++        if (!(tvmd & 0x8000) && !hold) return;       // display off
++    }
+     note_unsupported();
+     Nbg nbg[4];
+     for (int n = 0; n < 4; ++n) setup_nbg(n, nbg[n]);
++    Rbg rbg;
++    setup_rbg(rbg);
++    Rbg rbg1;
++    setup_rbg1(rbg1);
++    // DIAGNOSTIC (STV_LAYERDIAG="[intv]", default off): read-only log of which VDP2 layers are
++    // enabled (BGON) each `intv` frames, plus the director scene index -- used to find exactly when
++    // the RBG0 stage floor turns on. Byte-identical when unset.
++    if (const char* ld_e = std::getenv("STV_LAYERDIAG")) {
++        static uint64_t last = (uint64_t)-1; static uint32_t intv = 0;
++        if (intv == 0) { intv = (uint32_t)std::strtoul(ld_e, nullptr, 0); if (intv == 0) intv = 60; }
++        uint64_t fr = sat_vblanks();
++        if (fr != last && (fr % intv) == 0) {
++            last = fr; uint16_t bgon = reg(0x20);
++            sat_note("LAYERDIAG VB %llu scene=%u BGON=%04X  N0=%d N1=%d N2=%d N3=%d R0=%d R1=%d",
++                     (unsigned long long)fr, ld32(0x06098668u), bgon,
++                     nbg[0].on, nbg[1].on, nbg[2].on, nbg[3].on, rbg.on, rbg1.on);
++        }
++    }
++    if (rbg1.on) nbg[0].on = false;              // RBG1 and NBG0 are mutually exclusive on the chip
+     uint32_t bk = ((uint32_t)(reg(0xAC) & 7) << 16 | reg(0xAE)) * 2;
+     bool bk_lines = reg(0xAC) & 0x8000;
+     bool add = reg(0xEC) >> 8 & 1;
+@@ -421,7 +791,8 @@ void vdp2_compose(Frame& f) {
+     line_colour.ratio = (uint8_t)(reg(0x10E) & 0x1F);
+     uint16_t sfprmd = reg(0xEA), sfccmd = reg(0xEE);
+     uint8_t wctl[L_COUNT] = {(uint8_t)(reg(0xD4) >> 8), (uint8_t)reg(0xD0), (uint8_t)(reg(0xD0) >> 8),
+-                             (uint8_t)reg(0xD2), (uint8_t)(reg(0xD2) >> 8)};
++                             (uint8_t)reg(0xD2), (uint8_t)(reg(0xD2) >> 8), (uint8_t)reg(0xD4),
++                             (uint8_t)reg(0xD0)};   // L_RBG1 reuses NBG0's window control (WCTLA low)
+     uint8_t cc_wctl = (uint8_t)(reg(0xD6) >> 8);
+     uint16_t sdctl = reg(0xE2);
+     // gradation: the screen BOKN names, blurred along the line, as the second image wherever it is the
+@@ -468,6 +839,30 @@ void vdp2_compose(Frame& f) {
+                 case S_NONE: break;
+                 }
+             }
++            // RBG0 (the rotation BG) wins ties over the NBGs but loses to the sprite, so it is
++            // considered right after the sprite.
++            l[L_RBG0] = {};
++            if (rbg.on && rbg.prio && !windowed(wctl[L_RBG0], win, x) && rbg_pixel(rbg, x, y, l[L_RBG0])) {
++                Pix& p = l[L_RBG0];
++                p.prio = rbg.prio;
++                p.cc = rbg.cc;
++                p.ratio = rbg.ratio;
++                p.offset = rbg.offset;
++                p.offset_b = rbg.offset_b;
++                consider(L_RBG0);
++            }
++            // RBG1 sits in NBG0's slot: it loses ties to the sprite and RBG0 but wins over NBG1-3,
++            // so it is considered right after RBG0 (NBG0 itself is suppressed when RBG1 is on).
++            l[L_RBG1] = {};
++            if (rbg1.on && rbg1.prio && !windowed(wctl[L_RBG1], win, x) && rbg_pixel(rbg1, x, y, l[L_RBG1])) {
++                Pix& p = l[L_RBG1];
++                p.prio = rbg1.prio;
++                p.cc = rbg1.cc;
++                p.ratio = rbg1.ratio;
++                p.offset = rbg1.offset;
++                p.offset_b = rbg1.offset_b;
++                consider(L_RBG1);
++            }
+             for (int n = 0; n < 4; ++n) {
+                 Pix& p = l[L_NBG0 + n];
+                 p = {};
+@@ -486,7 +881,7 @@ void vdp2_compose(Frame& f) {
+                 consider(L_NBG0 + n);
+             }
+             const Pix& t = top >= 0 ? l[top] : back;
+-            Pix u = top >= 0 && (lnclen >> (top == L_SPRITE ? 5 : top - L_NBG0) & 1) && grad < 0 ? line_colour
++            Pix u = top >= 0 && (lnclen >> (top == L_SPRITE ? 5 : top == L_RBG0 ? 4 : top == L_RBG1 ? 0 : top - L_NBG0) & 1) && grad < 0 ? line_colour
+                   : second >= 0 ? l[second] : back;
+             if (grad >= 0 && (top == grad || second == grad)) u.rgb = blur[x];
+             uint32_t rgb = t.rgb;
+@@ -504,7 +899,7 @@ void vdp2_compose(Frame& f) {
+             if (t.offset) rgb = apply_offset(rgb, t.offset_b);
+             // A shadow halves the top screen under it when SDCTL enables that screen (bit 5: the back screen).
+             bool shaded = top == L_SPRITE ? t.shade
+-                        : shadow && shadow >= t.prio && (sdctl >> (top >= 0 ? top - L_NBG0 : 5) & 1);
++                        : shadow && shadow >= t.prio && (sdctl >> (top == L_RBG0 ? 4 : top == L_RBG1 ? 0 : top >= 0 ? top - L_NBG0 : 5) & 1);
+             if (shaded) rgb = rgb >> 1 & 0x7F7F7F;
+             f.px[(size_t)y * f.w + x] = rgb;
+         }
+diff --git a/runtime/src/video/video.cpp b/runtime/src/video/video.cpp
+index 88d1642..f113b5c 100644
+--- a/runtime/src/video/video.cpp
++++ b/runtime/src/video/video.cpp
+@@ -72,6 +72,8 @@ static void dump(const char* prefix, uint64_t n) {
+ 
+ static void vblank_in(uint64_t now) {
+     ++g_vblanks;
++    extern void stv_scene_probe_tick(uint64_t vb);  // scene-director probe (diagnostic, default off)
++    stv_scene_probe_tick(g_vblanks);
+     std::string n = std::to_string(g_vblanks);
+     if (listed(g_cfg.dump, n)) dump("", g_vblanks);
+     bool shot = listed(g_cfg.shots, n);

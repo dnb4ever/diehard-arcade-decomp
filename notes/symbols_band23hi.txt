@@ -1,0 +1,77 @@
+# Band 0x02237000-0x02240000 (high 0x23xxxx) - functional decomp symbols
+# Worker: band23hi. Only NEW names/globals confirmed from this pass.
+
+## Functions decompiled (src_functional/)
+func_02237ea6  HUD damage/score popup updater (two slots g_0609860c/g_06098614)
+func_02238364  table-slot dispatch (slot 0..7, g_0608c484 records)
+func_02239194  debris sprite per-frame update (state machine + trig/draw tail)
+func_0223a888  polar->cartesian motion projection into output fields
+func_0223c7f6  actor action/animation state machine (dispatch on unk6D)
+func_0223cd98  active-effect slot sweep / retire finished effects (8 slots)
+func_0223d0fe  begin fixed action #1 on an actor (sibling of func_0223cfe4)
+func_0223d3d0  falling/arcing object update, spawns impact object on landing
+func_0223d558  falling object that triggers landing sound + state transition
+func_0223d9dc  projectile/grenade per-frame update (fuse + detonate -> debris)
+func_0223fec4  particle spawner from a 16-byte-entry template list
+func_0223ffcc  reset entity fields and invoke its selected action handler
+
+## Globals (HWRAM 0x06xxxxxx) confirmed this pass
+g_060918a0  void**[]  two-level action-handler dispatch table            [ffcc]
+g_0608c484  u8[]      16-byte record array (sound/voice slots)           [8364]
+g_0608c508  u8[]      struct passed to g_0609029c dispatch               [8364]
+g_060997a4  s32       dispatch param A (channel/sprite id)               [8364,7ea6]
+g_060997a8  s32       dispatch param B (sub-id 12/13...)                 [8364,7ea6]
+g_060997ac  s32       dispatch param C                                   [7ea6]
+g_060997b0  u8[]      dispatch work buffer                               [8364]
+g_0609029c  void(*)(void*)  global function-pointer dispatch             [8364,7ea6]
+g_06096248  u8[]      animation record table, stride 32 (field .unkE)    [d0fe]
+g_060e11ea  u8[]      anim .unkE save array, stride 4 (s16 slots)        [d0fe]
+g_060e10a8  u8[]      anim .unkE load table (action*8 + unk68*2)         [d0fe]
+g_060e0f0c  s32[]     effect-slot state/type array                       [c7f6,cd98,...]
+g_060e0f2c  s32[]     effect-slot substate array                         [cd98,...]
+g_060e0f4c  void*[]   effect-slot object pointer array                   [c7f6,cd98]
+g_060e0f0c-based arrays share base g_060e0e88 (+0x84/+0xa4/+0xc4)        [db2a,c7f6]
+g_0608cf18  s16[]     per-slot weight array (subtracted from g_060e1214) [cd98]
+g_060e1214  s16       effect accumulator                                 [cd98]
+g_060e0e88  s32       active-effect count                                [cd98]
+g_06097d58  u8[]      transform/position table, 0x100 stride, +0x50 off  [9194,d9dc]
+g_06098878  s32       draw offset accumulator (+/-0x30 push/pop)         [9194,d9dc,d3d0,d558]
+g_0608c3b8  u32[]     HUD digit source-address table                     [7ea6]
+g_0609d7b0  u8[]      HUD text buffer                                     [7ea6,9fc6(seen)]
+g_0609860c  u8[]      HUD popup slot 0 {u16 unk0; u16 unk2; s32 unk4}     [7ea6]
+g_06098614  u8[]      HUD popup slot 1 (same layout)                      [7ea6]
+g_060b88a4  s32       flags (low nibble checked for land/stop)            [d3d0,d558]
+g_060e0e8c  u8[]      per-group table, stride 16                          [d3d0]
+g_060e1208  u8[]      small byte table                                   [d3d0]
+g_06098670  s32       audio channel live flag (==1)                      [d558]
+g_06098830  s32       audio channel state counter                        [d558]
+g_06098834  s32       rumble/trigger flags                               [d558]
+g_0609882c  void*     pointer to the active sound object                 [d558]
+
+## Callees referenced (addresses only; not decompiled here)
+func_020ff28/func_020ff54/func_020ff0a  object allocators (ctx, template)->obj
+func_022131a8 / func_02213190           unary trig (cos/sin-style) lookup(angle)
+func_022131c8                           binary fixed-point combine(mag, trig)
+func_0213190 / func_02131a8 / func_0213ce4  transform/matrix helpers (9194)
+func_02149aa                            transform-push helper (no args from caller)
+func_0214a40 / func_0214a06 / func_0214a50 / func_02149e4 / func_0215a2c  draw/xform
+func_02173f4                            apply-table helper (obj, table, n)
+func_02153f6                            effect setup (obj, flags, n)
+func_021632e                            VRAM blit (id, src, dst, len)
+func_021326c                            tile/text copy (src, dst, n)
+func_021055c                            trajectory/line setup (8 args)
+func_0216858                            (8364) voice handler (6 args)
+func_020fece                            next-phase state handler (entity, arg) [d558 tail]
+func_022eea2                            falling/update continue helper
+func_022399bc / func_022399... / 0x0223636c / 0x02212350 / 0x0223101c  template/state ptrs
+
+## find_entry corrections (triage first-member -> real entry)
+0x2371aa -> 0x2371c0 ; 0x22382e8 -> 0x238364 ; 0x2239ce6 -> 0x239ce8
+0x23a856 -> 0x23a888 ; 0x23a9b8 -> 0x23a9d0 ; 0x23d3ae -> 0x23d3d0
+0x23d726 -> 0x23d768 ; 0x23d98a -> 0x23d9dc
+Phantom/pool rows (not real entries): 0x23805a, 0x2239ce2, 0x23de18, 0x23e3ba
+
+## ABI note
+func_024a420 / func_024a518 / func_024a7a8 / func_024a830 take args in r0/r1
+(nonstandard register ABI); callers 0x23db2a and 0x23d768 cannot be expressed
+cleanly in functional C -> deferred.

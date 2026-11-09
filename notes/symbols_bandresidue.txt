@@ -1,0 +1,32 @@
+# symbols_bandresidue.txt - band-residue functional pass (scattered undone real entries)
+# Names/globals for the TUs added in project/src_functional/ this pass.
+
+## Functions decompiled (HIGH fidelity, compile clean -O1 -Wall -Wextra)
+0x0220c3e4 func_0220c3e4   camera_track_pair   # HIGH task(task). Dual-focus twin of camera_track_single (0x20c17c); frames slots cam->unkAE + cam->unkB0, eye at their midpoint, zoom from nearby actors. Shares the 0x20c460..0x20c802 literal pool with c17c. Calls lookat_angles_xz(0x21055c), camera_smooth_lerp(0x20e0aa), camera_shake_decay(0x20d98e), mtx_build_fwd_inv(0x214a7a). See findings below.
+0x02208c44 func_02208c44   perspective_strip_builder   # HIGH task(task). 3-state VDP1 display-list builder, sibling of screen_fx_builder_task(0x207bcc). Build (state 0) emits perspective (scale,pos,1/depth) triples via fxmul+fxdiv; falls through to gate (state 1, *0x06098580&0x80000) then animate (state 2, rebuild cell rows from ROM glyph table). Named func_02208c44 to match the extern in 02208b98.c (spawned via func_0220ff54).
+0x0216c88  func_0216c88    stage_build_object_grid   # HIGH (stage, variant, rec) - only stage used. Clears 32x32 static-geometry bucket grid (0x060B3D5C) and inserts stage object list records (0x14-byte src -> 0x18-byte out @0x060B4D5C) keyed by X/Z. bsr worker of dispatcher 0x216c38. band21.
+0x0216f7a  func_0216f7a    stage_build_actor_grid    # HIGH (stage). Clears actor grid (0x060B659C) + box table (0x060B6D9C), builds up to 64 slot records @0x060B769C from the stage list (biased by stage base), grid_bucket_insert_cached each; installs cmd handler func_02217888 @0x060B889C, resets dispatch ctx @0x060B88A0 = -1. tail-jump worker of dispatcher 0x216c38. band21.
+
+## Symbol correction (do NOT edit notes/symbols.txt per task; recorded here)
+0x02213234 sh2_fxdiv_16_16   # CORRECTION: notes/symbols.txt lists this as "sh2_hw_divide num/den". It is actually a 16.16 fixed-point divide: returns ((s64)num << 16) / den via the on-chip DIVU (DVSR=den, dividend = (s64)num<<16, reads DVDNTUL). num=r4, den=r5. Confirmed by disasm (swap.w+exts.w into DVDNTH, num<<16 into DVDNTL).
+
+## Globals referenced (new or reused)
+0x0606080C g_stage_table         # stage-record table, stride 0x2C; [+4]=object-list head ptr, [+8/+C/+10]=world base x/y/z (used by 0216c38/0216c88/0216f7a)
+0x060B3D5C g_static_geom_grid    # 32x32 bucket grid for static geometry, 0x1000 bytes (cleared via clear_vec4_array count 0x100). Bucket = base + (cz<<7) + (cx<<2)
+0x060B4D5C g_static_geom_recs    # 0x18-byte output records for 0216c88
+0x060B655C g_static_geom_ctrl    # control block reset by 0216c88 (+0x20=0x1000, +0x08..0x32 zeroed)
+0x060B659C g_actor_grid          # actor/collision bucket grid (g_060B659C, grid_bucket_insert_cached), 0x800 bytes
+0x060B6D9C g_actor_box13         # collision-box table, stride 0x48 (existing symbol); 0216f7a zeroes +0/+4/+0x18 of 32 entries
+0x060B769C g_actor_slot_recs     # 0x48-byte slot records built by 0216f7a (coords cached +0xC/+0x10/+0x14, AABB +0x18..+0x24)
+0x060B889C g_cmd_handler_ptr     # command-handler fn pointer slot; 0216f7a installs func_02217888
+0x060B88A0 g_cmd_ctx             # dispatch ctx (dispatch_cmd 0x217838); 0216f7a sets -1
+0x0604F1DC g_glyph_rows          # ROM glyph/cell row table, stride 0x40 by entity unk32; bytes +0x700-biased into VDP1 words (func_02208c44 state 2)
+0x06099584 g_camera_obj_table    # camera object table (reused by camera_track_pair; +0xC present-flag array, +0x2C obj-ptr array, +0x4C 8x8 dist table stride 0x20)
+0x06096C58 g_focus_ybias         # per-slot focus Y bias (reused by camera_track_pair)
+0x06099510 g_06099510            # VDP1 display-list write cursor (reused by func_02208c44)
+0x06098F08 g_06098F08            # VDP2 shadow-register block base ptr (reused by func_02208c44)
+0x06098580 g_event_flags         # event/trigger bitfield (func_02208c44 state 1 gate uses bit 0x80000)
+0x060B3D50 g_060B3D50            # selector byte for func_022213a8 (set to 1 by func_02208c44 state 2)
+
+## Deferred (NOT a standalone entry)
+0x02225c2c  (interior block)     # DEFERRED. Not a real function: it is an interior block / jump-table region of the large player input/combat state-machine function (fn.py associates it with an entry <= 0x02225000, code ~0xfac, extent reaching ~0x02225fe8, all sharing the stack frame spill @(52,r15) = entity ptr). r0/r1/r2/r3 are live on entry (set at 0x225c20-0x225c2a) and it reads 6+ caller stack slots with no prologue. The braf jump table at 0x225d9c and its 0x225ee0 arm are likewise interior to this function. Decompiling 0x225c2c alone would require fabricating its register/stack calling state = silent-wrong. Correct unit of work is the whole ~4KB function.

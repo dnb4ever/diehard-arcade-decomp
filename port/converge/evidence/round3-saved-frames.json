@@ -1,0 +1,28 @@
+[
+  {
+    "path": "work/converge/round3/saved-frames/stack-0.bin",
+    "sha256": "f763abed1dbfea35a9acbbf9fb4905492b348fcf6cfaea48c670f1bf4594f70c",
+    "bytes": 2097288,
+    "function": "02214194",
+    "kind": 0,
+    "context_bytes": 132,
+    "ram_bytes": 2097152,
+    "replay": "PASS real saved-frame stack-output fixture: complete context and both RAM banks\n",
+    "capture_path": "work/converge/round3/fixtures/stack-0.bin",
+    "probe_binary_sha256": "356f7d6d28a6e5a54581abcbc54cfaee289237bae6d1ff57320f9bd4eaa95feb",
+    "replayed_utc": "2026-11-09T07:54:14.902482+00:00"
+  },
+  {
+    "path": "work/converge/round3/saved-frames/stack-3.bin",
+    "sha256": "b953e7908e3df88a8f6bae96b18921d763fe44e1ebb7f4e6446c1c9188af5c67",
+    "bytes": 2097288,
+    "function": "022414ee",
+    "kind": 3,
+    "context_bytes": 132,
+    "ram_bytes": 2097152,
+    "replay": "PASS real saved-frame stack-output fixture: complete context and both RAM banks\n",
+    "capture_path": "work/converge/round3/fixtures/stack-3.bin",
+    "probe_binary_sha256": "356f7d6d28a6e5a54581abcbc54cfaee289237bae6d1ff57320f9bd4eaa95feb",
+    "replayed_utc": "2026-11-09T07:54:14.913031+00:00"
+  }
+]

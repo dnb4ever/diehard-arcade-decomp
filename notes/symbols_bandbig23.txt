@@ -1,0 +1,54 @@
+# symbols_bandbig23.txt - "bandbig23" pass (large flag-gated router/state fns)
+# Worker: bandbig23. Shipped 2 of 4; deferred 2 (e690/f10e) with full structure.
+# Names/globals below; DO NOT merge into notes/symbols.txt (per task).
+
+## Shipped functions (real entries, each compiles -Wall -Wextra clean)
+0x02243fe0  func_02243fe0  path_sweep_tripled    # HIGH  tripled collision/path sweep, sibling of 0x022444b6. idx=ent->unk34 keys tbl10=g_06097128[idx*0x24]/tbl13=g_060B6D9C[idx*0x48]. flags=ent->unkE0: 0x40->PATH D (tgt g_060E0F4C[unk12C]); !0x40&0x10->PATH B (tgt g_060995B0[unk128], publishes g_0609740C); !0x40&!0x10->PATH C (func_02244874-gated). Shared dir-rehome tail with func_02210020() RNG re-pick. NOTE fn.py size is 0x4d6=1238B (brief said 619). hand-traced.
+0x0223bf86  func_0223bf86  obj_state_machine_8   # HIGH  8-state summon/projectile machine. arg0=task, ent=arg0->unk8, other=ent->unkD0. state=M8(arg0,0x10) cmp/eq 0..7. 6 spawn sites = func_020ff0a/func_020ff28(task, descriptor); descriptors 0x0223C650 (data, states0/3/4), 0x0212350 (cb, state1 die), 0x022319B2 (cb, state1 launch). ".Lpool_23cNNN.unk8"==child->unk8. state7 unkC/2A/2C follow dropped func_02210020() RNG; state1 launch trig = save/restore r5 across func_0213190 (not m2c's fused unksp0). hand-traced.
+
+## Externs referenced (names used in the two shipped .c; shapes confirmed from call sites)
+func_022130b4  0x022130b4  angle_from_vec2(dy,dx)->s32            # (existing)
+func_02217838  0x02217838  collision_hit_test(&pos,&box,0,idx)->obj*  # (existing)
+func_02210020  0x02210020  rng_next(void)->s32                    # (existing PRNG)
+func_02244670  0x02244670  reaction_slot_finalize(ent,tgt,tbl10,count,s16 angle)  # 5th arg on stack (existing)
+func_02244820  0x02244820  move_permit_flag(ent,tgt)->s16         # 2 ARGS (existing note confirms; 4-arg draft wrong)
+func_02244874  0x02244874  aabb_reachable(ent,tgt,&pos)->obj*/NULL # (existing)
+func_020ff0a   0x0220ff0a  spawn_child(task,desc)->child          # returns child entity; child->unk8 = sub-record
+func_020ff28   0x0220ff28  spawn_child_v2(task,desc)->child       # variant of 020ff0a
+func_0213190   0x0213190   trig_a(s32)->s32                       # (existing; also draw-tail angle helper)
+func_02131a8   0x02131a8   trig_cos(s32)->s32
+func_02131c8   0x02131c8   fixmul(s32 a,s32 b)->s32
+func_02173f4   0x02173f4   obj_integrate(ent, rec)                # (existing) rec=&g_060E0E88[4+idx*0x10]
+func_0215f6c   0x0215f6c   sfx_trigger(s32)                       # state1 launch: arg 0xA01205FF
+func_023c6bc   0x0223c6bc  obj_slot_helper_a(ent, 2, 4)
+func_023cd0c   0x0223cd0c  obj_slot_helper_b(ent, arg1, 4)        # arg1 = child ptr (state1 die) OR int 2
+func_02149aa   0x02149aa   draw_begin(void)                       # (existing draw tail)
+func_0214a40   0x0214a40   draw_push(obj)                         # (existing)
+func_0214a06   0x0214a06   draw_apply(obj)                        # (existing)
+func_0215a2c   0x0215a2c   draw_end(obj, 0)                       # (existing)
+
+## Globals
+g_06097128  0x06097128  per-player sweep scratch tbl10 (stride 0x24): +0 selector word, +4 step words, +0x10 found-target ptrs
+g_060B6D9C  0x060B6D9C  per-player collision box tbl13 (stride 0x48): +0x18,+0x1C,+0x20,+0x24
+g_060995B0  0x060995B0  actor table A (indexed by ent->unk128)
+g_060E0F4C  0x060E0F4C  actor table B (indexed by ent->unk12C)
+g_0608DBC0  0x0608DBC0  step-sequence ptr table A (by selector*4)
+g_0608DBD4  0x0608DBD4  step-sequence ptr table B (by selector*4) (also used by 022444b6)
+g_0608DB6C  0x0608DB6C  {dx,dy} s32 pairs (by step*4, overlapping)
+g_0608DBDC  0x0608DBDC  path-C switch selector table (by count*4) {0,1,2}
+g_0608DBF4  0x0608DBF4  path-C status table (by count*4)
+g_0609740C  0x0609740C  path-B published step
+g_060E0F0C  0x060E0F0C  per-actor subtype seed (by idx*4)   [= g_060E0E88 + 0x84]
+g_060E0F2C  0x060E0F2C  per-actor slot-handshake state (by idx*4) [= g_060E0E88 + 0xA4]
+g_060E1080  0x060E1080  halfword table (by unk5E*2)
+g_060E1209  0x060E1209  byte table (by (unk5E-0xA)*2)
+g_060E120C  0x060E120C  per-type params (by (unk5E-0xA)*4)
+g_060E0DDC  0x060E0DDC  flag scalar (gate for func_0215f6c)
+g_060E0E88  0x060E0E88  physics rec table (rec=&[4+idx*0x10])
+g_0604EBE4  0x0604EBE4  faction/id table (by other->unk4A*4)
+g_060B88A4  0x060B88A4  contact/collision bit field (state7: &3 zeros unk14, &0xC zeros unk1C)
+g_06098878  0x06098878  draw transform-offset accumulator (+-0x30 around draw tail)
+
+## DEFERRED (see functional_bandbig23.md for full branch tables + reason)
+0x0223e690  func_0223e690  cmd_router_a   # DEFER: 1930B guarded-tail-call dispatcher + heavy inline spawn logic; m2c fully fails (chokes on pool datum "stc tbr,r1"); all 36 branches resolved (phantom table @0x23e72c = mask 0x0003FFFF). Tail-calls func_02243fe0 @0x23e7ae.
+0x0223f10e  func_0223f10e  cmd_router_b   # DEFER: 2808B/46-branch dispatcher; m2c all-M2C_ERROR; phantom table @0x23f3dc = mask 0x0003FFFF. Tail-calls func_02243fe0 @0x23f3b8; uses reg-count helper func_0224a360.

@@ -1,0 +1,46 @@
+# Band 0x210000-0x220000 (SH2 0x02210000-0x02220000) - worker 210b symbols
+# Functions newly decompiled this session (all FUNCTIONAL, HIGH fidelity, zero-warning).
+
+0x0221fd7a func_0221fd7a   draw_model_list          # (u32 task) walk g_06090954[(s8)task->unk15] model-record list (stride 8), push/pop matrix frames, submit each; count at rec+6
+0x0221fed4 func_0221fed4   cam_aim_update           # (u32 task) weighted_accum3 -> X/Z offset +0x200000, look-at builder, phase accum base->unk64 (wrap >0x70000), mtx_build_fwd_inv
+0x0221885c func_0221885c   draw_scrolling_prop      # (u32 task) 3-state cull+draw of a 2-piece prop vs ref (*0x0609882C)->unk8; |delta|>=0x30000 gate; tbl 0x06054758 stride 12
+0x0221b450 func_0221b450   prop_fade_in_sweep       # (u32 task) 4-state ramp: seed unk60/64 from unk26, step unk64/unk6C, bit0 of *0x06098580 gate, draw (load_abc/vec_at0/rotate_zyx)
+0x02215964 func_02215964   emit_or_queue_sprite     # (u32 obj) validity 0..0x618 via 0x0609EBD0; if FIFO busy (sdiv32(wptr-base,4)>=4) heavy path else fast poke slot *0x060DA0C4, opcode 6
+0x02215cb4 func_02215cb4   build_quad_drawlist      # (u32 obj, s32 sel) rec=0x0609D7D0+id*0x14; per-type preamble + visible sub-quad list at 0x060DA0C8; tail-dispatch g_06090794[rec->unk10|sel]
+0x0221c8f4 func_0221c8f4   debris_ballistic_update  # (u32 task) projectile arc; ashr_var-scaled gravity/spin/integrate by g_06096C90; land when unkC<=0x1000; deactivate on ctrl->unk12==1; draw
+0x022154fc func_022154fc   draw_billboard_quad      # (u32 obj,s32 sx,s32 sy,s32 mode&3) matrix setup per mode, frustum cull func_02215630, project_quad_corners, emit sprite slot *0x060CF0C8
+0x022186ec func_022186ec   spinning_pickup_update   # (u32 task) 5-phase spin-speed envelope, spawn companion (template 0x02232178) when unk26==0, integrate unk28, draw (rotate_y/rotate_z)
+0x0221a452 func_0221a452   hud_timer_display_update # (u32 task) 2-sprite HUD counter; lane from g_060511DC; scroll accum unk70/74, wrap@11; SFX 0xA01101FF every 4th; tables @0x0605436C..0x060543D4
+
+# Referenced externs (already decompiled elsewhere / in other bands) confirmed this session:
+#   func_022149aa mtx_load_abc(void)         func_02214a2e mtx_stack_push_dup(void)
+#   func_02214a40 mtx_apply_vec_at8(obj)      func_02214a50 mtx_apply_vec_at0(obj)
+#   func_02214a60 mtx_apply_angles_hi(obj)    func_02214a06 mtx_rotate_zyx_at24(obj)
+#   func_022149e4 mtx_rotate_zyx(angles)      func_02213bf4 mtx_rotate_y(angle)
+#   func_02213c4c mtx_rotate_z(angle)         func_02213fb4 load_matrix_default(void)
+#   func_02215a2c submit_model_culled(obj,n)  func_02213a70 project_quad_corners(hw,hh,sx,sy)
+#   func_02213434 commit top matrix -> g_060DA040 (void)   func_02215630 frustum/backface cull (void)->s32
+#   func_02214194 weighted_accum3(rows,sel,out3)  func_0221055c lookat_angles(x,y,z,bx,by,bz,*elev,*azim)
+#   func_02214a7a mtx_build_fwd_inv(obj)      func_02213474 matrix_copy_reverse(void)   func_022134d8(slot)
+#   func_022153f6 draw_child_sprite(obj,scale,flags)   func_02215f6c sound_queue_push(cmd)
+#   func_0220ff28 spawn_from_template(parent,template)->obj
+#   func_0224a06c sdiv32(dividend,divisor)    func_0224a420 func_0224a420 ashr_var(value,count) [r0/r1 ABI]
+
+# Globals touched:
+0x06090954  g_model_record_ptr_table     # pointer table, indexed by (s8)task->unk15 (draw_model_list)
+0x06098878  g_matrix_stack_depth         # byte cursor, +0x30 per pushed frame
+0x06090794  g_quad_handler_table         # function-pointer dispatch (build_quad_drawlist tail)
+0x0609ebd0  g_id_to_record_map           # s16 id map (emit_or_queue_sprite / build_quad_drawlist)
+0x0609d7d0  g_quad_type_records          # 0x14-byte records
+0x060da0c4  g_cmd_list_ptr               # sprite/display command write cursor (+0x80)
+0x060da0c8  g_cmd_list_base              # command list base (build_quad_drawlist cursor, stride 0x30)
+0x060cf0c8  g_billboard_slot_ptr         # billboard sprite slot cursor (-0x24)
+0x060e0dd4  g_fifo_wptr / 0x260e0dd0 g_fifo_base   # command FIFO pointers (mirror/base pair)
+0x060e0ddc  g_sound_enable               # gate for sound_queue_push
+0x06096c90  g_frame_shift                # ashr_var frame-rate scale shift
+0x0609856c  g_player_flags               # low bits select launch/lane params
+0x06098580  g_flags580                   # bit0 ramp gate
+0x060987bc  g_global_phase               # low 2 bits = blink/draw gate
+0x0609882c  g_ref_obj_ptr                # reference object (draw_scrolling_prop)
+# Note: several accumulators are read through SH-2 cache mirrors (0x26098818/0x2609881c/
+# 0x260e0dd0) but written to the 0x0609.../0x060e... base - preserved verbatim.

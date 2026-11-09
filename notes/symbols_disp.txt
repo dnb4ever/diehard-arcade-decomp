@@ -1,0 +1,12 @@
+# Die Hard Arcade (ST-V, SH-2 BE) - 0x24a300-0x24a520 dispatch/shift-helper family
+# Format: 0x<SH2addr> <name>   # <confidence> <evidence>
+# (NEW file per task; do not merge into symbols.txt without review.)
+
+# ---- variable-shift runtime helpers (the "banned" computed-goto family) ----
+0x0224a360 ashl_var            # HIGH  s32(s32 value r0, s32 count r1) -> value<<count. 32-way computed goto (byte table @0x0604e340 == cart 0x24a340, shll/shll8/shll16 sled @0x0604e38a). count<0 -> value unchanged; count>=32 -> 0. r2 callee-saved. Exhaustively simulated bit-exact (22k cases). 180 call-sites / 25 fns. (was dispatch_table_a)
+0x0224a420 ashr_var            # HIGH  s32(s32 value r0, s32 count r1) -> (signed)value>>count arithmetic. Sign-dependent dual dispatch: shar sled (@0x0604e49e == cart 0x24a49e, byte table @0x0604e418) for value<0 or count<=8; logical-shr tail 0x24ab2c for value>=0 & count>8. count<0 -> unchanged; count>=32 -> value>>31 (0/-1). r2 callee-saved. Exhaustively simulated bit-exact. 146 call-sites / 20 fns. (was dispatch_table_b)
+0x0224ab2c ashr_var_lshr_tail  # HIGH  internal non-negative fast path of ashr_var: byte-table dispatch (table @0x0604eb00 == cart 0x24ab00, sled @0x0604eb4a) into a shlr/shlr8/shlr16 sled. NO external callers - reached only via jmp from ashr_var.
+
+# ---- non-standard-ABI callers unblocked by the shift-helper ABI ----
+0x02221354 vdp2_shadow_setbit  # HIGH  void(s32 bit r4): set bit "bit" in M16(*g_06098F08, 0x20). Calls ashl_var(1,bit) twice via bsrf (deltas 0x28ffa/0x28fe6). r0=value in bsrf delay slot.
+0x02221384 vdp2_shadow_clrbit  # HIGH  void(s32 bit r4): clear bit "bit" in M16(*g_06098F08, 0x20). Calls ashl_var(1,bit) once via bsrf (delta 0x28fcc).

@@ -1,0 +1,1273 @@
+sh2_addr	unit_start	size	shape	call_count	category	note
+2200400	2200400	0x2e	o	4	callC	
+220042e	2200400	0x1cc	o	27	misseg	garbage=19/230 no-ret
+22005fa	2200400	0x30	o	0	leafC	
+220062a	220062a	0x3e	o	1	misseg	garbage=2/31
+2200668	220062a	0x4c	o	2	callC	
+22006b4	22006b4	0x2a	o	0	misseg	garbage=2/21
+22006de	22006b4	0x6e	o	2	misseg	garbage=6/55 ops:mac.w no-ret
+220074c	22006b4	0x5a	o	0	leafC	
+22007a6	22007a6	0x128	o	15	misseg	garbage=8/147 ops:mac.l
+22008ce	22008ce	0x1c8	o	19	misseg	garbage=11/228
+2200a96	22008ce	0x1cc	o	27	misseg	garbage=18/230 no-ret
+2200c62	22008ce	0x30	o	0	leafC	
+2200c92	2200c92	0x3e	o	1	misseg	garbage=2/31
+2200cd0	2200c92	0x4c	o	2	callC	
+2200d1c	2200d1c	0x2a	o	0	misseg	garbage=2/21
+2200d46	2200d1c	0x32	o	1	callC	
+2200d78	2200d78	0x22	o	0	misseg	garbage=2/17
+2200d9a	2200d78	0x178	o	2	misseg	garbage=24/184 ops:mac.w
+2200f12	2200f12	0x32	o	0	misseg	garbage=9/25
+2200f44	2200f12	0xdc	o	0	misseg	garbage=91/106
+2201020	2201020	0x570	o	44	callC	garbage=2/696 ops:div1
+2201590	2201020	0x110	o	5	callC	garbage=1/132
+22016a0	22016a0	0x2b8	o	22	callC	garbage=3/348 ops:div1
+2201958	22016a0	0x140	o	3	callC	
+2201a98	2201a98	0xf6	o	3	callC	
+2201b8e	2201a98	0x4	o	0	leafC	
+2201b92	2201a98	0x10a	o	3	callC	
+2201c9c	2201a98	0x284	o	10	callC	garbage=1/322 sym:vdp2_update_a
+2201f20	2201a98	0x1da	o	8	callC	ops:mac.l sym:vdp2_update_b
+22020fa	22020fa	0x2c	o	1	callC	garbage=1/22 ops:mac.w
+2202126	22020fa	0x66c	o	49	callC	garbage=5/817 ops:mac.l,mac.w
+2202792	2202792	0x212	o	12	callC	garbage=1/265 ops:mac.l
+22029a4	2202792	0x84	o	1	callC	
+2202a28	2202a28	0x15e	o	1	callC	
+2202b86	2202b86	0xd6	o	2	callC	garbage=1/107
+2202c5c	2202b86	0xb8	o	4	callC	
+2202d14	2202d14	0x6f8	o	50	callC	garbage=2/892 ops:div1,mac.l,mac.w
+220340c	2202d14	0xf4	o	1	callC	ops:mac.l
+2203500	2202d14	0x76	o	2	callC	
+2203576	2202d14	0x1f6	o	19	callC	
+220376c	220376c	0x390	o	47	callC	
+2203afc	220376c	0xfe	o	10	callC	
+2203bfa	220376c	0x1ee	o	23	callC	garbage=1/247
+2203de8	220376c	0x22	o	0	leafC	
+2203e0a	220376c	0x54	o	0	leafC	
+2203e5e	220376c	0x64	o	0	leafC	
+2203ec2	220376c	0x12	o	0	leafC	
+2203ed4	220376c	0x2e4	o	16	callC	
+22041b8	22041b8	0x1aa	o	0	leafC	garbage=1/213
+2204362	22041b8	0x16a	o	10	callC	garbage=1/181
+22044cc	22041b8	0xe6	o	6	callC	
+22045b2	22041b8	0x22c	o	18	callC	garbage=1/278
+22047de	22041b8	0x31c	o	22	callC	garbage=2/398 ops:mac.l
+2204afa	22041b8	0x738	o	56	callC	garbage=2/924 ops:div1,mac.l
+2205232	22041b8	0x5e0	o	35	callC	garbage=4/752 ops:mac.l
+2205812	22041b8	0x8	o	0	leafC	
+220581a	22041b8	0x8e	o	0	leafC	
+22058a8	22058a8	0x20e	o	14	callC	garbage=1/259
+2205ab6	2205ab6	0x1e0	o	2	callC	
+2205c96	2205ab6	0x378	o	16	callC	garbage=1/444 ops:mac.l,mac.w
+220600e	2205ab6	0x85c	o	48	callC	garbage=4/1070 ops:mac.w
+220686a	2205ab6	0xc	o	0	leafC	
+2206876	2205ab6	0x412	o	23	callC	garbage=2/521 ops:mac.l,mac.w
+2206c88	2205ab6	0x1a6	o	2	callC	
+2206e2e	2205ab6	0x3f6	o	35	callC	garbage=2/449
+2207224	2207224	0xaa	o	10	callC	
+22072ce	2207224	0x2c	o	0	leafC	
+22072fa	22072fa	0x38	o	0	leafC	garbage=1/28
+2207332	22072fa	0x10	o	1	callC	
+2207342	22072fa	0x8	o	0	leafC	
+220734a	22072fa	0x1f8	o	14	callC	garbage=1/252 ops:div0s
+2207542	22072fa	0x230	o	19	callC	garbage=1/280 ops:div0s
+2207772	22072fa	0xae	o	7	callC	
+2207820	2207820	0x15e	o	9	callC	garbage=1/172 ops:div0s
+220797e	220797e	0x1c0	o	7	callC	garbage=2/224 ops:div0s
+2207b3e	220797e	0x8e	o	5	callC	
+2207bcc	2207bcc	0x432	o	29	callC	garbage=1/530 ops:div0s
+2207ffe	2207ffe	0xae	o	9	callC	garbage=1/87 ops:div0s
+22080ac	2207ffe	0x1b0	o	6	callC	ops:div0s
+220825c	220825c	0x62	o	6	callC	
+22082be	220825c	0x712	o	39	callC	garbage=3/870 ops:div0s
+22089d0	22089d0	0x82	o	7	callC	
+2208a52	22089d0	0x146	o	4	callC	garbage=1/163 ops:div0s
+2208b98	22089d0	0x4a6	o	25	callC	garbage=3/595 ops:div0s,mac.l
+220903e	22089d0	0xc2	o	1	callC	
+2209100	2209100	0x7a	o	1	callC	
+220917a	220917a	0x1216	o	104	misseg	garbage=10/2288 ops:div1,mac.l,mac.w
+220a390	220a390	0x160	o	6	callC	
+220a4f0	220a4f0	0x122	o	6	callC	
+220a612	220a612	0x1ca	o	11	callC	
+220a7dc	220a7dc	0x186	o	7	callC	
+220a962	220a7dc	0x30	0	1	callC	
+220a992	220a7dc	0x30	0	1	callC	
+220a9c2	220a7dc	0x98	o	6	callC	
+220aa5a	220aa5a	0xda	o	9	callC	garbage=1/109
+220ab34	220aa5a	0xca	o	8	callC	
+220abfe	220abfe	0x5c	o	2	callC	garbage=1/46
+220ac5a	220abfe	0x4e	o	2	callC	
+220aca8	220abfe	0x4e	o	2	callC	
+220acf6	220abfe	0x62	o	0	leafC	sym:smpc_intback_read
+220ad58	220ad58	0x8e	o	4	callC	
+220ade6	220ad58	0xaa	o	6	callC	
+220ae90	220ad58	0x104	o	6	callC	
+220af94	220ad58	0x104	o	5	callC	
+220b098	220b098	0x2e	o	1	callC	
+220b0c6	220b098	0x28e	o	2	callC	garbage=1/327
+220b354	220b098	0x78	o	2	callC	
+220b3cc	220b3cc	0x146	o	4	callC	
+220b512	220b512	0x1a0	o	4	callC	garbage=1/208
+220b6b2	220b512	0x1aa	o	1	callC	
+220b85c	220b512	0x78	o	2	callC	
+220b8d4	220b8d4	0x13e	o	4	callC	
+220ba12	220ba12	0x1e8	o	4	callC	garbage=2/242
+220bbfa	220bbfa	0x1ba	o	1	callC	garbage=1/221
+220bdb4	220bbfa	0x78	o	2	callC	
+220be2c	220be2c	0x142	o	4	callC	
+220bf6e	220bf6e	0x20e	o	5	callC	garbage=2/239
+220c17c	220c17c	0x606	o	7	callC	garbage=3/771
+220c782	220c17c	0x1e2	o	3	callC	ops:div1
+220c964	220c964	0x14c	o	1	callC	
+220cab0	220cab0	0xac	o	0	leafC	
+220cb5c	220cab0	0x144	o	1	callC	ops:div1
+220cca0	220cab0	0x156	o	1	callC	garbage=1/171
+220cdf6	220cab0	0x1b6	o	6	callC	garbage=1/219 ops:div1
+220cfac	220cab0	0x1dc	o	2	callC	
+220d188	220cab0	0x7c	o	0	leafC	
+220d204	220d204	0x5e	o	0	leafC	
+220d262	220d204	0xae	o	5	callC	
+220d310	220d310	0xf2	o	1	callC	
+220d402	220d402	0x18a	o	3	callC	garbage=2/197 ops:div1
+220d58c	220d402	0x180	o	3	callC	garbage=1/192 ops:div1
+220d70c	220d402	0x1a6	o	1	callC	garbage=1/203
+220d8b2	220d8b2	0xdc	o	0	leafC	garbage=1/110 ops:div1
+220d98e	220d8b2	0x5e	o	0	leafC	
+220d9ec	220d9ec	0x614	o	0	leafC	garbage=2/778
+220e000	220d9ec	0xaa	o	0	leafC	
+220e0aa	220d9ec	0x138	o	0	leafC	garbage=1/156
+220e1e2	220d9ec	0x4d0	o	13	callC	garbage=1/614
+220e6b2	220e6b2	0x112	o	19	callC	garbage=1/120
+220e7c4	220e7c4	0x1ac	o	14	callC	
+220e970	220e970	0x96	o	0	leafC	
+220ea06	220e970	0x1d8	o	12	callC	
+220ebde	220e970	0x324	o	38	callC	garbage=2/402
+220ef02	220e970	0x1d4	o	18	callC	garbage=1/230
+220f0d6	220f0d6	0x18	o	5	callC	garbage=1/12
+220f0ee	220f0d6	0x70	o	0	leafC	
+220f15e	220f0d6	0x40	o	0	leafC	
+220f19e	220f0d6	0x64	o	1	callC	
+220f202	220f0d6	0x68	o	1	callC	
+220f26a	220f0d6	0x24	o	1	callC	
+220f28e	220f0d6	0x198	o	8	callC	garbage=1/199
+220f426	220f426	0x1c	o	8	callC	garbage=1/14
+220f442	220f426	0x4	o	1	misseg	no-ret
+220f446	220f426	0x4	o	0	misseg	no-ret
+220f44a	220f426	0x154	o	4	callC	
+220f59e	220f59e	0xc	o	2	misseg	garbage=1/6 no-ret
+220f5aa	220f59e	0x4	o	1	misseg	no-ret
+220f5ae	220f59e	0x4	o	0	misseg	no-ret
+220f5b2	220f59e	0x144	o	2	callC	
+220f6f6	220f59e	0x18a	o	7	callC	garbage=1/197
+220f880	220f59e	0x154	o	6	callC	garbage=1/170
+220f9d4	220f59e	0x184	o	3	callC	
+220fb58	220f59e	0x12	o	0	leafC	
+220fb6a	220f59e	0xac	o	0	leafC	garbage=1/85
+220fc16	220fc16	0x26	o	0	leafC	garbage=1/19
+220fc3c	220fc16	0x46	o	0	leafC	
+220fc82	220fc16	0x42	o	0	leafC	
+220fcc4	220fc16	0x42	o	0	leafC	
+220fd06	220fc16	0x4c	o	0	asm	ops:mac.l
+220fd52	220fc16	0x3e	o	1	callC	
+220fd90	220fc16	0x38	o	1	callC	
+220fdc8	220fc16	0x1c	o	0	leafC	
+220fde4	220fc16	0x64	o	2	callC	
+220fe48	220fc16	0x50	o	0	leafC	
+220fe98	220fc16	0x6	o	0	leafC	
+220fe9e	220fc16	0x30	o	2	callC	garbage=1/24
+220fece	220fc16	0x1e	o	2	callC	sym:spawn_obj_0x6c
+220feec	220fc16	0x1e	o	2	callC	sym:spawn_obj_a
+220ff0a	220fc16	0x1e	o	2	callC	
+220ff28	220fc16	0x2c	o	2	callC	sym:spawn_obj_0x7c
+220ff54	220fc16	0x1e	o	2	callC	
+220ff72	220fc16	0x1e	o	2	callC	
+220ff90	220fc16	0x1e	o	2	callC	
+220ffae	220fc16	0x24	o	2	callC	
+220ffd2	220ffd2	0xd0	o	0	leafC	garbage=1/104
+22100a2	220ffd2	0x26	o	0	leafC	
+22100c8	220ffd2	0x30	o	0	leafC	
+22100f8	22100f8	0x2a2	o	3	callC	garbage=1/337 ops:mac.l
+221039a	22100f8	0xe2	o	3	callC	
+221047c	221047c	0xe0	o	7	callC	
+221055c	221047c	0x6e	o	5	callC	
+22105ca	221047c	0x58	o	5	callC	
+2210622	221047c	0x6e	o	5	callC	
+2210690	221047c	0x14c	o	11	callC	
+22107dc	22107dc	0x2e	o	1	callC	
+221080a	22107dc	0x4e	o	3	callC	
+2210858	2210858	0x1e	o	0	leafC	
+2210876	2210858	0x15e	o	6	callC	
+22109d4	2210858	0x146	o	6	callC	
+2210b1a	2210858	0x5ee	o	56	callC	garbage=5/759 ops:mac.l
+2211108	2210858	0x3a8	o	19	callC	garbage=2/468 ops:mac.l sym:actor_update_thrown
+22114b0	2210858	0x3ac	o	15	callC	garbage=2/470 ops:mac.w
+221185c	2210858	0x148	o	7	callC	garbage=1/164
+22119a4	2210858	0x126	o	8	callC	garbage=1/146
+2211aca	2211aca	0x680	o	41	callC	garbage=2/832 ops:div1
+221214a	2211aca	0x206	o	12	callC	garbage=1/259
+2212350	2211aca	0x41e	o	22	callC	garbage=2/527 ops:mac.l
+221276e	2211aca	0x3b2	o	39	callC	garbage=4/473 ops:mac.l
+2212b20	2211aca	0x160	o	9	callC	garbage=1/176
+2212c80	2211aca	0x180	o	10	callC	garbage=1/192
+2212e00	2211aca	0x27e	o	17	callC	garbage=2/318
+221307e	221307e	0xa8	o	1	callC	garbage=2/83
+2213126	2213126	0x6a	o	0	misseg	garbage=23/53
+2213190	2213126	0x18	o	0	leafC	sym:sin_lookup
+22131a8	22131a8	0x20	o	0	leafC	sym:cos_lookup
+22131c8	22131c8	0xc	o	0	asm	ops:clrmac,dmuls.l ret:xtrct sym:fixmul_16_16
+22131d4	22131c8	0x28	o	0	asm	ops:clrmac,dmuls.l sym:dist2_xz_fixed
+22131fc	22131c8	0x38	o	0	asm	ops:clrmac,dmuls.l
+2213234	22131c8	0x14	o	0	leafC	sym:sh2_hw_divide
+2213248	22131c8	0x24	o	0	leafC	
+221326c	221326c	0x10	o	0	leafC	
+221327c	221326c	0x14	o	0	leafC	
+2213290	2213290	0x1c	o	0	leafC	sym:clear_vec4_array
+22132ac	2213290	0x18	o	0	leafC	sym:fill_vec4_array
+22132c4	2213290	0x10	o	0	asm	ops:clrmac,mac.l ret:xtrct sym:vec3_dot_fixed
+22132d4	2213290	0x38	o	0	leafC	
+221330c	2213290	0x48	o	0	leafC	
+2213354	2213290	0x3c	o	0	leafC	
+2213390	2213290	0x74	o	0	leafC	garbage=1/57 ops:clrmac
+2213404	2213290	0x30	o	0	leafC	
+2213434	2213434	0x40	o	0	leafC	
+2213474	2213474	0x64	o	0	leafC	sym:matrix_copy_reverse
+22134d8	22134d8	0x60	o	0	leafC	
+2213538	2213538	0x38	o	0	asm	ops:clrmac,mac.l
+2213570	2213570	0x124	o	0	leafC	garbage=1/129 ops:clrmac,dmuls.l,mac.l
+2213694	2213694	0xe8	o	0	leafC	ops:clrmac,mac.l
+221377c	221377c	0x13c	o	0	leafC	ops:clrmac,dmuls.l,mac.l
+22138b8	22138b8	0x100	o	0	leafC	ops:clrmac,mac.l
+22139b8	22139b8	0xb8	o	0	leafC	ops:clrmac,dmuls.l
+2213a70	2213a70	0xec	o	0	leafC	ops:clrmac,dmuls.l,mac.l
+2213b5c	2213b5c	0x44	o	0	asm	ops:clrmac,mac.l
+2213ba0	2213ba0	0x104	o	6	callC	garbage=1/130 ops:clrmac,mac.l
+2213ca4	2213ba0	0x40	o	0	asm	ops:clrmac,mac.l sym:vec3_array_matmul
+2213ce4	2213ce4	0x34	o	0	asm	ops:clrmac,mac.l
+2213d18	2213d18	0x78	o	0	leafC	
+2213d90	2213d18	0xe	o	0	leafC	
+2213d9e	2213d9e	0x32	o	0	misseg	garbage=5/25
+2213dd0	2213d9e	0x1c	o	0	leafC	
+2213dec	2213d9e	0x14	o	0	leafC	
+2213e00	2213d9e	0xc	o	0	leafC	
+2213e0c	2213d9e	0x184	o	2	callC	ops:clrmac,mac.l
+2213f90	2213d9e	0x24	o	0	leafC	
+2213fb4	2213fb4	0x58	o	0	leafC	
+221400c	221400c	0x188	o	0	leafC	
+2214194	2214194	0xf0	o	0	leafC	
+2214284	2214194	0xa4	o	0	leafC	
+2214328	2214328	0x90	o	0	leafC	
+22143b8	2214328	0x4	o	0	leafC	
+22143bc	2214328	0xfc	o	0	leafC	
+22144b8	2214328	0x58	o	0	leafC	
+2214510	2214328	0xaa	o	1	callC	
+22145ba	22145ba	0xbe	o	1	callC	garbage=1/95
+2214678	22145ba	0x112	o	1	callC	ops:div1
+221478a	22145ba	0x42	o	0	leafC	sym:scu_dma0_transfer
+22147cc	22145ba	0x4c	o	0	leafC	
+2214818	2214818	0x16	o	0	leafC	
+221482e	2214818	0x7e	o	0	leafC	sym:scu_dma_push
+22148ac	22148ac	0x1e	o	0	leafC	sym:zero_fill_aligned
+22148ca	22148ac	0x4e	o	0	leafC	
+2214918	2214918	0x2c	o	0	leafC	sym:smpc_cmd_sshoff
+2214944	2214918	0x2c	o	0	leafC	sym:smpc_cmd_sshon
+2214970	2214918	0x10	o	0	leafC	sym:smpc_pdr2_set
+2214980	2214918	0x20	o	0	leafC	sym:smpc_pdr2_clr
+22149a0	22149a0	0x1d0	o	16	callC	
+2214b70	2214b70	0x48	o	0	leafC	
+2214bb8	2214b70	0x34	o	2	callC	sym:alloc_array_zeroed
+2214bec	2214b70	0x7a	o	4	callC	
+2214c66	2214b70	0x76	o	0	leafC	
+2214cdc	2214cdc	0xd2	o	2	callC	sym:vdp1_frame_begin
+2214dae	2214cdc	0x30	o	1	callC	sym:vdp1_set_erase
+2214dde	2214dde	0x44	o	0	leafC	garbage=1/34
+2214e22	2214dde	0x4	o	0	misseg	no-ret
+2214e26	2214dde	0x8	o	0	leafC	
+2214e2e	2214dde	0x162	o	0	leafC	ops:div1,mac.l
+2214f90	2214f90	0x116	o	3	callC	sym:vdp1_build_cmdlist
+22150a6	22150a6	0xc	o	0	misseg	garbage=1/6 no-ret
+22150b2	22150a6	0x126	o	1	callC	ops:mac.l
+22151d8	22150a6	0x1ae	o	9	callC	garbage=1/215
+2215386	22150a6	0x70	o	0	leafC	garbage=1/56
+22153f6	22150a6	0x106	o	4	callC	
+22154fc	22154fc	0x134	o	13	callC	
+2215630	22154fc	0x3e	0	0	leafC	
+221566e	22154fc	0x6c	o	0	leafC	
+22156da	22154fc	0xe0	o	1	callC	ops:mac.l
+22157ba	22154fc	0x70	o	0	leafC	
+221582a	22154fc	0xb2	o	0	leafC	garbage=1/89
+22158dc	22154fc	0x72	o	0	leafC	
+221594e	221594e	0x1bc	o	8	callC	garbage=1/219
+2215b0a	2215b0a	0x1aa	o	6	callC	garbage=1/213
+2215cb4	2215b0a	0xf4	o	3	callC	
+2215da8	2215da8	0x78	o	4	callC	sym:sound_init
+2215e20	2215da8	0xe8	o	3	callC	ops:div0s,mac.l sym:sound_send_command
+2215f08	2215da8	0x1c	0	1	callC	
+2215f24	2215da8	0x48	o	0	leafC	
+2215f6c	2215da8	0x40	o	0	leafC	sym:sound_queue_push
+2215fac	2215fac	0x6c	o	2	callC	
+2216018	2215fac	0x26	0	1	callC	
+221603e	2215fac	0x28	0	1	callC	
+2216066	2215fac	0x3a	o	1	callC	
+22160a0	22160a0	0x70	o	2	callC	
+2216110	22160a0	0x2e	0	1	callC	
+221613e	221613e	0x8a	o	5	callC	garbage=1/69 ops:mac.l
+22161c8	221613e	0x134	o	2	callC	
+22162fc	221613e	0x14	o	0	leafC	
+2216310	221613e	0x1e	o	0	leafC	
+221632e	221613e	0x18c	o	0	misseg	garbage=8/198 ops:mac.l
+22164ba	221613e	0x58	o	1	callC	
+2216512	2216512	0xfa	o	5	callC	garbage=1/125
+221660c	2216512	0xd6	o	8	callC	
+22166e2	2216512	0x32	o	0	leafC	garbage=1/24
+2216714	2216714	0x4a	o	0	leafC	
+221675e	2216714	0xfa	o	0	leafC	
+2216858	2216714	0xf6	o	0	leafC	
+221694e	221694e	0xd8	o	0	leafC	
+2216a26	221694e	0xee	o	0	leafC	
+2216b14	2216b14	0x122	o	0	misseg	garbage=7/137 ops:clrmac
+2216c36	2216c36	0x420	o	11	callC	garbage=4/527 ops:div1
+2217056	2217056	0x5e	o	0	leafC	garbage=1/47
+22170b4	2217056	0x36	o	1	callC	
+22170ea	2217056	0x2ce	o	15	callC	garbage=1/359
+22173b8	2217056	0xb4	o	3	callC	
+221746c	2217056	0x3cc	o	5	callC	garbage=3/486
+2217838	2217056	0x50	o	3	callC	
+2217888	2217888	0x128	o	1	callC	
+22179b0	22179b0	0x11e	o	1	callC	
+2217ace	2217ace	0x142	o	2	callC	garbage=1/150
+2217c10	2217c10	0x92	o	0	leafC	
+2217ca2	2217c10	0x80	o	0	leafC	
+2217d22	2217c10	0x40	o	0	leafC	
+2217d62	2217c10	0x278	o	20	callC	garbage=1/314 ops:mac.w
+2217fda	2217fda	0x1c	o	0	leafC	garbage=1/14
+2217ff6	2217fda	0x4	o	0	misseg	no-ret
+2217ffa	2217fda	0x4	o	0	misseg	no-ret
+2217ffe	2217fda	0x2c8	o	18	callC	garbage=2/356
+22182c6	2217fda	0x426	o	12	callC	garbage=1/531 ops:mac.l
+22186ec	2217fda	0x170	o	6	callC	
+221885c	2217fda	0xfe	o	8	callC	
+221895a	221895a	0x268	o	11	callC	garbage=2/308
+2218bc2	221895a	0xd54	o	60	misseg	garbage=8/1706 ops:mac.l
+2219916	221895a	0x6e	o	4	callC	
+2219984	221895a	0x56	o	0	leafC	
+22199da	221895a	0xf8	o	7	callC	
+2219ad2	221895a	0xd2	o	0	leafC	
+2219ba4	221895a	0x7e	o	0	leafC	
+2219c22	221895a	0x1c	o	0	leafC	
+2219c3e	2219c3e	0x2e8	o	15	callC	garbage=1/372 ops:mac.l
+2219f26	2219c3e	0x27a	o	15	callC	garbage=1/317 ops:mac.l
+221a1a0	2219c3e	0x2b2	o	8	callC	garbage=1/345
+221a452	2219c3e	0x1a4	o	4	callC	
+221a5f6	2219c3e	0xb2	o	2	callC	garbage=1/89 ops:mac.l
+221a6a8	2219c3e	0x164	o	3	callC	garbage=1/165
+221a80c	221a80c	0x54c	o	17	callC	garbage=3/678
+221ad58	221a80c	0x7c	o	2	callC	
+221add4	221a80c	0x15c	o	4	callC	ops:mac.l
+221af30	221a80c	0x150	o	0	leafC	
+221b080	221b080	0xca	o	2	callC	
+221b14a	221b080	0x306	o	27	callC	garbage=1/387 ops:mac.l
+221b450	221b080	0x132	o	4	callC	garbage=1/149
+221b582	221b582	0x9f0	o	57	misseg	garbage=9/1272 ops:mac.l
+221bf72	221b582	0x338	o	20	callC	garbage=1/412
+221c2aa	221b582	0x202	o	20	callC	ops:div1,mac.l
+221c4ac	221c4ac	0x1e4	o	8	callC	
+221c690	221c4ac	0x1e4	o	12	callC	
+221c874	221c874	0x80	o	2	callC	
+221c8f4	221c8f4	0x12a	o	9	callC	
+221ca1e	221c8f4	0x8c	o	4	callC	
+221caaa	221c8f4	0x24e	o	16	misseg	garbage=8/295
+221ccf8	221c8f4	0x60	o	2	callC	
+221cd58	221c8f4	0xc4	o	4	callC	
+221ce1c	221ce1c	0x52	o	2	callC	
+221ce6e	221ce1c	0x7a	o	4	callC	
+221cee8	221ce1c	0x6e	o	4	callC	
+221cf56	221ce1c	0x220	o	13	callC	garbage=4/272 ops:mac.l
+221d176	221ce1c	0x148	o	5	callC	
+221d2be	221d2be	0x23e	o	12	callC	garbage=2/287
+221d4fc	221d2be	0x5e	o	3	callC	
+221d55a	221d55a	0x14	o	0	misseg	garbage=1/10 no-ret
+221d56e	221d55a	0x4	o	0	misseg	no-ret
+221d572	221d55a	0x4	o	0	misseg	no-ret
+221d576	221d55a	0x140	o	6	callC	garbage=1/160 ops:mac.l
+221d6b6	221d55a	0x3aa	o	10	callC	garbage=1/469 ops:mac.l
+221da60	221d55a	0x10e	o	4	callC	garbage=1/135
+221db6e	221d55a	0x96	o	0	leafC	
+221dc04	221dc04	0x1b6	o	11	callC	garbage=1/219
+221ddba	221dc04	0x102	o	4	callC	
+221debc	221dc04	0xb6	o	6	callC	ops:mac.l
+221df72	221dc04	0x2e4	o	13	misseg	garbage=16/370 ops:mac.l
+221e256	221dc04	0x580	o	18	callC	garbage=3/704 ops:mac.l
+221e7d6	221dc04	0x6e	o	2	callC	
+221e844	221dc04	0x80	o	2	callC	
+221e8c4	221e8c4	0x102	o	7	callC	
+221e9c6	221e8c4	0xe6	o	1	callC	garbage=1/109
+221eaac	221eaac	0xb6	o	5	callC	
+221eb62	221eaac	0x64	o	3	callC	
+221ebc6	221eaac	0x222	o	19	callC	garbage=7/269 ops:mac.l
+221ede8	221ede8	0x21c	o	14	misseg	garbage=8/270
+221f004	221ede8	0x7c	o	3	callC	
+221f080	221f080	0x156	o	8	callC	
+221f1d6	221f080	0x58	o	2	callC	
+221f22e	221f080	0x8e	o	5	callC	garbage=1/71
+221f2bc	221f080	0x276	o	15	callC	
+221f532	221f080	0x420	o	20	callC	garbage=2/528 ops:mac.l,mac.w
+221f952	221f080	0x72	o	0	leafC	ops:mac.l
+221f9c4	221f9c4	0x3b6	o	20	callC	
+221fd7a	221f9c4	0x86	o	5	callC	
+221fe00	221f9c4	0xd4	o	5	callC	garbage=1/106 ops:mac.l
+221fed4	221f9c4	0xa6	o	3	callC	
+221ff7a	221ff7a	0x216	o	8	callC	garbage=2/267
+2220190	221ff7a	0x48	o	1	callC	
+22201d8	221ff7a	0xf2	o	1	callC	
+22202ca	221ff7a	0x104	o	1	callC	garbage=1/130
+22203ce	221ff7a	0x22e	o	16	callC	ops:mac.l
+22205fc	221ff7a	0x172	o	1	callC	garbage=1/180 ops:mac.l
+222076e	222076e	0x10	o	0	misseg	garbage=1/8 no-ret
+222077e	222076e	0xaa	o	0	leafC	
+2220828	2220828	0x2b6	o	1	misseg	garbage=14/347
+2220ade	2220828	0x348	o	1	misseg	garbage=18/403
+2220e26	2220e26	0x278	o	1	misseg	garbage=35/316
+222109e	2220e26	0x2b6	o	1	misseg	garbage=33/347
+2221354	2220e26	0x30	o	2	callC	
+2221384	2220e26	0x24	o	1	callC	
+22213a8	2220e26	0x84	o	0	leafC	
+222142c	2220e26	0x34	o	0	leafC	
+2221460	2220e26	0x72	o	2	callC	
+22214d2	2220e26	0x7c	o	2	callC	
+222154e	222154e	0x2b2	o	17	callC	garbage=1/318
+2221800	2221800	0x42	o	0	leafC	
+2221842	2221842	0x392	o	33	callC	garbage=2/422
+2221bd4	2221bd4	0x394	o	33	callC	garbage=1/458
+2221f68	2221bd4	0x92	0	3	callC	garbage=1/73
+2221ffa	2221bd4	0x58	o	0	leafC	
+2222052	2221bd4	0x5e	o	3	callC	
+22220b0	2221bd4	0x302	o	1	misseg	garbage=18/385
+22223b2	2221bd4	0x16	o	0	leafC	
+22223c8	2221bd4	0xcc	o	0	leafC	
+2222494	2221bd4	0xe0	o	0	leafC	garbage=1/112
+2222574	2221bd4	0x82	o	0	leafC	garbage=1/65
+22225f6	2221bd4	0x1b4	o	8	callC	
+22227aa	2221bd4	0x1a	o	0	leafC	
+22227c4	2221bd4	0x442	o	0	leafC	
+2222c06	2221bd4	0x136	o	0	leafC	garbage=1/153 ops:clrmac,dmuls.l
+2222d3c	2222d3c	0xb0	o	6	callC	
+2222dec	2222dec	0xe0	o	5	callC	ops:div0s
+2222ecc	2222dec	0x68	o	3	callC	
+2222f34	2222dec	0x28	o	1	callC	
+2222f5c	2222f5c	0x124	0	1	callC	ops:div0s
+2223080	2222f5c	0xc2	o	0	leafC	garbage=1/97
+2223142	2222f5c	0x31e	o	8	callC	
+2223460	2222f5c	0x320	o	8	callC	garbage=1/400
+2223780	2222f5c	0xc	o	0	leafC	
+222378c	2222f5c	0xd6	o	0	leafC	
+2223862	2222f5c	0x106	o	2	callC	
+2223968	2222f5c	0xea	o	0	leafC	
+2223a52	2222f5c	0x6c	o	0	leafC	
+2223abe	2222f5c	0x162	o	1	callC	garbage=1/177
+2223c20	2222f5c	0x36	o	4	callC	
+2223c56	2223c56	0x78	o	0	leafC	garbage=1/60
+2223cce	2223c56	0x22	o	0	leafC	garbage=1/17
+2223cf0	2223c56	0xa8	o	5	callC	sym:vdp1_set_mode
+2223d98	2223c56	0x32	o	0	leafC	sym:vdp1_fb_flip
+2223dca	2223c56	0xa6	o	0	leafC	sym:display_page_cycle
+2223e70	2223e70	0x70	o	0	leafC	
+2223ee0	2223ee0	0x2000	o	9	misseg	garbage=22/4096 ops:mac.l
+2225ee0	2223ee0	0xcc	o	0	leafC	garbage=1/102
+2225fac	2223ee0	0x11c	o	0	leafC	garbage=1/142
+22260c8	2223ee0	0x6c	o	0	leafC	
+2226134	2226134	0x10	o	0	leafC	
+2226144	2226134	0x4	o	0	leafC	
+2226148	2226134	0xd70	o	57	misseg	garbage=11/1720 ops:mac.l
+2226eb8	2226134	0x72c	o	30	callC	garbage=6/918 ops:clrmac,div1
+22275e4	2226134	0x1e	o	0	leafC	
+2227602	2226134	0x102	o	0	leafC	garbage=1/129
+2227704	2226134	0x8c	o	4	callC	
+2227790	2226134	0x176	o	5	callC	garbage=1/187
+2227906	2226134	0x16c	o	2	callC	garbage=1/180
+2227a72	2227a72	0xee	o	0	leafC	garbage=1/119
+2227b60	2227a72	0x64	o	1	callC	
+2227bc4	2227a72	0x5e	o	1	callC	
+2227c22	2227a72	0x3a	o	0	leafC	
+2227c5c	2227a72	0x2a	o	0	leafC	
+2227c86	2227a72	0x480	o	14	callC	garbage=3/576
+2228106	2227a72	0x28	o	0	leafC	
+222812e	222812e	0x3a	o	0	leafC	garbage=1/29
+2228168	222812e	0x3a0	o	15	callC	garbage=1/464 ops:div1
+2228508	222812e	0x2e	o	3	callC	
+2228536	222812e	0x108	o	6	callC	
+222863e	222812e	0x8e	o	4	callC	
+22286cc	222812e	0x14e	0	6	callC	
+222881a	222812e	0xce	o	4	callC	garbage=1/103 ops:div1
+22288e8	222812e	0xd0	o	3	callC	
+22289b8	222812e	0x56	o	1	callC	
+2228a0e	222812e	0x12a	o	2	callC	garbage=1/149 ops:mac.l
+2228b38	222812e	0x7e	o	4	callC	
+2228bb6	222812e	0x120	o	6	callC	garbage=1/144 ops:div1
+2228cd6	222812e	0x6e	o	1	callC	
+2228d44	222812e	0x32	o	1	callC	
+2228d76	2228d76	0xea	o	3	callC	garbage=1/117
+2228e60	2228d76	0x9c	o	1	callC	
+2228efc	2228efc	0xe6	o	7	callC	
+2228fe2	2228efc	0x92	o	3	callC	
+2229074	2228efc	0x2d6	o	12	callC	garbage=2/363
+222934a	2228efc	0x13e	o	3	callC	garbage=1/159
+2229488	2228efc	0x1b8	o	5	callC	garbage=1/220
+2229640	2228efc	0x4	o	0	leafC	
+2229644	2228efc	0x44	o	3	callC	
+2229688	2228efc	0x52	o	1	callC	
+22296da	22296da	0x7e	o	3	callC	garbage=1/63
+2229758	22296da	0x44	o	3	callC	
+222979c	22296da	0x3c	o	2	callC	
+22297d8	22296da	0x3e	o	2	callC	
+2229816	22296da	0x3e	o	2	callC	
+2229854	22296da	0x3a	o	1	callC	
+222988e	22296da	0x2b0	o	7	callC	garbage=2/337
+2229b3e	2229b3e	0x72	o	3	callC	garbage=1/57
+2229bb0	2229b3e	0x1ee	0	8	callC	
+2229d9e	2229d9e	0x34e	o	11	callC	garbage=2/423 ops:div1
+222a0ec	2229d9e	0x34	o	0	leafC	
+222a120	2229d9e	0x1c8	o	5	callC	garbage=1/218
+222a2e8	222a2e8	0xfa	o	7	callC	
+222a3e2	222a3e2	0x1e8	o	4	callC	garbage=1/244
+222a5ca	222a3e2	0x6	o	0	leafC	
+222a5d0	222a3e2	0x138	o	6	callC	sym:process_spawn_list
+222a708	222a3e2	0x16a	o	0	leafC	ops:div1
+222a872	222a872	0x66	o	1	callC	garbage=1/51
+222a8d8	222a872	0x42	o	0	leafC	
+222a91a	222a872	0x56	o	0	leafC	
+222a970	222a970	0x8e	o	5	callC	
+222a9fe	222a970	0xde	o	4	callC	
+222aadc	222aadc	0x3c	o	1	callC	
+222ab18	222aadc	0x148	o	3	callC	garbage=1/164 ops:mac.l
+222ac60	222aadc	0x98	o	1	callC	
+222acf8	222acf8	0x82	o	6	callC	
+222ad7a	222acf8	0x30	o	0	leafC	
+222adaa	222acf8	0x72	o	2	callC	
+222ae1c	222ae1c	0x19e	o	5	callC	garbage=1/207
+222afba	222ae1c	0x144	o	7	callC	ops:mac.l
+222b0fe	222ae1c	0x9fa	o	38	callC	garbage=6/1277 ops:mac.l
+222baf8	222ae1c	0x188	o	8	callC	garbage=1/196
+222bc80	222ae1c	0xd4	o	3	callC	
+222bd54	222bd54	0x3c	o	1	callC	
+222bd90	222bd54	0x62	o	0	leafC	
+222bdf2	222bd54	0x1d0	o	0	leafC	
+222bfc2	222bd54	0x25e	o	2	callC	garbage=1/303
+222c220	222bd54	0x102	o	0	leafC	ops:dmuls.l
+222c322	222bd54	0x7a	o	1	callC	
+222c39c	222bd54	0x6b8	o	10	callC	garbage=1/851 ops:div1,mac.l
+222ca54	222ca54	0x44	o	0	leafC	
+222ca98	222ca54	0x650	o	134	callC	garbage=3/780
+222d0e8	222d0e8	0x326	o	63	callC	
+222d40e	222d0e8	0x610	o	147	callC	garbage=3/776
+222da1e	222d0e8	0x126	o	3	callC	garbage=1/147
+222db44	222d0e8	0xb2	o	3	callC	
+222dbf6	222dbf6	0x7a0	o	35	callC	garbage=3/976
+222e396	222dbf6	0x678	o	42	callC	garbage=1/828 ops:div1,mac.l
+222ea0e	222dbf6	0x86	o	0	leafC	
+222ea94	222ea94	0xde	o	4	callC	
+222eb72	222ea94	0x12	o	0	leafC	
+222eb84	222ea94	0x24	o	0	leafC	
+222eba8	222ea94	0x11c	o	5	callC	
+222ecc4	222ea94	0x20	o	0	leafC	
+222ece4	222ea94	0x1be	o	3	callC	garbage=1/223
+222eea2	222ea94	0x2c	o	0	leafC	
+222eece	222eece	0x6a	o	0	leafC	garbage=1/53
+222ef38	222eece	0x298	o	13	callC	ops:div1,mac.l
+222f1d0	222eece	0x1de	o	11	callC	garbage=1/237
+222f3ae	222f3ae	0x3c	o	0	leafC	garbage=1/30
+222f3ea	222f3ae	0x24	o	0	leafC	
+222f40e	222f3ae	0x24	o	0	leafC	
+222f432	222f3ae	0x24	o	0	leafC	
+222f456	222f3ae	0x1a	o	0	leafC	
+222f470	222f3ae	0x78	o	0	leafC	
+222f4e8	222f4e8	0x140	o	6	callC	
+222f628	222f628	0x80	o	0	leafC	ops:div1
+222f6a8	222f628	0x1a6	o	6	callC	garbage=1/211 ops:div1
+222f84e	222f628	0x68	o	0	leafC	
+222f8b6	222f628	0x152	o	6	callC	garbage=1/158
+222fa08	222fa08	0x142	o	7	callC	ops:div1
+222fb4a	222fb4a	0xb8	o	3	callC	garbage=1/92 ops:mac.l
+222fc02	222fb4a	0x152	o	8	callC	
+222fd54	222fb4a	0xc0	o	2	callC	ops:mac.l
+222fe14	222fb4a	0x114	o	7	callC	
+222ff28	222ff28	0xde	o	2	callC	
+2230006	222ff28	0xe2	o	2	callC	garbage=1/113
+22300e8	222ff28	0xc4	o	2	callC	
+22301ac	22301ac	0x18	o	0	leafC	
+22301c4	22301ac	0xa6	o	3	callC	
+223026a	22301ac	0xd4	o	4	callC	garbage=1/106 ops:mac.l
+223033e	22301ac	0x68	o	1	callC	
+22303a6	22301ac	0x70	o	1	callC	
+2230416	2230416	0x9e	o	1	callC	garbage=1/79
+22304b4	2230416	0x12e	o	2	callC	ops:mac.l
+22305e2	2230416	0xb8	o	5	callC	
+223069a	223069a	0x1b6	o	10	callC	garbage=2/214
+2230850	2230850	0x290	o	16	callC	ops:mac.l
+2230ae0	2230850	0x1ac	o	10	callC	
+2230c8c	2230c8c	0x2e8	o	9	callC	ops:div1,mac.l
+2230f74	2230c8c	0xa8	o	1	callC	ops:mac.l
+223101c	2230c8c	0x140	o	3	callC	garbage=1/160 ops:mac.l
+223115c	2230c8c	0x1da	o	9	callC	
+2231336	2230c8c	0x4c	o	1	callC	
+2231382	2230c8c	0xc8	o	4	callC	
+223144a	2230c8c	0xac	o	2	callC	
+22314f6	22314f6	0x108	o	5	callC	garbage=1/132 ops:mac.l
+22315fe	22314f6	0x1c2	o	7	callC	garbage=1/225
+22317c0	22314f6	0xa4	o	1	callC	
+2231864	22314f6	0xe6	o	3	callC	garbage=1/115
+223194a	22314f6	0x68	o	0	leafC	
+22319b2	22314f6	0x54	o	0	leafC	
+2231a06	2231a06	0x7a	o	0	leafC	garbage=1/61
+2231a80	2231a06	0x8e	o	2	callC	
+2231b0e	2231a06	0x6	o	0	leafC	
+2231b14	2231a06	0x11c	o	9	callC	
+2231c30	2231a06	0x142	o	6	callC	ops:mac.l
+2231d72	2231a06	0x46	o	0	leafC	
+2231db8	2231a06	0x21c	o	4	callC	garbage=2/270 ops:mac.l
+2231fd4	2231a06	0xbc	o	5	callC	
+2232090	2232090	0xe8	o	3	callC	ops:mac.l
+2232178	2232178	0x11c	o	3	callC	
+2232294	2232294	0xd8	o	2	callC	
+223236c	2232294	0x16e	o	4	callC	garbage=1/183
+22324da	2232294	0x4c	o	0	leafC	
+2232526	2232294	0xea	o	7	callC	
+2232610	2232610	0x5b4	o	38	callC	garbage=3/685 ops:div1,mac.w
+2232bc4	2232bc4	0x55e	o	32	callC	garbage=5/687 ops:mac.l,mac.w
+2233122	2232bc4	0x56	o	2	callC	
+2233178	2232bc4	0xd8	o	0	leafC	garbage=1/108 ops:mac.l
+2233250	2232bc4	0x138	o	7	callC	garbage=1/156
+2233388	2232bc4	0xe4	o	6	callC	
+223346c	2232bc4	0x112	o	5	callC	
+223357e	223357e	0x131c	o	114	misseg	garbage=15/2446 ops:mac.w
+223489a	223357e	0xea	o	10	callC	garbage=1/117
+2234984	223357e	0x12a	o	8	callC	
+2234aae	223357e	0xaa	o	1	callC	
+2234b58	2234b58	0x640	o	126	callC	garbage=1/782
+2235198	2235198	0x5e4	o	122	callC	
+223577c	2235198	0x61e	o	126	callC	garbage=1/783
+2235d9a	2235198	0x172	o	4	callC	garbage=1/161
+2235f0c	2235f0c	0x33a	o	5	callC	garbage=1/413
+2236246	2235f0c	0x19e	o	6	callC	
+22363e4	22363e4	0x356	o	19	callC	garbage=2/427
+223673a	22363e4	0x3b6	o	20	callC	garbage=2/461 ops:mac.w
+2236af0	2236af0	0x376	o	15	callC	garbage=3/443
+2236e66	2236af0	0x344	o	16	callC	garbage=1/417 ops:mac.w
+22371aa	22371aa	0x67e	o	11	callC	garbage=3/831
+2237828	22371aa	0x3bc	o	8	callC	garbage=1/466
+2237be4	2237be4	0x22a	o	7	callC	
+2237e0e	2237be4	0x5e	o	1	callC	
+2237e6c	2237be4	0x3a	o	0	leafC	
+2237ea6	2237be4	0x1b4	o	12	callC	
+223805a	2237be4	0xa0	o	5	callC	garbage=1/80
+22380fa	2237be4	0x3a	o	1	callC	
+2238134	2237be4	0x42	o	2	callC	
+2238176	2237be4	0x96	0	2	callC	
+223820c	223820c	0x80	o	13	callC	
+223828c	223820c	0x5c	0	1	callC	
+22382e8	22382e8	0xaf6	0	17	callC	garbage=5/1403 ops:div1,mac.l
+2238dde	22382e8	0x16	o	0	leafC	
+2238df4	22382e8	0xa0	o	0	leafC	garbage=1/80
+2238e94	22382e8	0xb2	o	2	callC	
+2238f46	22382e8	0x96	o	0	leafC	
+2238fdc	22382e8	0xa6	o	0	leafC	
+2239082	22382e8	0x112	o	7	callC	
+2239194	22382e8	0x1f8	o	11	callC	
+223938c	223938c	0xd6	o	2	callC	
+2239462	223938c	0x1ec	o	2	callC	garbage=1/246
+223964e	223938c	0x2c	o	0	leafC	
+223967a	223938c	0x6e	o	7	callC	
+22396e8	223938c	0xda	o	1	callC	
+22397c2	223938c	0xa6	o	0	leafC	
+2239868	223938c	0x154	o	6	callC	
+22399bc	223938c	0x31a	o	26	callC	
+2239cd6	2239cd6	0xc	o	0	misseg	garbage=1/6 no-ret
+2239ce2	2239cd6	0x4	o	0	misseg	no-ret
+2239ce6	2239cd6	0x292	o	10	callC	garbage=1/329 ops:mac.l
+2239f78	2239cd6	0x4e	o	0	leafC	
+2239fc6	2239cd6	0x3ce	o	3	callC	garbage=2/487
+223a394	2239cd6	0xe	o	0	leafC	
+223a3a2	2239cd6	0x33a	o	3	callC	
+223a6dc	2239cd6	0x36	o	0	leafC	
+223a712	223a712	0xf4	o	2	callC	garbage=1/122
+223a806	223a712	0x50	o	1	callC	
+223a856	223a856	0xce	o	9	callC	garbage=1/103 ops:div1,mac.l
+223a924	223a856	0x94	o	0	leafC	
+223a9b8	223a9b8	0x8d2	o	22	callC	garbage=2/1129 ops:div1
+223b28a	223a9b8	0x34e	o	11	callC	garbage=3/423
+223b5d8	223a9b8	0x3e0	o	14	callC	garbage=3/478
+223b9b8	223b9b8	0x31c	o	11	callC	garbage=2/380
+223bcd4	223bcd4	0x2b2	o	12	callC	garbage=1/345
+223bf86	223bcd4	0x6b2	o	26	callC	garbage=4/852 ops:mac.l
+223c638	223c638	0x84	o	1	callC	
+223c6bc	223c638	0x8e	o	3	callC	
+223c74a	223c638	0x70	o	1	callC	
+223c7ba	223c638	0x3c	o	0	leafC	
+223c7f6	223c638	0x166	o	8	callC	garbage=1/163
+223c95c	223c95c	0x254	o	0	leafC	
+223cbb0	223c95c	0x15c	o	1	callC	
+223cd0c	223c95c	0x8c	o	0	leafC	
+223cd98	223cd98	0x1d8	o	0	leafC	garbage=1/236
+223cf70	223cd98	0x6c	o	1	callC	
+223cfdc	223cd98	0x8	o	0	leafC	
+223cfe4	223cd98	0xe2	o	4	callC	
+223d0c6	223cd98	0x38	o	0	leafC	
+223d0fe	223cd98	0xb8	o	2	callC	garbage=1/92
+223d1b6	223cd98	0xea	o	4	callC	
+223d2a0	223d2a0	0x10e	o	6	callC	
+223d3ae	223d3ae	0x1aa	o	9	callC	garbage=2/213
+223d558	223d3ae	0x1ce	o	8	callC	garbage=1/224
+223d726	223d726	0x264	o	13	callC	garbage=1/301 ops:mac.l
+223d98a	223d98a	0x1a0	o	9	callC	garbage=1/208 ops:div1
+223db2a	223d98a	0x19a	o	12	callC	garbage=1/204
+223dcc4	223dcc4	0xd2	0	0	leafC	
+223dd96	223dcc4	0x78	o	2	callC	
+223de0e	223de0e	0x122	o	3	callC	garbage=1/128
+223df30	223df30	0x1d4	o	8	callC	
+223e104	223e104	0x78	o	1	callC	
+223e17c	223e104	0x16e	o	7	callC	
+223e2ea	223e104	0xd0	o	7	callC	
+223e3ba	223e104	0xe6	o	1	callC	garbage=1/115
+223e4a0	223e104	0x80	o	1	callC	
+223e520	223e520	0x9c	o	0	leafC	
+223e5bc	223e5bc	0x10	o	0	leafC	
+223e5cc	223e5cc	0x14	o	0	leafC	sym:scu_timer0_set
+223e5e0	223e5e0	0xb0	o	9	callC	
+223e690	223e5e0	0x78a	o	38	callC	garbage=3/965 ops:div0u,div1,mac.l
+223ee1a	223e5e0	0x9a	o	2	callC	
+223eeb4	223eeb4	0xa6	o	0	leafC	ops:mac.l
+223ef5a	223eeb4	0x46	o	0	leafC	
+223efa0	223eeb4	0x4c	o	0	leafC	
+223efec	223eeb4	0x46	o	0	leafC	
+223f032	223f032	0xdc	o	3	callC	garbage=1/110
+223f10e	223f032	0xaf8	o	43	callC	garbage=6/1404 ops:mac.l
+223fc06	223f032	0xb0	o	9	callC	
+223fcb6	223f032	0x20e	o	8	callC	garbage=2/263
+223fec4	223f032	0x108	o	1	callC	
+223ffcc	223f032	0x72	o	5	callC	
+224003e	224003e	0x198	o	12	callC	garbage=2/204 ops:mac.l
+22401d6	224003e	0xea	o	7	callC	
+22402c0	22402c0	0x1296	o	78	callC	garbage=5/2379 ops:mac.l,mac.w
+2241556	22402c0	0x36	o	0	leafC	
+224158c	22402c0	0x62	o	0	leafC	ops:div1,mac.l
+22415ee	22402c0	0xbe	o	7	callC	
+22416ac	22416ac	0xa2	o	0	leafC	
+224174e	22416ac	0x56	o	0	leafC	garbage=1/43
+22417a4	22416ac	0x46	o	0	leafC	
+22417ea	22416ac	0x38	o	0	leafC	
+2241822	22416ac	0x46	o	1	callC	
+2241868	22416ac	0x38	o	1	callC	
+22418a0	22418a0	0x2e	o	1	callC	
+22418ce	22418a0	0x2c	o	0	leafC	
+22418fa	22418a0	0x116	o	5	callC	garbage=1/125
+2241a10	2241a10	0x11c	o	10	callC	
+2241b2c	2241a10	0x3a	o	0	leafC	
+2241b66	2241b66	0x242	o	13	callC	garbage=1/289
+2241da8	2241b66	0x36	o	1	callC	
+2241dde	2241b66	0x28	o	1	callC	
+2241e06	2241b66	0x36	o	0	leafC	
+2241e3c	2241b66	0x46	o	1	callC	
+2241e82	2241e82	0x3f0	o	18	callC	garbage=3/504 ops:div1
+2242272	2241e82	0x35e	o	10	callC	garbage=1/431 ops:mac.l
+22425d0	2241e82	0x440	o	12	callC	garbage=2/544 ops:mac.l
+2242a10	2241e82	0x550	o	14	callC	garbage=7/680 ops:div1,mac.l
+2242f60	2241e82	0x3c	o	1	callC	
+2242f9c	2241e82	0x14	o	0	leafC	
+2242fb0	2241e82	0x2e	o	0	leafC	
+2242fde	2241e82	0x88	o	2	callC	
+2243066	2241e82	0x448	o	21	callC	garbage=1/548 ops:div1,mac.l
+22434ae	2241e82	0xda	o	1	callC	
+2243588	2243588	0x92	o	1	callC	
+224361a	224361a	0x5c6	o	18	callC	garbage=1/739
+2243be0	224361a	0x198	o	0	leafC	garbage=2/204
+2243d78	224361a	0x3c	o	0	leafC	
+2243db4	224361a	0x6e	o	1	callC	
+2243e22	224361a	0x198	o	2	callC	garbage=2/204
+2243fba	224361a	0x26	o	0	leafC	
+2243fe0	2243fe0	0x4d6	o	13	callC	garbage=1/619 ops:div1
+22444b6	2243fe0	0x1ba	o	4	callC	garbage=1/221
+2244670	2243fe0	0x15e	o	3	callC	
+22447ce	22447ce	0x52	0	1	callC	garbage=1/41
+2244820	22447ce	0x54	o	1	callC	
+2244874	2244874	0x5c	o	0	leafC	
+22448d0	2244874	0x5c	o	0	leafC	
+224492c	2244874	0x5c	o	0	leafC	
+2244988	2244988	0x34a	o	3	callC	garbage=2/421
+2244cd2	2244988	0x6e	o	1	callC	
+2244d40	2244988	0x2a	o	0	leafC	
+2244d6a	2244988	0x5e	o	0	leafC	
+2244dc8	2244dc8	0x2a	o	0	leafC	
+2244df2	2244dc8	0x3c	o	1	callC	
+2244e2e	2244dc8	0x22	o	0	leafC	sym:actor_state_dispatch#
+2244e50	2244dc8	0x4	o	0	leafC	
+2244e54	2244dc8	0x188	o	5	callC	
+2244fdc	2244dc8	0x1c2	o	5	callC	garbage=1/225
+224519e	2244dc8	0x120	o	3	callC	garbage=1/144
+22452be	2244dc8	0xbc	o	1	callC	garbage=1/94
+224537a	2244dc8	0x8	o	0	leafC	
+2245382	2244dc8	0x5c	o	0	leafC	
+22453de	2244dc8	0x106	o	1	callC	
+22454e4	22454e4	0x14e	o	4	callC	
+2245632	22454e4	0x2ba	o	5	callC	garbage=3/349
+22458ec	22454e4	0x17e	o	3	callC	garbage=1/191
+2245a6a	22454e4	0x82	o	1	callC	
+2245aec	22454e4	0x5c	o	0	leafC	
+2245b48	22454e4	0x76	o	0	leafC	
+2245bbe	22454e4	0xb8	o	0	leafC	garbage=1/90
+2245c76	2245c76	0xa6	o	0	leafC	garbage=1/83
+2245d1c	2245c76	0x96	o	1	callC	
+2245db2	2245db2	0xa6	o	1	callC	garbage=1/83
+2245e58	2245db2	0x28	o	0	leafC	
+2245e80	2245db2	0x38	o	0	leafC	
+2245eb8	2245eb8	0x90	o	0	leafC	
+2245f48	2245eb8	0x7c	o	0	leafC	
+2245fc4	2245fc4	0x62	o	0	leafC	
+2246026	2245fc4	0x2c	o	0	leafC	
+2246052	2245fc4	0x76	o	0	leafC	
+22460c8	2245fc4	0xb2	o	0	leafC	
+224617a	2245fc4	0x6	o	0	leafC	
+2246180	2245fc4	0x58	o	1	callC	
+22461d8	2245fc4	0x30	o	0	leafC	
+2246208	2245fc4	0x4c	o	1	callC	
+2246254	2246254	0x68	o	4	callC	
+22462bc	2246254	0x4c	o	0	leafC	
+2246308	2246254	0x2f4	o	1	callC	garbage=1/378
+22465fc	2246254	0x7c	o	0	leafC	
+2246678	2246678	0x440	o	27	callC	garbage=3/544
+2246ab8	2246678	0x622	o	40	callC	garbage=3/785 ops:div1
+22470da	2246678	0x2c	o	0	leafC	
+2247106	2246678	0x2e8	o	12	callC	garbage=1/372
+22473ee	2246678	0x684	o	21	callC	garbage=2/828
+2247a72	2247a72	0x2fc	o	24	callC	garbage=1/382 ops:div1
+2247d6e	2247a72	0xa6	o	2	callC	
+2247e14	2247a72	0x256	o	16	callC	garbage=2/299
+224806a	2247a72	0x9a	o	3	callC	
+2248104	2247a72	0x1d8	o	15	callC	garbage=1/236
+22482dc	2247a72	0x12e	o	11	callC	
+224840a	2247a72	0x2c	o	0	leafC	sym:actor_set_state_7
+2248436	2247a72	0xf6	o	4	callC	
+224852c	2247a72	0x1974	o	120	misseg	garbage=28/3230 ops:clrmac,div1,mac.l
+2249ea0	2249ea0	0x68	o	1	callC	
+2249f08	2249ea0	0x4a	o	0	leafC	
+2249f52	2249ea0	0x5e	o	5	callC	
+2249fb0	2249ea0	0x50	o	0	leafC	
+224a000	224a000	0x56	o	6	callC	
+224a056	224a000	0x16	o	0	misseg	garbage=1/10 no-ret
+224a06c	224a06c	0xb4	o	0	leafC	ops:div0s,div1
+224a120	224a120	0xa8	o	0	leafC	ops:div0u,div1
+224a1c8	224a1c8	0xb8	o	0	leafC	ops:div0u,div1
+224a280	224a280	0xc0	o	0	leafC	
+224a340	224a280	0x5c	o	0	misseg	garbage=4/46
+224a39c	224a280	0x14	o	0	leafC	
+224a3b0	224a280	0x14	o	0	leafC	
+224a3c4	224a280	0xe	o	0	leafC	
+224a3d2	224a280	0xe	o	0	leafC	
+224a3e0	224a280	0xc	o	0	leafC	
+224a3ec	224a280	0xa	o	0	leafC	
+224a3f6	224a280	0x8	o	0	leafC	
+224a3fe	224a280	0xa0	o	0	misseg	garbage=6/80
+224a49e	224a280	0xc	o	0	leafC	
+224a4aa	224a280	0x16	o	0	leafC	
+224a4c0	224a280	0x14	o	0	leafC	
+224a4d4	224a280	0x12	o	0	leafC	
+224a4e6	224a280	0x10	o	0	leafC	
+224a4f6	224a280	0xe	o	0	leafC	
+224a504	224a280	0xc	o	0	leafC	
+224a510	224a280	0x6	o	0	leafC	
+224a516	224a280	0x292	o	0	leafC	garbage=1/312 ops:div0s
+224a7a8	224a7a8	0x88	o	0	leafC	
+224a830	224a830	0x54	o	0	leafC	
+224a884	224a884	0x27c	o	0	leafC	
+224ab00	224ab00	0x5c	o	0	misseg	garbage=4/46
+224ab5c	224ab00	0x14	o	0	leafC	
+224ab70	224ab00	0x14	o	0	leafC	
+224ab84	224ab00	0xe	o	0	leafC	
+224ab92	224ab00	0xe	o	0	leafC	
+224aba0	224ab00	0xc	o	0	leafC	
+224abac	224ab00	0xa	o	0	leafC	
+224abb6	224ab00	0x8	o	0	leafC	
+224abbe	224ab00	0x1be0	o	2	misseg	garbage=1582/3568 ops:div0s,div1,dmulu.l,mac.l,mac.w
+224c79e	224ab00	0x7c	o	0	misseg	garbage=48/62 ops:mac.l
+224c81a	224ab00	0xac	o	1	misseg	garbage=61/86 ops:dmuls.l,mac.l
+224c8c6	224ab00	0x80	o	0	misseg	garbage=51/64
+224c946	224ab00	0x78	o	1	misseg	garbage=49/60
+224c9be	224ab00	0x54	o	1	misseg	garbage=33/42
+224ca12	224ab00	0x54	o	1	misseg	garbage=33/42
+224ca66	224ab00	0x74	o	0	misseg	garbage=45/58 ops:mac.l
+224cada	224ab00	0x6c	o	0	misseg	garbage=42/54 ops:mac.l
+224cb46	224ab00	0x5c	o	0	misseg	garbage=37/46
+224cba2	224ab00	0x54	o	0	misseg	garbage=34/42
+224cbf6	224ab00	0xa4	o	0	misseg	garbage=65/82
+224cc9a	224ab00	0x64	o	0	misseg	garbage=40/50 ops:mac.l
+224ccfe	224ab00	0x1726	o	11	misseg	garbage=1025/2963 ops:div0s,div1,dmulu.l,mac.l,mac.w no-ret
+224e424	224ab00	0x60	o	1	misseg	garbage=26/48 no-ret
+224e484	224ab00	0x48	o	1	misseg	garbage=17/36 ops:mac.l no-ret
+224e4cc	224ab00	0x288	o	1	misseg	garbage=236/324 no-ret
+224e754	224ab00	0x1ac6	o	59	misseg	garbage=1801/3427 ops:clrmac,div0s,div0u,div1,dmuls.l,dmulu.l,mac.l,mac.w
+225021a	224ab00	0x1bda	o	49	misseg	garbage=2454/3565 ops:clrmac,div0s,div0u,mac.l,mac.w
+2251df4	224ab00	0x14	o	0	misseg	garbage=7/10
+2251e08	224ab00	0xe9c	o	39	misseg	garbage=1240/1870 ops:clrmac,mac.l
+2252ca4	224ab00	0x17c	o	6	misseg	garbage=111/190
+2252e20	224ab00	0x26c	o	0	misseg	garbage=213/310 ops:div0u,mac.l
+225308c	224ab00	0x78	o	1	misseg	garbage=45/60
+2253104	224ab00	0x14	o	1	misseg	garbage=4/10
+2253118	224ab00	0x6c	o	3	misseg	garbage=33/54
+2253184	224ab00	0x14	o	0	misseg	garbage=7/10
+2253198	224ab00	0x3cc	o	11	misseg	garbage=334/486 ops:mac.l
+2253564	224ab00	0x26c	o	4	misseg	garbage=215/310 ops:mac.l
+22537d0	224ab00	0x1a4	o	0	misseg	garbage=117/210
+2253974	224ab00	0x14	o	0	misseg	garbage=5/10
+2253988	224ab00	0x1a4	o	0	misseg	garbage=117/210
+2253b2c	224ab00	0x14	o	0	misseg	garbage=5/10
+2253b40	224ab00	0x14	o	0	misseg	garbage=5/10
+2253b54	224ab00	0x14	o	0	misseg	garbage=5/10
+2253b68	224ab00	0x14	o	0	misseg	garbage=5/10
+2253b7c	224ab00	0x14	o	0	misseg	garbage=5/10
+2253b90	224ab00	0x3c	o	0	misseg	garbage=16/30
+2253bcc	224ab00	0x5dc	o	1	misseg	garbage=461/750 ops:mac.l
+22541a8	224ab00	0x1a4	o	0	misseg	garbage=117/210
+225434c	224ab00	0x14	o	0	misseg	garbage=5/10
+2254360	224ab00	0x1a4	o	0	misseg	garbage=117/210
+2254504	224ab00	0x14	o	0	misseg	garbage=5/10
+2254518	224ab00	0x14	o	0	misseg	garbage=5/10
+225452c	224ab00	0x14	o	0	misseg	garbage=5/10
+2254540	224ab00	0x14	o	0	misseg	garbage=5/10
+2254554	224ab00	0x14	o	0	misseg	garbage=5/10
+2254568	224ab00	0x3c	o	0	misseg	garbage=16/30
+22545a4	224ab00	0x1778	o	27	misseg	garbage=1915/3004 ops:clrmac,mac.l
+2255d1c	224ab00	0x14	o	0	misseg	garbage=5/10
+2255d30	224ab00	0x14	o	0	misseg	garbage=5/10
+2255d44	224ab00	0x14	o	0	misseg	garbage=5/10
+2255d58	224ab00	0x368	o	2	misseg	garbage=254/436 ops:mac.l
+22560c0	224ab00	0x64	o	0	misseg	garbage=27/50
+2256124	224ab00	0x14	o	0	misseg	garbage=5/10
+2256138	224ab00	0x64	o	0	misseg	garbage=27/50
+225619c	224ab00	0x4d8	o	4	misseg	garbage=407/620 ops:clrmac,mac.l
+2256674	224ab00	0x30	o	0	misseg	garbage=15/24
+22566a4	224ab00	0x14	o	0	misseg	garbage=6/10
+22566b8	224ab00	0x14	o	0	misseg	garbage=6/10 ops:mac.l
+22566cc	224ab00	0x14	o	0	misseg	garbage=7/10
+22566e0	224ab00	0x14	o	0	misseg	garbage=6/10
+22566f4	224ab00	0xc	o	0	misseg	garbage=4/6
+2256700	224ab00	0x8	o	0	misseg	garbage=2/4
+2256708	224ab00	0x14	o	0	misseg	garbage=6/10
+225671c	224ab00	0x21c	o	4	misseg	garbage=192/270
+2256938	224ab00	0x14	o	0	misseg	garbage=7/10
+225694c	224ab00	0x640	o	0	misseg	garbage=573/800 ops:clrmac,div0u,mac.l
+2256f8c	224ab00	0x28	o	0	misseg	garbage=13/20 ops:div0u
+2256fb4	224ab00	0x14	o	0	misseg	garbage=7/10
+2256fc8	224ab00	0x12c	o	2	misseg	garbage=96/150 ops:div0u,mac.l
+22570f4	224ab00	0x48	o	3	misseg	garbage=18/36
+225713c	224ab00	0x30	o	3	misseg	garbage=11/24
+225716c	224ab00	0x14	o	1	misseg	garbage=5/10
+2257180	224ab00	0x14	o	1	misseg	garbage=5/10
+2257194	224ab00	0xc	o	0	misseg	garbage=4/6
+22571a0	224ab00	0x8	o	1	misseg	garbage=1/4
+22571a8	224ab00	0x14	o	1	misseg	garbage=5/10
+22571bc	224ab00	0xc	o	0	misseg	garbage=4/6
+22571c8	224ab00	0x14	o	0	misseg	garbage=5/10
+22571dc	224ab00	0x120	o	12	misseg	garbage=69/144
+22572fc	224ab00	0x14	o	0	misseg	garbage=7/10
+2257310	224ab00	0x78	o	0	misseg	garbage=47/60
+2257388	224ab00	0xe9c	o	4	misseg	garbage=1434/1870 ops:clrmac,div0u,mac.l
+2258224	224ab00	0x140	o	0	misseg	garbage=98/160 ops:div0u,mac.l
+2258364	224ab00	0x2000	o	39	misseg	garbage=2807/4096 ops:clrmac,mac.l
+225a364	224ab00	0x104	o	1	misseg	garbage=73/130 ops:mac.l
+225a468	224ab00	0xc8	o	1	misseg	garbage=76/100
+225a530	224ab00	0x2000	o	36	misseg	garbage=3029/4096 ops:mac.l no-ret
+225c530	224ab00	0x15e8	o	19	misseg	garbage=1621/2804 ops:clrmac,div0u,mac.l
+225db18	224ab00	0x334	o	0	misseg	garbage=231/410 ops:clrmac,div0u
+225de4c	224ab00	0x4f0	o	0	misseg	garbage=474/632
+225e33c	224ab00	0x48	o	0	misseg	garbage=26/36
+225e384	224ab00	0x9b0	o	0	misseg	garbage=943/1240 ops:mac.l
+225ed34	224ab00	0xd14	o	15	misseg	garbage=1185/1674 ops:div0u,div1,mac.l
+225fa48	224ab00	0x48	o	0	misseg	garbage=26/36
+225fa90	224ab00	0x3c2	o	8	misseg	garbage=281/481 ops:clrmac,div0u,div1,mac.l no-ret
+225fe52	224ab00	0x2000	o	45	misseg	garbage=2662/4096 ops:div0u,div1,mac.l
+2261e52	224ab00	0x638	o	3	misseg	garbage=504/796 ops:clrmac,div0u,mac.l no-ret
+226248a	224ab00	0x18	o	0	misseg	garbage=8/12 ops:div0u no-ret
+22624a2	224ab00	0x34	o	0	misseg	garbage=16/26 ops:div0u no-ret
+22624d6	224ab00	0x2000	o	78	misseg	garbage=2550/4096 ops:clrmac,div0u,mac.l
+22644d6	224ab00	0x2c	o	0	misseg	garbage=9/22 ops:mac.l no-ret
+2264502	224ab00	0x90	o	1	misseg	garbage=44/72 ops:mac.l no-ret
+2264592	224ab00	0x18	o	0	misseg	garbage=6/12 no-ret
+22645aa	224ab00	0x48	o	0	misseg	garbage=15/36 ops:clrmac,mac.l no-ret
+22645f2	224ab00	0x18	o	0	misseg	garbage=6/12 no-ret
+226460a	224ab00	0x30	o	0	misseg	garbage=12/24 ops:mac.l no-ret
+226463a	224ab00	0x18	o	0	misseg	garbage=6/12 no-ret
+2264652	224ab00	0x190	o	6	misseg	garbage=116/200 ops:div0u,mac.l no-ret
+22647e2	224ab00	0xdb0	o	31	misseg	garbage=1088/1752 ops:clrmac,div0u,mac.l
+2265592	224ab00	0x8	o	0	misseg	garbage=3/4 no-ret
+226559a	224ab00	0x2000	o	128	misseg	garbage=2393/4096 ops:div0u,div1,mac.l,mac.w
+226759a	224ab00	0x8f8	o	24	misseg	garbage=840/1148 ops:mac.l
+2267e92	224ab00	0x154	o	1	misseg	garbage=72/170 ops:mac.l
+2267fe6	224ab00	0x186	o	2	misseg	garbage=82/195 ops:mac.l
+226816c	224ab00	0x12c	o	1	misseg	garbage=64/150 ops:mac.l
+2268298	224ab00	0x188	o	2	misseg	garbage=83/196 ops:mac.l
+2268420	224ab00	0x28	o	0	misseg	garbage=5/20 ops:mac.l
+2268448	224ab00	0x184	o	1	misseg	garbage=88/194 ops:mac.l
+22685cc	224ab00	0x122	o	1	misseg	garbage=61/145 ops:mac.l
+22686ee	224ab00	0x18	o	0	misseg	garbage=4/12
+2268706	224ab00	0x134	o	1	misseg	garbage=69/154 ops:mac.l
+226883a	224ab00	0x1a6	o	1	misseg	garbage=96/211 ops:mac.l
+22689e0	224ab00	0x140	o	1	misseg	garbage=74/160 ops:clrmac,mac.l
+2268b20	224ab00	0x14e	o	1	misseg	garbage=72/167 ops:mac.l
+2268c6e	224ab00	0x1d6	o	2	misseg	garbage=104/235 ops:mac.l
+2268e44	224ab00	0x1d2	o	3	misseg	garbage=103/233 ops:mac.l
+2269016	224ab00	0x18a	o	2	misseg	garbage=88/197 ops:div0u,mac.l
+22691a0	224ab00	0x188	o	1	misseg	garbage=83/196 ops:clrmac,mac.l
+2269328	224ab00	0x12c	o	1	misseg	garbage=61/150 ops:mac.l
+2269454	224ab00	0x1a4	o	1	misseg	garbage=89/210 ops:div0u,mac.l
+22695f8	224ab00	0x198	o	2	misseg	garbage=83/204 ops:mac.l
+2269790	224ab00	0x13a	o	2	misseg	garbage=63/157 ops:mac.l
+22698ca	224ab00	0x158	o	2	misseg	garbage=72/172 ops:mac.l
+2269a22	224ab00	0x1e	o	0	misseg	garbage=4/15
+2269a40	224ab00	0x15a	o	2	misseg	garbage=74/173 ops:mac.l
+2269b9a	224ab00	0x158	o	1	misseg	garbage=72/172 ops:mac.l
+2269cf2	224ab00	0x15c	o	1	misseg	garbage=75/174 ops:mac.l
+2269e4e	224ab00	0x16c	o	1	misseg	garbage=82/182 ops:mac.l
+2269fba	224ab00	0x15c	o	1	misseg	garbage=79/174 ops:mac.l
+226a116	224ab00	0x148	o	1	misseg	garbage=73/164 ops:div0u,mac.l
+226a25e	224ab00	0x166	o	1	misseg	garbage=79/179 ops:mac.l
+226a3c4	224ab00	0x142	o	1	misseg	garbage=74/161 ops:mac.l
+226a506	224ab00	0xca	o	1	misseg	garbage=42/101 ops:mac.l
+226a5d0	224ab00	0x180	o	2	misseg	garbage=88/192 ops:mac.l
+226a750	224ab00	0x17e	o	1	misseg	garbage=87/191 ops:mac.l
+226a8ce	224ab00	0x178	o	1	misseg	garbage=82/188 ops:mac.l
+226aa46	224ab00	0x16c	o	1	misseg	garbage=77/182 ops:mac.l
+226abb2	224ab00	0x166	o	1	misseg	garbage=79/179 ops:clrmac,mac.l
+226ad18	224ab00	0x182	o	1	misseg	garbage=89/193 ops:mac.l
+226ae9a	224ab00	0x178	o	1	misseg	garbage=81/188 ops:mac.l
+226b012	224ab00	0x15a	o	1	misseg	garbage=81/173 ops:mac.l
+226b16c	224ab00	0x8e	o	1	misseg	garbage=31/71 ops:mac.l
+226b1fa	224ab00	0x140	o	2	misseg	garbage=74/160 ops:mac.l
+226b33a	224ab00	0x90	o	1	misseg	garbage=31/72 ops:mac.l
+226b3ca	224ab00	0x1aa	o	2	misseg	garbage=93/213 ops:mac.l
+226b574	224ab00	0x192	o	2	misseg	garbage=87/201 ops:mac.l
+226b706	224ab00	0x190	o	2	misseg	garbage=89/200 ops:mac.l
+226b896	224ab00	0x1a4	o	2	misseg	garbage=88/210 ops:mac.l
+226ba3a	224ab00	0x198	o	2	misseg	garbage=91/204 ops:mac.l
+226bbd2	224ab00	0x3e	o	0	misseg	garbage=14/31 ops:mac.l
+226bc10	224ab00	0x18e	o	2	misseg	garbage=91/199 ops:mac.l
+226bd9e	224ab00	0x3a	o	0	misseg	garbage=12/29 ops:mac.l
+226bdd8	224ab00	0x13e	o	1	misseg	garbage=69/159 ops:mac.l
+226bf16	224ab00	0x158	o	1	misseg	garbage=76/172 ops:mac.l
+226c06e	224ab00	0x142	o	1	misseg	garbage=72/161 ops:mac.l
+226c1b0	224ab00	0x1bc	o	2	misseg	garbage=99/222 ops:clrmac,mac.l
+226c36c	224ab00	0x16e	o	1	misseg	garbage=86/183 ops:mac.l
+226c4da	224ab00	0x134	o	1	misseg	garbage=74/154 ops:mac.l
+226c60e	224ab00	0x10e	o	2	misseg	garbage=62/135 ops:mac.l
+226c71c	224ab00	0x8a	o	1	misseg	garbage=29/69 ops:mac.l
+226c7a6	224ab00	0xc4	o	1	misseg	garbage=38/98 ops:mac.l
+226c86a	224ab00	0x13a	o	1	misseg	garbage=71/157 ops:mac.l
+226c9a4	224ab00	0x14c	o	1	misseg	garbage=75/166 ops:mac.l
+226caf0	224ab00	0x128	o	2	misseg	garbage=69/148 ops:mac.l
+226cc18	224ab00	0x92	o	1	misseg	garbage=31/73 ops:mac.l
+226ccaa	224ab00	0x17e	o	2	misseg	garbage=83/191 ops:mac.l
+226ce28	224ab00	0x168	o	2	misseg	garbage=80/180 ops:mac.l
+226cf90	224ab00	0x182	o	2	misseg	garbage=85/193 ops:mac.l
+226d112	224ab00	0x180	o	2	misseg	garbage=87/192 ops:mac.l
+226d292	224ab00	0xc6	o	1	misseg	garbage=39/99 ops:mac.l
+226d358	224ab00	0x17e	o	2	misseg	garbage=85/191 ops:mac.l
+226d4d6	224ab00	0x11e	o	1	misseg	garbage=64/143 ops:mac.l
+226d5f4	224ab00	0xb4	o	1	misseg	garbage=38/90 ops:mac.l
+226d6a8	224ab00	0xa4	o	1	misseg	garbage=37/82 ops:mac.l
+226d74c	224ab00	0x1d0	o	1	misseg	garbage=101/232 ops:mac.l
+226d91c	224ab00	0xdc	o	2	misseg	garbage=43/110 ops:mac.l
+226d9f8	224ab00	0x158	o	1	misseg	garbage=77/172 ops:div0u,mac.l
+226db50	224ab00	0x16e	o	2	misseg	garbage=83/183 ops:mac.l
+226dcbe	224ab00	0x22	o	0	misseg	garbage=5/17 ops:mac.l
+226dce0	224ab00	0x916	o	13	misseg	garbage=183/1163 ops:div0s,div0u,div1,mac.l
+226e5f6	224ab00	0x4	o	0	misseg	no-ret
+226e5fa	224ab00	0x4	o	0	misseg	no-ret
+226e5fe	224ab00	0x2ba	o	19	misseg	garbage=170/348 ops:mac.l
+226e8b8	224ab00	0x1fe	o	11	misseg	garbage=147/255 ops:div1
+226eab6	224ab00	0x676	o	31	misseg	garbage=435/827 ops:div0u,div1,mac.l
+226f12c	224ab00	0x640	o	19	misseg	garbage=413/800 ops:div1,mac.l
+226f76c	224ab00	0x1e6c	o	72	misseg	garbage=2425/3894 ops:clrmac,div1,dmuls.l,dmulu.l,mac.l
+22715d8	224ab00	0x7e	o	0	misseg	garbage=32/63 ops:div1,dmulu.l
+2271656	224ab00	0x54	o	0	misseg	garbage=32/42 ops:mac.l
+22716aa	224ab00	0x13ea	o	100	misseg	garbage=359/2546 ops:div0s,div1,dmuls.l,dmulu.l,mac.l,mac.w no-ret
+2272a94	2272a94	0x4	o	0	misseg	no-ret
+2272a98	2272a94	0x4	o	0	misseg	no-ret
+2272a9c	2272a94	0x4	o	0	misseg	no-ret
+2272aa0	2272a94	0x4	o	0	misseg	no-ret
+2272aa4	2272a94	0x4	o	0	misseg	no-ret
+2272aa8	2272a94	0x4	o	0	misseg	no-ret
+2272aac	2272a94	0x4	o	0	misseg	no-ret
+2272ab0	2272a94	0x4	o	0	misseg	no-ret
+2272ab4	2272a94	0x4	o	0	misseg	no-ret
+2272ab8	2272a94	0x4	o	0	misseg	no-ret
+2272abc	2272a94	0x4	o	0	misseg	no-ret
+2272ac0	2272a94	0x4	o	0	misseg	no-ret
+2272ac4	2272a94	0x4	o	0	misseg	no-ret
+2272ac8	2272a94	0x4	o	0	misseg	no-ret
+2272acc	2272a94	0x4	o	0	misseg	no-ret
+2272ad0	2272a94	0x4	o	0	misseg	no-ret
+2272ad4	2272a94	0x4	o	0	misseg	no-ret
+2272ad8	2272a94	0x4	o	0	misseg	no-ret
+2272adc	2272a94	0x4	o	0	misseg	no-ret
+2272ae0	2272a94	0x4	o	0	misseg	no-ret
+2272ae4	2272a94	0x4	o	0	misseg	no-ret
+2272ae8	2272a94	0x4	o	0	misseg	no-ret
+2272aec	2272a94	0x4	o	0	misseg	no-ret
+2272af0	2272a94	0x4	o	0	misseg	no-ret
+2272af4	2272a94	0x4	o	0	misseg	no-ret
+2272af8	2272a94	0x1dbc	o	102	misseg	garbage=562/3806 ops:div0s,div0u,div1,dmuls.l,dmulu.l,mac.l,mac.w
+22748b4	2272a94	0x2000	o	3	misseg	garbage=2088/4096 ops:clrmac,div0s,mac.l,mac.w
+22768b4	2272a94	0xa5e	o	3	misseg	garbage=1008/1327 no-ret
+2277312	2272a94	0x24	o	0	misseg	garbage=12/18 no-ret
+2277336	2272a94	0x2000	o	27	misseg	garbage=2880/4096 ops:div0s,div1,dmulu.l,mac.l
+2279336	2272a94	0xc28	o	82	misseg	garbage=925/1556 ops:div1,mac.l
+2279f5e	2272a94	0x12e	o	17	misseg	garbage=54/151 ops:div0u
+227a08c	2272a94	0x101a	o	102	misseg	garbage=1314/2061 ops:clrmac,div0s,div1,mac.l
+227b0a6	2272a94	0x29a	o	15	misseg	garbage=233/333 ops:mac.l
+227b340	2272a94	0x2000	o	210	misseg	garbage=2712/4096 ops:clrmac,div0u,div1,dmuls.l,mac.l
+227d340	2272a94	0x194	o	2	misseg	garbage=143/202
+227d4d4	2272a94	0x16dc	o	130	misseg	garbage=1883/2926 ops:div0s,div0u,div1,mac.l
+227ebb0	2272a94	0x2000	o	237	misseg	garbage=2686/4096 ops:clrmac,div0s,div0u,div1,mac.l
+2280bb0	2272a94	0x13b2	o	137	misseg	garbage=1609/2521 ops:clrmac,div0s,div1,mac.l
+2281f62	2272a94	0x60	o	6	misseg	garbage=26/48
+2281fc2	2272a94	0x60	o	6	misseg	garbage=27/48
+2282022	2272a94	0x824	o	11	misseg	garbage=427/1042 ops:mac.l
+2282846	2272a94	0x2000	o	25	misseg	garbage=2558/4096 ops:clrmac,div1,mac.l
+2284846	2272a94	0xb2	o	1	misseg	garbage=32/89 ops:mac.l
+22848f8	2272a94	0x13c	o	1	misseg	garbage=54/158 ops:div0u,mac.l
+2284a34	2272a94	0x13c	o	1	misseg	garbage=56/158 ops:div0u,mac.l
+2284b70	2272a94	0x100	o	1	misseg	garbage=46/128 ops:div0u,mac.l
+2284c70	2272a94	0x100	o	1	misseg	garbage=45/128 ops:div0u,mac.l
+2284d70	2272a94	0x100	o	1	misseg	garbage=45/128 ops:div0u,mac.l
+2284e70	2272a94	0x100	o	1	misseg	garbage=47/128 ops:div0u,mac.l
+2284f70	2272a94	0x100	o	1	misseg	garbage=44/128 ops:div0u,mac.l
+2285070	2272a94	0x100	o	1	misseg	garbage=44/128 ops:div0u,mac.l
+2285170	2272a94	0x100	o	2	misseg	garbage=41/128 ops:div0u,mac.l
+2285270	2272a94	0x100	o	1	misseg	garbage=42/128 ops:div0u,mac.l
+2285370	2272a94	0x100	o	1	misseg	garbage=43/128 ops:div0u,mac.l
+2285470	2272a94	0x100	o	1	misseg	garbage=42/128 ops:div0u,mac.l
+2285570	2272a94	0x100	o	1	misseg	garbage=42/128 ops:div0u,mac.l
+2285670	2272a94	0x100	o	1	misseg	garbage=45/128 ops:div0u,mac.l
+2285770	2272a94	0x100	o	1	misseg	garbage=43/128 ops:div0u,mac.l
+2285870	2272a94	0x100	o	1	misseg	garbage=44/128 ops:div0u,mac.l
+2285970	2272a94	0x100	o	1	misseg	garbage=44/128 ops:div0u,mac.l
+2285a70	2272a94	0x100	o	1	misseg	garbage=42/128 ops:div0u,mac.l
+2285b70	2272a94	0x100	o	1	misseg	garbage=45/128 ops:div0u,mac.l
+2285c70	2272a94	0x100	o	1	misseg	garbage=44/128 ops:div0u,mac.l
+2285d70	2272a94	0x100	o	1	misseg	garbage=44/128 ops:div0u,mac.l
+2285e70	2272a94	0x104	o	1	misseg	garbage=46/130 ops:div0u,mac.l
+2285f74	2272a94	0x100	o	1	misseg	garbage=45/128 ops:div0u,mac.l
+2286074	2272a94	0x100	o	1	misseg	garbage=43/128 ops:div0u,mac.l
+2286174	2272a94	0x100	o	1	misseg	garbage=45/128 ops:div0u,mac.l
+2286274	2272a94	0x100	o	1	misseg	garbage=43/128 ops:div0u,mac.l
+2286374	2272a94	0x100	o	1	misseg	garbage=43/128 ops:div0u,mac.l
+2286474	2272a94	0x100	o	2	misseg	garbage=45/128 ops:div0u,mac.l
+2286574	2272a94	0x100	o	1	misseg	garbage=42/128 ops:div0u,mac.l
+2286674	2272a94	0x100	o	1	misseg	garbage=42/128 ops:div0u,mac.l
+2286774	2272a94	0x100	o	1	misseg	garbage=42/128 ops:div0u,mac.l
+2286874	2272a94	0x100	o	1	misseg	garbage=42/128 ops:div0u,mac.l
+2286974	2272a94	0x100	o	1	misseg	garbage=45/128 ops:div0u,mac.l
+2286a74	2272a94	0x100	o	1	misseg	garbage=42/128 ops:div0u,mac.l
+2286b74	2272a94	0xe8	o	1	misseg	garbage=38/116 ops:div0u,mac.l
+2286c5c	2272a94	0x104	o	1	misseg	garbage=44/130 ops:div0u,mac.l
+2286d60	2272a94	0x100	o	1	misseg	garbage=45/128 ops:div0u,mac.l
+2286e60	2272a94	0x100	o	1	misseg	garbage=45/128 ops:div0u,mac.l
+2286f60	2272a94	0x100	o	1	misseg	garbage=42/128 ops:div0u,mac.l
+2287060	2272a94	0x108	o	1	misseg	garbage=46/132 ops:div0u,mac.l
+2287168	2272a94	0x100	o	1	misseg	garbage=46/128 ops:div0u,mac.l
+2287268	2272a94	0x104	o	1	misseg	garbage=44/130 ops:div0u,mac.l
+228736c	2272a94	0x104	o	1	misseg	garbage=46/130 ops:div0u,mac.l
+2287470	2272a94	0x100	o	1	misseg	garbage=44/128 ops:div0u,mac.l
+2287570	2272a94	0x100	o	1	misseg	garbage=46/128 ops:div0u,mac.l
+2287670	2272a94	0x106	o	1	misseg	garbage=44/131 ops:div0u,mac.l
+2287776	2272a94	0x104	o	1	misseg	garbage=43/130 ops:div0u,mac.l
+228787a	2272a94	0x106	o	1	misseg	garbage=43/131 ops:div0u,mac.l
+2287980	2272a94	0x104	o	1	misseg	garbage=43/130 ops:div0u,mac.l
+2287a84	2272a94	0xfa	o	1	misseg	garbage=42/125 ops:div0u,mac.l
+2287b7e	2272a94	0x100	o	1	misseg	garbage=46/128 ops:div0u,mac.l
+2287c7e	2272a94	0x1cc	o	0	misseg	garbage=79/230 ops:div0u,mac.l,mac.w
+2287e4a	2272a94	0x88	o	0	misseg	garbage=54/68 ops:mac.l
+2287ed2	2272a94	0x188	o	2	misseg	garbage=54/196 ops:div1,mac.l,mac.w
+228805a	2272a94	0x1a0	o	1	misseg	garbage=85/208 ops:clrmac,div0u,div1,mac.l,mac.w
+22881fa	2272a94	0x12e	o	0	misseg	garbage=43/151 ops:div1,mac.l,mac.w no-ret
+2288328	2272a94	0x4	o	0	misseg	garbage=1/2 no-ret
+228832c	2272a94	0x4	o	0	misseg	garbage=1/2 no-ret
+2288330	2272a94	0x4	o	0	misseg	garbage=1/2 no-ret
+2288334	2272a94	0x4	o	0	misseg	garbage=1/2 no-ret
+2288338	2272a94	0x4	o	0	misseg	garbage=1/2 no-ret
+228833c	2272a94	0x4	o	0	misseg	garbage=1/2 no-ret
+2288340	2272a94	0x4	o	0	misseg	garbage=1/2 no-ret
+2288344	2272a94	0x4	o	0	misseg	garbage=1/2 no-ret
+2288348	2272a94	0x4	o	0	misseg	garbage=1/2 no-ret
+228834c	2272a94	0x4	o	0	misseg	garbage=1/2 no-ret
+2288350	2272a94	0x4	o	0	misseg	garbage=1/2 no-ret
+2288354	2272a94	0x4	o	0	misseg	garbage=1/2 no-ret
+2288358	2272a94	0x4	o	0	misseg	garbage=1/2 no-ret
+228835c	2272a94	0x4	o	0	misseg	garbage=1/2 no-ret
+2288360	2272a94	0x4	o	0	misseg	garbage=1/2 no-ret
+2288364	2272a94	0x4	o	0	misseg	garbage=1/2 no-ret
+2288368	2272a94	0x4	o	0	misseg	garbage=1/2 no-ret
+228836c	2272a94	0x4	o	0	misseg	garbage=1/2 no-ret
+2288370	2272a94	0x4	o	0	misseg	garbage=1/2 no-ret
+2288374	2272a94	0x4	o	0	misseg	garbage=1/2 no-ret
+2288378	2272a94	0x4	o	0	misseg	garbage=1/2 no-ret
+228837c	2272a94	0x4	o	0	misseg	garbage=1/2 no-ret
+2288380	2272a94	0x4	o	0	misseg	garbage=1/2 no-ret
+2288384	2272a94	0x4	o	0	misseg	garbage=1/2 no-ret
+2288388	2272a94	0x4	o	0	misseg	garbage=1/2 no-ret
+228838c	2272a94	0x4	o	0	misseg	garbage=1/2 no-ret
+2288390	2272a94	0x4	o	0	misseg	garbage=1/2 no-ret
+2288394	2272a94	0x4	o	0	misseg	garbage=1/2 no-ret
+2288398	2272a94	0x4	o	0	misseg	garbage=1/2 no-ret
+228839c	2272a94	0x4	o	0	misseg	garbage=1/2 no-ret
+22883a0	2272a94	0x4	o	0	misseg	garbage=1/2 no-ret
+22883a4	2272a94	0xf2	o	7	misseg	garbage=40/121 ops:mac.l
+2288496	2272a94	0xdb0	o	41	misseg	garbage=1018/1752 ops:clrmac,div0u,div1,mac.l
+2289246	2272a94	0x38	o	0	misseg	garbage=10/28
+228927e	2272a94	0x3a2	o	2	misseg	garbage=320/465 ops:div0u,mac.l
+2289620	2272a94	0xa	o	0	misseg	garbage=1/5 no-ret
+228962a	2272a94	0x40	o	3	callC	
+228966a	2272a94	0x10	o	0	leafC	
+228967a	2272a94	0x40	o	3	callC	
+22896ba	2272a94	0x10	o	0	leafC	
+22896ca	2272a94	0x40	o	3	callC	
+228970a	2272a94	0x10	o	0	leafC	
+228971a	2272a94	0x40	o	3	callC	
+228975a	2272a94	0x10	o	0	leafC	
+228976a	2272a94	0x42	o	3	callC	
+22897ac	22897ac	0x12	o	0	leafC	
+22897be	22897ac	0x4	o	0	misseg	no-ret
+22897c2	22897ac	0x4	o	0	misseg	no-ret
+22897c6	22897ac	0x4	o	0	misseg	no-ret
+22897ca	22897ac	0x10	o	0	leafC	
+22897da	22897ac	0x4	o	0	misseg	no-ret
+22897de	22897ac	0x4	o	0	misseg	no-ret
+22897e2	22897ac	0x4	o	0	misseg	no-ret
+22897e6	22897ac	0x10	o	0	leafC	
+22897f6	22897ac	0x4	o	0	misseg	no-ret
+22897fa	22897ac	0x4	o	0	misseg	no-ret
+22897fe	22897ac	0x4	o	0	misseg	no-ret
+2289802	22897ac	0x10	o	0	leafC	
+2289812	22897ac	0x4	o	0	misseg	no-ret
+2289816	22897ac	0x4	o	0	misseg	no-ret
+228981a	22897ac	0x4	o	0	misseg	no-ret
+228981e	22897ac	0x5fc	o	2	misseg	garbage=417/766 ops:clrmac,div0u,mac.l no-ret
+2289e1a	22897ac	0x24	o	0	misseg	garbage=12/18 no-ret
+2289e3e	22897ac	0x25e	o	12	misseg	garbage=171/303 ops:div0u,mac.l
+228a09c	22897ac	0x4	o	0	leafC	
+228a0a0	22897ac	0x116	o	0	misseg	garbage=69/139 ops:mac.l
+228a1b6	22897ac	0xe14	o	3	misseg	garbage=987/1802 ops:clrmac,mac.l
+228afca	22897ac	0xc	o	0	misseg	garbage=2/6
+228afd6	22897ac	0xc	o	0	misseg	garbage=1/6
+228afe2	22897ac	0x44	o	0	misseg	garbage=19/34
+228b026	22897ac	0x18	o	0	misseg	garbage=3/12
+228b03e	22897ac	0xdba	o	10	misseg	garbage=1113/1757 ops:div0u,mac.l
+228bdf8	22897ac	0x3c6	o	1	misseg	garbage=297/483 ops:clrmac,mac.l no-ret
+228c1be	22897ac	0xc	o	0	leafC	
+228c1ca	22897ac	0x4	o	0	misseg	no-ret
+228c1ce	22897ac	0x4c	o	3	callC	
+228c21a	22897ac	0x4	o	0	misseg	no-ret
+228c21e	22897ac	0x4	o	0	misseg	no-ret
+228c222	22897ac	0x4	o	0	misseg	no-ret
+228c226	22897ac	0x4	o	0	misseg	no-ret
+228c22a	22897ac	0x4	o	0	misseg	no-ret
+228c22e	22897ac	0x4	o	0	misseg	no-ret
+228c232	22897ac	0x2000	o	258	misseg	garbage=1514/4096 ops:div1 no-ret
+228e232	22897ac	0x2000	o	0	misseg	garbage=4096/4096 no-ret

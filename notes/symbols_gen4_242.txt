@@ -1,0 +1,15 @@
+# Gen-4 symbols, band 0x242000-0x248000 (cart offsets) = runtime 0x02242000-0x02247fff
+# Actor-combat AI re-attempt wave: deferred "table-dispatch" members re-examined
+# with braf_resolve + pool_read. Most "tables" were capstone misreading literal-pool
+# words as bsrf/braf; the few genuine ones are noted. All entries HIGH unless marked.
+# addr(runtime)  name                               confidence  notes
+0x022447d4  func_022447d4  (dir_side_match_flag)      HIGH   cls=func_02243fba(a,b); base=(cls in{0,3}); flip when unk44 != (arg2>0); return base
+0x02244820  func_02244820  (move_permit_flag)         HIGH   cls=func_02243fba(a,b); 0/1->unk130>0; 2->0; 3->1 (prior-wave 243db4 decl mismatches: 2 args not 4)
+0x02243be0  func_02243be0  (commit_sidestep)          HIGH   reserve lane g_06096EC0, latch unk120=slot, step unk130=+/-0x16666; probe block into arg2; ret 0/1
+0x02244670  func_02244670  (reaction_slot_scan)       HIGH   mode g_0608DBDC[idx] 0/1/2; faction gate g_0604EBE4; fires func_02244988; 5th stack arg s16
+0x022458ec  func_022458ec  (reaction_type_select)     HIGH   rng&3 attack-type picker; calls func_02249214 / func_0224806a; returns 0..4
+0x02244fdc  func_02244fdc  (attack_pick_team)         HIGH   mode g_06098564 attack picker; unk6D==0 tail-calls func_02244e54; returns 0/1/2
+0x02245632  func_02245632  (action_side_select)       HIGH   fills *action(0..4)/*side; near/far/grounded combat branches; sole bsrf = rng 0x210020
+0x022453de  func_022453de  (find_strikeable_target)   HIGH   leaf; scans slots 1/2 for in-range target via g_0608EF6C window table (NO table dispatch)
+0x02243e22  func_02243e22  (setup_lateral_approach)   HIGH   mode-peer approach; unk130 x-offset vs arena bounds/lanes; sole bsrf = gate 0x245fc4 (NO table)
+0x02247a8c  func_02247a8c  (actor_behaviour_h)        HIGH   task handler; unkD8 0..7 state machine; tail-calls animation_update 0x0222dc2c; 17 bsrf all resolved

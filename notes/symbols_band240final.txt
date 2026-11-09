@@ -1,0 +1,83 @@
+# Band 0x240000-0x248000 final pass - names/globals.
+# Band-local notes only; NOT merged into notes/symbols.txt.
+# Format: addr(SH2)  name  notes
+
+# ---- functions added this pass ----
+02241eb0  func_02241eb0   actor move/chase state machine, switch(unkD8) 0..8; tail animation_update. (census entry 0x02241e82 is pool-contaminated; real entry 0x02241eb0)
+02242226  func_02242226   snap actor to home pose (copy unkEC/F0/F4 -> unk8/C/10)
+02242272  func_02242272   stagger/getup task stepper, switch(inner->unkD4) 0..3
+02242410  func_02242410   thrown/launched task stepper, switch(task->unk10) 0..2
+022424c4  func_022424c4   in-flight thrown handler (callback installed via func_0220ff0a)
+022425d0  func_022425d0   grenade/thrown-bomb task stepper, switch(task->unk10) 0..7
+022428bc  func_022428bc   smoke/shrapnel puff stepper + per-frame draw, switch(task->unk10) 0..3
+02243066  func_02243066   grab/throw thrower-side state machine, switch(inner->unkD4)
+022433e8  func_022433e8   grabbed-victim overlay step + draw, switch(task->unk10) 0..1
+02246308  func_02246308   scripted enemy-wave spawner, INIT entry (installs func_022463b8, tail-jumps to it)
+022463b8  func_022463b8   scripted enemy-wave spawner, steady-state loop handler
+02246678  func_02246678   spawned-actor initialiser (handler installed by func_022463b8)
+0224680c  func_0224680c   spawned-actor approach / enter-screen handler, switch(actor->unkD4) 0..1
+022469a0  func_022469a0   spawned-actor state dispatcher (g_060901c4[unkD4](task,actor))
+022473ee  func_022473ee   begin dash/charge move, switch(func_022460c8()) 0..3
+022475a8  func_022475a8   dash/charge per-frame update, switch(unkD8) 0..3 (+nested switch rec->unk13)
+02247924  func_02247924   dash turn-around decision, switch(func_022460c8()) 0..3
+02247a16  func_02247a16   dash recovery variant A (func_0223afc4 + state 5/3)
+02247a3e  func_02247a3e   dash recovery variant B (func_0223ac50 + state 5/6)
+
+# ---- globals named this pass (0x06xxxxxx) ----
+0608dae8  g_0608dae8      s16[2] heading/dir table ([1] == 0x0608daea)
+0608daf0  g_0608daf0      s16[] recovery script A (func_02244aa8 cfg)
+0608dafc  g_0608dafc      s16[] recovery script B
+0608db14  g_0608db14      s16[] blast parameter table (func_022434ae)
+0608db24  g_0608db24      s16[] recover script (func_02244aa8 cfg)
+0608db30  g_0608db30      s16[] hold-pose offset table (func_02214a50)
+0608ddc4  g_0608ddc4      s16[] palette-cost table (indexed by actor->unkA)
+06090118  g_06090118      s32[] dash recover-duration table (by actor->unkE8)
+060901b8  g_060901b8      void*[] per-type behaviour handlers (by actor->unk104)
+060901c4  g_060901c4      void*[] per-state spawned-actor sub-handlers (by unkD4)
+060900e4  g_060900e4      u8[] default marker vector A (3 longs)
+060900f0  g_060900f0      u8[] default marker vector B (3 longs)
+060907e0  g_060907e0      void*[] per-route script tables
+0609196c  g_0609196c      void*[] enemy type / controller records (->unk18 width, ->unk20 handler, ->unk1C art)
+06097414  g_06097414      s8 current-actor playerIdx latch
+060973e0  g_060973e0      s32 accumulated spawn X
+060973e4  g_060973e4      s32 current spawn record width
+060973e8  g_060973e8      s32 spawn trigger X
+060973ec  g_060973ec      s32 palette budget
+060973f0  g_060973f0      void* current spawn script record
+060973f8  g_060973f8      void* active grab task / current grab victim holder
+060972d0  g_060972d0      s32 play-area left bound
+060972d4  g_060972d4      s32 play-area right bound
+060972d8  g_060972d8      s32 play-area top bound
+060972dc  g_060972dc      s32 play-area bottom bound
+06098564  g_06098564      s32 wave run mode
+06098580  g_06098580      s32 live-slot / group bitmask
+0609866c  g_0609866c      void* wave descriptor (->unk18 = start record/index)
+0609856c  g_0609856c      s32 difficulty/route selector
+06098670  g_06098670      s32 feature-enable flag
+06098808  g_06098808      s32 stage depth-table index
+06098830  g_06098830      s32 shared-record use counter
+0609882c  g_0609882c      void* shared record (+8 obj, +0xD flag)
+06098838  g_06098838      u8[] debris records, 8-byte stride (field0 id, field4 timer)
+060987ec  g_060987ec      u8[] stage depth table (by g_06098808)
+060996ec  g_060996ec      u8[] per-actor shadow/marker slot, 0xC stride
+060e1214  g_060e1214      s16 palette base cost
+
+# ---- existing globals reused (names already in use elsewhere) ----
+060987bc  g_060987bc      s32 global frame counter
+060995b0  g_060995b0      void*[] per-slot anchor pointers; deref +8 -> actor
+06099590  g_06099590      s32[] per-slot active flag
+060e0ddc  g_060e0ddc      s32 sound-enable gate
+06098878  g_06098878      s32 matrix-stack pointer
+06097128  g_06097128      u8[] per-actor scratch, 0x24 stride
+060b6d9c  g_060b6d9c      u8[] per-actor collision box, 0x48 stride
+060e0f4c  g_060e0f4c      void*[] slot-by-group table (by actor->unk6F)
+
+# ---- callee facts confirmed / relied on this pass ----
+# func_02228106()         s32, NO args (overwrites r4). collision-slot grab.
+# func_02210020()         s32, NO args (overwrites r4/r6). rng.
+# func_02215f6c(cmd)      void, ONE arg (command only); call-site r5/r6 dead.
+# func_0224a360(v,n)      s32, v<<n via r0/r1 (shift helper); used as 1<<playerIdx.
+# func_02227b60(tmpl)     void*, ONE arg (template); spawn-loop r5/r6 dead.
+# func_0222dc2c(ctx,ent)  s32, animation_update (braf tail in most steppers).
+# func_022469f2(actor)    void (already decompiled, 022469f2.c).
+# func_02242f9c/fb0/fde   022429fc.c / 02242fb0.c / 02242fde.c (done).

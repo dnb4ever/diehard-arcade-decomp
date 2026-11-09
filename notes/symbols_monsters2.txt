@@ -1,0 +1,115 @@
+# symbols_monsters2.txt - names/globals from the "monsters2" giant-function batch
+# (Die Hard Arcade, ST-V / SH-2 BE). Functional decomp. Addresses are SH-2.
+# Do NOT merge into notes/symbols.txt without review.
+
+## Functions decompiled (shipped whole, compile -O1 -Wall -Wextra clean)
+0x0220c782 entity_phase_dispatch     # per-entity phase handler dispatch via RAM fn-ptr
+                                     #   tables (GUARD/NEXT/DEFAULT @0x060520A4/E4/0x06052124,
+                                     #   idx=(entity->unkB2+i)&0xF), then handler+camera_shake_decay
+                                     #   +mtx_build_fwd_inv. (fn.extent over-swallowed sibling @0x20c858)
+0x0223d768 effect_bounce_task        # bouncing debris/projectile task (sibling of effect_fall_task
+                                     #   0x0223d1b6); state0 launch/latch, state1 fall+ground bounce
+                                     #   (rand re-kick, softfloat rescale), impact -> prescatter+obj_anim_step
+0x0221f2bc scene_intro_bootstrap_sm  # scene bootstrap state machine (sibling of scene_bootstrap_sm
+                                     #   0x022027e4); config rec 0x060752B0+(s8)(sel->unk29*12); states
+                                     #   0..3; START-skip to commit; uses dh_band21.h
+0x0220b0c6 camera_pose_reset_task    # zero pose (pos unk8/C/10, angles unk24/26/28), state->1, mtx_build_fwd_inv
+0x0220b0fc camera_vel_integrate_task # vel/accel integrator: accel unk40/44/48, Z-floor -0x30000,
+                                     #   Y-bleed 0x60; integrate pos; mtx_build_fwd_inv
+0x0220b1c0 camera_pose_init_task     # scene-start pose init (camera_init_pose 0x0220bc20 family); pos from
+                                     #   0x06051E8C[sel->unk28*12]/angles 0x06051F94[sel->unk29*6] or
+                                     #   defaults 0x06051E78/0x06051E84; +stage ofs 0x06060814[g_060B3D54*44];
+                                     #   installs task_entity_trampoline (0x0220b354); obj_latch_reset(3)
+0x02239ce8 actor_state_select        # combat state/anim selector (actor_state_gen_main 0x02239fc6 family);
+                                     #   cmd=g_060E0F0C[sel]; sets unk88 (0x4F/0x50/0x51/0x52) + anim rec;
+                                     #   anim-word swap g_060E11E8<->g_06096248; returns 0/2/3 (caller +0x21)
+0x0222ca98 draw_actor_hier_shadowed  # hand-unrolled articulated-model draw w/ conditional ground shadows
+                                     #   (draw_actor_hier_model 0x0222d0e8 family); bones rot 0x06096328,
+                                     #   trans 0x0607976C, shadow part-ids 0x06096248
+0x022082be scene_display_init        # VDP1/VDP2 VRAM setup; installs scene_handler 0x022083a0 via func_0220ff54
+                                     #   (fn.extent over-swallowed the 0x2082be..0x208988 group)
+
+## Functions DEFERRED (full CFG decoded, all targets resolved; see functional_monsters2.md)
+0x0222c39c actor_combat_cmd_handler  # combat command/grab-throw main handler; calls actor_state_select;
+                                     #   unk43=ret+0x21; switch on unk88 (throw types 0x2B-0x2E,0x4B-0x4E)
+0x022083a0 scene_math_task_2083a0    # fixed-point-math-heavy scene task (16x 16.16-mul func_22131c8,
+                                     #   10x 16.16-div func_213234); installed by scene_display_init
+
+## Function identities confirmed/used (callees)
+0x0220d98e camera_shake_decay
+0x02214a7a mtx_build_fwd_inv
+0x022149aa mtx_load_abc
+0x02214a40 mtx_apply_vec_at8
+0x02214a06 mtx_rotate_zyx_at24
+0x02214a2e matrix_stack_push        # NO args; reserves 0x30 on stack @g_06098878
+0x022149e4 mtx_rotate_zyx           # (rec) rotate active matrix by u16 angles @0/2/4
+0x02214a50 mtx_apply_vec_at0        # (rec) vec3_array_matmul in place on rec+0/4/8
+0x02213ca4 vec3_array_matmul        # (a,b,c) 16.16 saturating matrix*vector
+0x02215964 emit_or_queue_sprite     # (obj)
+0x0222ec98 func_0222ec98            # (actor, part) draw one body part
+0x0223967a draw_rot_sprite          # (obj, angle)
+0x0220fece spawn_obj_0x6c           # (task, handler)
+0x0220feec spawn_obj_a              # (task, handler)
+0x0222eea2 drawlist_prepend         # (entity)
+0x02215f6c sound_queue_push         # (cmd)   -- single arg (m2c sometimes adds a stale 2nd)
+0x02215fac sound_cue_dispatch
+0x0221603e sound_emit_gated         # (id)
+0x0220fdc8 screen_fade_sequencer    # (arg)
+0x02210020 func_02210020           # rng, no args
+0x0224a830 itod                     # softfloat int->double
+0x0224a7a8 dtoi                     # softfloat double->int
+0x0224a518 func_0224a518            # softfloat op (between itod/dtoi)
+0x022173f4 func_022173f4            # (entity, desc_tbl, frame) sprite arm
+0x022153f6 func_022153f6            # draw_child_sprite
+0x0222eea2 drawlist_prepend
+0x02131c8  func_022131c8            # 16.16 fixed-point multiply   (note: SH2 addr 0x022131c8)
+0x0213234  func_02213234            # 16.16 fixed-point divide
+0x02107dc  func_022107dc            # (actor8, y0, obj8, y1, &scratch) angle/aim calc (0x22c39c)
+0x02223ee0 func_02223ee0            # (a,b,c,d,&scratch) distance/aim calc (0x22c39c loop)
+0x02223e70 func_02223e70            # (entity, 3, u16, s8)   (0x22c39c)
+0x0223a9d0 func_0223a9d0            # (actor)   (0x22c39c)
+0x0222adaa func_0222adaa            # (entity, rec, arg, cnt)  (0x22c39c unk48 path)
+0x0220ff54 func_0220ff54            # (ctx, handler) install task handler
+0x022083a0 scene_handler_2083a0     # handler installed by scene_display_init
+
+## Globals / tables
+0x06052098 g_entity_phase_max       # s16 (entity_phase_dispatch)
+0x060520A4 g_phase_guard_tbl[16]    # RAM fn-ptr validators
+0x060520E4 g_phase_next_tbl[16]     # RAM fn-ptr handlers
+0x06052124 g_phase_default_tbl[16]  # RAM fn-ptr fallback handlers
+0x06098670 g_play_active            # s32 1=in-play
+0x06098830 g_obj_latch              # s32 object-latch level (obj_latch_reset)
+0x0609882C g_latch_obj              # void** latched object
+0x06098834 g_shake_flags            # s32 camera-shake flag bits
+0x06098878 g_mtx_sp                 # s32 active matrix-stack pointer (+/-0x30 per frame)
+0x060B88A4 g_collide_dir            # s32 collision dir bits (low nibble)
+0x0608D3C8 g_sprite_desc_tbl        # effect sprite descriptor table
+0x0609866C g_scene_dir              # void** scene-director record
+0x060752B0 g_scene_bootstrap_cfg    # 12-byte scene bootstrap config records (by sel->unk29)
+0x06098664 g_scene_boot_gate        # s32 (scene bootstrap state2 gate)
+0x06098F08 g_display_rec            # void** VDP2 shadow-register record
+0x06098798 g_ctrl_cooked_word       # u16 cooked control word (= g_ctrl_struct 0x06098794 +4)
+0x06051E8C g_cam_pose_tbl           # 12-byte camera position records (by sel->unk28)
+0x06051F94 g_cam_angle_tbl          # 6-byte camera angle records (by sel->unk29)
+0x06051E78 g_cam_pos_default        # default camera position triple
+0x06051E84 g_cam_angle_default      # default camera angle triple
+0x06060814 g_stage_offset_tbl       # 44-byte stage world-offset records (by g_060B3D54)
+0x060B3D54 g_stage_sel              # s32 stage/offset selector
+0x06051E6C g_cam_self_handler       # s32 handler ptr -> entity->unk64
+0x060E0F0C g_actor_cmd_tbl          # s32 command/tile table (by queue index)
+0x0604EBE4 g_actor_cmd_flags        # s32 command flag-mask table (&0x3F000)
+0x06091678 g_actor_anim_recs        # ptr array -> 8-byte anim records (by slot)
+0x060916C0 g_actor_anim_recs2       # alt ptr array (by actor->unkE4)
+0x06096328 g_actor_rot_recs         # per-actor rotation records (stride 6; also facing_resolve)
+0x06096248 g_actor_slot_recs        # per-actor 32-byte slot/anim records
+0x060E11E8 g_anim_save_a            # saved anim words (4-byte stride)
+0x06096C58 g_actor_pos_tbl          # per-actor position table (stride 4)
+0x060E1150 g_anim_word_tbl          # s16 anim-word table (by actor->unk68)
+0x060E0F2C g_actor_cmd_mark         # command-queue mark array (actor_queue_mark sets 1)
+0x0607976C g_actor_trans_recs       # per-actor translation records (0x0607976C+unk5E*180, stride 0xC)
+0x060996EC g_actor_special_trans    # per-actor special translation (by unk34*12)
+0x0609974C g_actor_flash_sprite     # per-actor s16 flash-sprite id
+0x25F00200 VDP1_VRAM
+0x25E38000 VDP2_VRAM_A
+0x25E78000 VDP2_VRAM_B
+0x25F80000 VDP2_TVMD

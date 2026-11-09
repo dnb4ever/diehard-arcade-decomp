@@ -1,0 +1,33 @@
+# Die Hard Arcade (ST-V, SH-2 BE) - symbols for the two deferred braf dispatchers
+# Format: 0x<SH2addr> <name>   # <confidence> <evidence>
+# NEW file for the combo/command jump-table wave (do NOT merge into symbols.txt
+# without review). Cart offset = SH2 addr - 0x02000000.
+#
+# Context: the 0x24852c merged extent (0x24852c..0x249e68) left two large runtime
+# braf jump-table dispatchers deferred (functional_852c.md). This wave decodes both
+# by hand (m2c cannot lower a runtime braf table). While tracing, a third genuine
+# entry (0x249836) was found sitting inside the byte span the deferral attributed to
+# 0x2492f8; it is decompiled here too so nothing is left undone in [0x2492f8,0x249898).
+#
+# Shared ABI family: handlers take (r4=task, r5=entity) and tail/thread through
+# animation_update (func_0222dc2c 0x0222dc2c).
+
+0x02248bb8 actor_command_dispatch  # HIGH  double jump-table command dispatcher. state0 anim + (engaged) unk64=0/unkD8=1; state1 command dispatch keyed on entity[0x88], split on entity[0x56]: <=0 cmp-chain, >0 runtime braf table @0x248db8 (35 entries, cmd 0x28..0x4a). Combo sub-tables 0x060540e8/0x06054080/0x06053f04/0x060e0ddc. All brafs/bsrfs resolved; table decoded from ROM. NAMING GUESS. hand-verified vs fn.py --asm. zero-warning.
+0x022492f8 actor_combo_machine     # HIGH  14-state (unkD8 0..13) combat-combo state machine. runtime braf table @0x249354; two shared epilogues (.L24981c anim+ret / .L249822 bare ret) + wrap tail .L249742 (states 2/10). state4 has a secondary cmp-chain on func_022454e4() return (0..6). state0 reuses the combo sub-tables. Tails to siblings actor_enter_state4/despawn/state14. NAMING GUESS. hand-verified vs fn.py --asm. zero-warning.
+0x02249836 actor_combo_begin       # HIGH  combo-machine entry/init helper (own prologue, ABI r4=entity, r5=arg1). Distinct real entry inside the 0x2492f8 byte span, NOT reached from the dispatch. unkD4=13; unkE0 &= 0x1300; start-state pick via func_02210020()&1 && entity[0x38]==30 (-> state0, unk5C=0x162) else state1 + func_02239ce8(entity,arg1,entity[0x12c]); unk84=1. NAMING GUESS. hand-verified vs fn.py --asm. zero-warning.
+
+# ---- callees used as externs (NOT shipped this wave) ----
+# func_0222dc2c 0x0222dc2c animation_update (returns s32; state9 branches on it)
+# func_02215f6c 0x02215f6c  (combo sub-table consumer; 1-arg packed s32)
+# func_0223ffcc 0x0223ffcc  (task,entity)->new-state
+# func_02249240 0x02249240 actor_enter_state4 (1-arg entity; tail)
+# func_02249cda 0x02249cda actor_enter_despawn (task,entity; tail)
+# func_022499a6 0x022499a6 actor_enter_state14 (1-arg entity)
+# func_022458ec 0x022458ec (entity)->s32    func_022469f2 0x022469f2 (entity)
+# func_022454e4 0x022454e4 (entity)->s32 selector 0..6
+# func_022449b2 0x022449b2 (entity)->s32    func_02245eb8 0x02245eb8 (entity)->s32
+# func_02245e58 0x02245e58 (entity)->s32    func_0223d0c6 0x0223d0c6 (entity)
+# func_0223d0fe 0x0223d0fe (entity)         func_02245c88 0x02245c88 (entity)
+# func_02241d6e 0x02241d6e (entity)         func_02247d6e 0x02247d6e (entity)->s32
+# func_02244988 0x02244988 (entity, s32)    func_02227704 0x02227704 (entity)
+# func_02210020 0x02210020 ()->s32          func_02239ce8 0x02239ce8 (entity,ptr,index)

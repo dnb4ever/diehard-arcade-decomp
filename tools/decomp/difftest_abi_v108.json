@@ -1,0 +1,435 @@
+{
+  "evidence": "work/decomp_round3_20261108/abi_initial.asm; runtime comments cross-checked with runtime_abis.asm",
+  "entries": {
+    "0604e000": {
+      "args": [
+        4,
+        5
+      ]
+    },
+    "0604e06c": {
+      "args": [
+        1,
+        0
+      ]
+    },
+    "0604e120": {
+      "args": [
+        1,
+        0
+      ]
+    },
+    "0604e1c8": {
+      "args": [
+        1,
+        0
+      ]
+    },
+    "0604e280": {
+      "args": [
+        0,
+        1,
+        2
+      ]
+    },
+    "0604e360": {
+      "args": [
+        0,
+        1
+      ]
+    },
+    "0604e420": {
+      "args": [
+        0,
+        1
+      ]
+    },
+    "06017f90": {
+      "args": [
+        4,
+        null,
+        null
+      ],
+      "out": [
+        [
+          1,
+          4
+        ],
+        [
+          2,
+          5
+        ]
+      ]
+    },
+    "06017dd0": {
+      "args": [
+        8,
+        1
+      ]
+    },
+    "06017dec": {
+      "args": [
+        8,
+        1
+      ]
+    },
+    "06017e00": {
+      "args": [
+        8
+      ]
+    },
+    "06017d90": {
+      "args": [
+        9,
+        8
+      ],
+      "return": 1,
+      "internal_targets": [
+        100761012,
+        100761040,
+        100761068,
+        100761088
+      ]
+    },
+    "0604e39c": {
+      "args": [
+        0
+      ]
+    },
+    "0604e3b0": {
+      "args": [
+        0
+      ]
+    },
+    "0604e3c4": {
+      "args": [
+        0
+      ]
+    },
+    "0604e3d2": {
+      "args": [
+        0
+      ]
+    },
+    "0604e3e0": {
+      "args": [
+        0
+      ]
+    },
+    "0604e3ec": {
+      "args": [
+        0
+      ]
+    },
+    "0604e3f6": {
+      "args": [
+        0
+      ]
+    },
+    "0604e49e": {
+      "args": [
+        0
+      ]
+    },
+    "0604e4aa": {
+      "args": [
+        0
+      ]
+    },
+    "0604e4c0": {
+      "args": [
+        0
+      ]
+    },
+    "0604e4d4": {
+      "args": [
+        0
+      ]
+    },
+    "0604e4e6": {
+      "args": [
+        0
+      ]
+    },
+    "0604e4f6": {
+      "args": [
+        0
+      ]
+    },
+    "0604e504": {
+      "args": [
+        0
+      ]
+    },
+    "0604e510": {
+      "args": [
+        0
+      ]
+    },
+    "0604eb5c": {
+      "args": [
+        0
+      ]
+    },
+    "0604eb70": {
+      "args": [
+        0
+      ]
+    },
+    "0604eb84": {
+      "args": [
+        0
+      ]
+    },
+    "0604eb92": {
+      "args": [
+        0
+      ]
+    },
+    "0604eba0": {
+      "args": [
+        0
+      ]
+    },
+    "0604ebac": {
+      "args": [
+        0
+      ]
+    },
+    "0604ebb6": {
+      "args": [
+        0
+      ]
+    },
+    "06037122": {
+      "calls": {
+        "06027460": {
+          "args": [
+            4,
+            5,
+            6,
+            7,
+            "sp:0"
+          ]
+        }
+      }
+    },
+    "06026d3c": {
+      "image_writes": [
+        [
+          101253780,
+          16
+        ]
+      ],
+      "evidence": "work/decomp4/image_slots.asm: original mov.l callback stores to 06090294..060902a3; every byte and ordered store remains compared"
+    },
+    "06026e44": {
+      "image_writes": [
+        [
+          101253780,
+          16
+        ]
+      ],
+      "evidence": "work/decomp4/image_slots.asm: original mov.l callback stores to 06090294..060902a3; every byte and ordered store remains compared"
+    },
+    "06018194": {
+      "caller_stack": [
+        {
+          "arg": 2,
+          "offset": 32,
+          "size": 12
+        }
+      ],
+      "evidence": "work/decomp4/caller_stack.asm; live caller-owned output capture work/converge/round3/saved-frames/stack-0.bin / stack-1.bin; all 12 output bytes and stores compared including entry SP+32"
+    },
+    "06018284": {
+      "caller_stack": [
+        {
+          "arg": 2,
+          "offset": 32,
+          "size": 8
+        }
+      ],
+      "evidence": "work/decomp4/caller_stack.asm; live caller-owned output capture work/converge/round3/saved-frames/stack-0.bin / stack-1.bin; all 12 output bytes and stores compared including entry SP+32"
+    },
+    "060140c8": {
+      "args": [
+        null
+      ],
+      "by_value_stack": [
+        0
+      ],
+      "caller_stack": [
+        {
+          "arg": 0,
+          "offset": 0,
+          "size": 8,
+          "copy_input": true
+        }
+      ],
+      "evidence": "work/decomp4/pointer_shapes.asm 060140c8..140e4 uses entry SP as {dst word,attr halfword,characters}; whole 8-byte caller span snapshotted"
+    },
+    "0601a32e": {
+      "internal_targets": [
+        100770822,
+        100770828,
+        100770834,
+        100770840,
+        100770846,
+        100770896,
+        100770948,
+        100770962,
+        100770976,
+        100770986
+      ],
+      "evidence": "work/decomp4/pointer_bugs.asm 0601a3dc BRAF uses table0601a3f0, helper shared with neighboring entry, C attr_dispatch preserves all case effects"
+    },
+    "06008370": {
+      "calls": {
+        "06027080": {
+          "read": {
+            "0": 3
+          }
+        }
+      },
+      "evidence": "work/decomp4/glyph_payload.asm: this caller constructs exactly two glyph bytes plus original NUL; entry-specific payload, ordinary descriptor addresses stay exact"
+    },
+    "060084cc": {
+      "calls": {
+        "06027080": {
+          "read": {
+            "0": 3
+          }
+        }
+      },
+      "evidence": "work/decomp4/glyph_payload.asm: this caller constructs exactly two glyph bytes plus original NUL; entry-specific payload, ordinary descriptor addresses stay exact"
+    }
+  },
+  "callees": {
+    "06017d90": {
+      "args": [
+        9,
+        8
+      ],
+      "return": 1,
+      "stores": [
+        {
+          "arg": 1,
+          "offset": 32,
+          "size": 4
+        }
+      ]
+    },
+    "06017354": {
+      "read": {
+        "0": 12,
+        "1": 12
+      }
+    },
+    "06017538": {
+      "read": {}
+    },
+    "060172c4": {
+      "read": {
+        "0": 12,
+        "1": 12
+      }
+    },
+    "0601730c": {
+      "read": {
+        "0": 12,
+        "1": 12
+      }
+    },
+    "060147dc": {
+      "out": {
+        "4": 2
+      }
+    },
+    "0601480a": {
+      "read": {
+        "0": 12,
+        "1": 6
+      }
+    },
+    "06018a50": {
+      "read": {
+        "0": 12
+      }
+    },
+    "06027460": {
+      "stack_only": true
+    },
+    "0601455c": {
+      "out": {
+        "6": 2,
+        "7": 2
+      }
+    },
+    "06040bb0": {
+      "read": {
+        "2": 12
+      },
+      "when_equal": {
+        "2": [
+          1,
+          1
+        ]
+      }
+    },
+    "06018678": {
+      "constant_results": {
+        "7": 2
+      },
+      "evidence": "06018730 sets r7=2; 06018778..18788 epilogue never restores r7"
+    },
+    "060119ec": {
+      "output_tokens": {
+        "1": 12,
+        "2": 12
+      },
+      "stores": [
+        {
+          "arg": 1,
+          "offset": 0,
+          "size": 4
+        },
+        {
+          "arg": 1,
+          "offset": 8,
+          "size": 4
+        },
+        {
+          "arg": 2,
+          "offset": 0,
+          "size": 4
+        },
+        {
+          "arg": 2,
+          "offset": 8,
+          "size": 4
+        }
+      ],
+      "evidence": "work/decomp4/stack_abis.asm: 06011fc0..11fe6 writes X/Z at +0/+8 only; Y+4 is untouched"
+    },
+    "06018194": {
+      "out": {
+        "2": 12
+      },
+      "evidence": "work/decomp4/stack_abis.asm: three column results stored at r6+0,+4,+8"
+    },
+    "0601966e": {
+      "read": {
+        "0": 28
+      },
+      "evidence": "work/decomp4/stack_abis.asm: descriptor control/mode/vertices/sort/attributes, caller 06038aae initializes all 28 bytes"
+    },
+    "0601b838": {
+      "read": {
+        "0": 12,
+        "1": 16
+      },
+      "evidence": "work/decomp4/grid_payload.asm: dispatch passes position XYZ and four extents to original 0601b888/0601b9b0/0601bae4; all 28 bytes compared"
+    }
+  }
+}

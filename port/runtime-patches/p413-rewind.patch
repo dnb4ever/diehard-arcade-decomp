@@ -1,0 +1,376 @@
+--- a/runtime/src/host/host.cpp
++++ b/runtime/src/host/host.cpp
+@@ -59,6 +59,7 @@
+ using Clock = PaceClock;
+ static Clock::time_point g_base;                // host time of virtual time 0
+ static unsigned g_stats_generation;
++static bool g_rewind_key;
+ static bool g_paced;
+ 
+ uint16_t host_pad(int slot) { return g_buttons[slot]; }
+@@ -97,6 +98,7 @@
+             for (auto& p : problems) sat_note("%s, so its default", p.c_str());
+         }
+     }
++    if (g_cfg.arcade && !g_cfg.rewind_seconds) g_cfg.rewind_seconds = g_settings.number("player", "rewind_seconds");
+     bind_keyboard();
+ }
+ 
+@@ -110,7 +112,7 @@
+ bool host_wants_frame() {
+     if (!g_win) return false;
+     if (sat_resuming()) return sat_vblanks() % 30 == 0;
+-    if (g_paced && g_skipped_run < 2 && g_settings.flag("display", "frameskip") &&
++    if (g_paced && g_skipped_run < (g_cfg.rewind_seconds ? 5 : 2) && g_settings.flag("display", "frameskip") &&
+         Clock::now() > g_base + std::chrono::nanoseconds(sat_now() + video_frame_ns())) {
+         ++g_skipped_run;
+         ++g_skipped;
+@@ -721,7 +723,7 @@
+ // by as long as it was, so the run is the same run with or without it. A panel of two columns where
+ // the screen is wide enough, the game's choices in one and the touch pad's in the other, each a row:
+ // an action, a choice of a few, a slider, or a switch.
+-enum MenuId { M_QUICKSAVE, M_QUICKLOAD, M_RESUME, M_SAVES, M_QUIT, M_PAD, M_SIZE, M_STYLE, M_MENU_BUTTON };
++enum MenuId { M_FEATURES, M_QUICKSAVE, M_QUICKLOAD, M_RESUME, M_SAVES, M_QUIT, M_PAD, M_SIZE, M_STYLE, M_MENU_BUTTON };
+ enum class Control { Action, Choice, Slider, Switch };
+ struct MenuRow { MenuId id; Control control; int column; SDL_FRect r; };
+ struct MenuLayout { SDL_FRect panel; float u; float title_y; float section_y[2]; float column_x[2]; std::vector<MenuRow> rows; };
+@@ -762,6 +764,7 @@
+ 
+ static const char* menu_label(MenuId id) {
+     switch (id) {
++    case M_FEATURES: return "Player features / training";
+     case M_QUICKSAVE: return "Quick save (F5)";
+     case M_QUICKLOAD: return "Quick load (F7)";
+     case M_RESUME: return "Resume";
+@@ -779,6 +782,7 @@
+     std::vector<std::pair<MenuId, Control>> game = {{M_RESUME, Control::Action}};
+     if (quick_available()) { game.push_back({M_QUICKSAVE, Control::Action}); game.push_back({M_QUICKLOAD, Control::Action}); }
+     if (!g_cfg.after.empty()) game.push_back({M_SAVES, Control::Action});
++    if (g_cfg.arcade) game.push_back({M_FEATURES, Control::Action});
+     game.push_back({M_QUIT, Control::Action});
+     const std::vector<std::pair<MenuId, Control>> touch = g_cfg.arcade ? std::vector<std::pair<MenuId, Control>>{} : std::vector<std::pair<MenuId, Control>>{
+         {M_PAD, Control::Choice}, {M_SIZE, Control::Slider}, {M_STYLE, Control::Choice}, {M_MENU_BUTTON, Control::Switch}};
+@@ -851,6 +855,7 @@
+ // Enter, A, or a tap on the row's label: an action acts, and the rest move on a step.
+ static void menu_activate(MenuId id) {
+     switch (id) {
++    case M_FEATURES: host_player_menu(); break;
+     case M_QUICKSAVE: case M_QUICKLOAD: quick_request(id == M_QUICKLOAD); menu_close(); break;
+     case M_RESUME: menu_close(); break;
+     case M_SAVES: menu_quit(true); break;
+@@ -943,8 +948,12 @@
+     case SDL_EVENT_GAMEPAD_REMOVED:
+         pad_removed(e.gdevice.which);
+         break;
++    case SDL_EVENT_KEY_UP:
++        if (e.key.scancode == SDL_GetScancodeFromName(g_settings.get("player", "rewind_key").c_str())) g_rewind_key = false;
++        break;
+     case SDL_EVENT_KEY_DOWN: {
+         SDL_Scancode k = e.key.scancode;
++        if (k == SDL_GetScancodeFromName(g_settings.get("player", "rewind_key").c_str())) g_rewind_key = true;
+         if (quick_available() && !e.key.repeat && (k == SDL_SCANCODE_F5 || k == SDL_SCANCODE_F7)) {
+             quick_request(k == SDL_SCANCODE_F7); menu_close(); break;
+         }
+@@ -1381,3 +1390,18 @@
+         g_audio_level = kLead;
+     }
+ }
++
++
++bool host_rewind_held() {
++    if (!g_win || !g_cfg.arcade) return false;
++    if (g_rewind_key || SDL_GetKeyboardState(nullptr)[SDL_GetScancodeFromName(g_settings.get("player", "rewind_key").c_str())]) return true;
++    SDL_GamepadButton b = SDL_GetGamepadButtonFromString(g_settings.get("player", "rewind_pad").c_str());
++    for (auto& p : g_pads) if (b != SDL_GAMEPAD_BUTTON_INVALID && SDL_GetGamepadButton(p.pad, b)) return true;
++    return false;
++}
++void host_rewind_frame() {
++    if (!g_win) return;
++    static Frame f;
++    vdp2_compose(f); host_present(f);
++    SDL_Delay(16);
++}
+--- a/runtime/src/host/host.h
++++ b/runtime/src/host/host.h
+@@ -32,4 +32,6 @@
+ extern std::atomic<const char*> g_host_call;
+ extern std::atomic<int> g_host_paused;              // above 0: the menu is open or the app is in the background, so no VBlank is no stall
+ 
++bool host_rewind_held();
++void host_rewind_frame(); // redraw restored video, pump controls, wait one field
+ void host_quick_reset(); // discard queued host audio and rebase pacing after a state load
+--- a/runtime/src/host/host_null.cpp
++++ b/runtime/src/host/host_null.cpp
+@@ -24,4 +24,6 @@
+ void host_audio_push(const int16_t*, int) {}
+ void host_audio_report() {}
+ 
++bool host_rewind_held() { return false; }
++void host_rewind_frame() {}
+ void host_quick_reset() {}
+--- a/runtime/src/host/host_sdl.h
++++ b/runtime/src/host/host_sdl.h
+@@ -21,3 +21,5 @@
+ std::vector<HostController> host_controllers();      // the open gamepads, by player
+ 
+ void host_save_picture(const std::string& path); // rendered window, including filters and overlays
++
++void host_player_menu();
+--- a/runtime/src/host/launcher.cpp
++++ b/runtime/src/host/launcher.cpp
+@@ -6,6 +6,7 @@
+ // F12 saves the menu's picture (OUT/launcher.png). With SATURN_LAUNCHER_SHOT=FILE, its first frames
+ // go there and it closes, for a check without a display.
+ #include "host.h"
++#include "state.h"
+ #include "host_sdl.h"
+ #include "video.h"
+ #include "imgui.h"
+@@ -18,6 +19,23 @@
+ #include <sstream>
+ 
+ namespace {
++void player_features() {
++    auto& set = host_settings();
++    ImGui::SeparatorText("Player features");
++    int seconds = g_cfg.rewind_seconds;
++    if (ImGui::SliderInt("Rewind history", &seconds, 0, 20, "%d s (0 = off)")) {
++        set.set("player", "rewind_seconds", std::to_string(seconds));
++        g_cfg.rewind_seconds = seconds; host_settings_save();
++    }
++    ImGui::TextWrapped("Hold Backspace / left shoulder to rewind (30 snapshots/s). Bindings use SDL names.");
++    for (const char* key : {"rewind_key", "rewind_pad"}) {
++        char value[64]; std::snprintf(value, sizeof value, "%s", set.get("player", key).c_str());
++        if (ImGui::InputText(key, value, sizeof value, ImGuiInputTextFlags_EnterReturnsTrue)) {
++            set.set("player", key, value); host_settings_save();
++        }
++    }
++}
++
+ 
+ const struct { const char* key; const char* label; } kButtons[] = {
+     {"up", "Up"}, {"down", "Down"}, {"left", "Left"}, {"right", "Right"}, {"start", "Start"},
+@@ -236,7 +254,7 @@
+             start_options();
+             players();
+             display_and_sound();
+-            if (cfg_.arcade) game_settings();
++            if (cfg_.arcade) { game_settings(); player_features(); }
+             ImGui::TableNextColumn();
+             if (cfg_.arcade) arcade_controls();
+             else controls();
+@@ -462,3 +480,32 @@
+     if (!host_window(cfg)) return false;
+     return Launcher(cfg).run();
+ }
++
++void host_player_menu() {
++    auto* win = host_sdl_window(); auto* ren = host_sdl_renderer();
++    ImGui::CreateContext(); ImGui::GetIO().IniFilename = nullptr;
++    ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard | ImGuiConfigFlags_NavEnableGamepad;
++    ImGui::StyleColorsDark();
++    ImGui_ImplSDL3_InitForSDLRenderer(win, ren); ImGui_ImplSDLRenderer3_Init(ren);
++    bool open = true; bool quit = false;
++    for (int frame = 0; open; ++frame) {
++        SDL_Event e;
++        while (SDL_PollEvent(&e)) {
++            if (e.type == SDL_EVENT_QUIT) { open = false; quit = true; }
++            if (e.type == SDL_EVENT_KEY_DOWN && e.key.scancode == SDL_SCANCODE_ESCAPE) open = false;
++            host_pad_event(e); ImGui_ImplSDL3_ProcessEvent(&e);
++        }
++        ImGui_ImplSDLRenderer3_NewFrame(); ImGui_ImplSDL3_NewFrame(); ImGui::NewFrame();
++        auto* vp = ImGui::GetMainViewport();
++        ImGui::SetNextWindowPos(vp->WorkPos); ImGui::SetNextWindowSize(vp->WorkSize);
++        ImGui::Begin("Player features / training", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
++        if (ImGui::Button("Back to pause menu")) open = false;
++        player_features(); ImGui::End(); ImGui::Render();
++        SDL_SetRenderDrawColor(ren, 15, 18, 24, 255); SDL_RenderClear(ren);
++        ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), ren);
++        if (const char* shot = SDL_getenv("SATURN_PLAYER_SHOT"); shot && frame == 3) host_save_picture(shot);
++        SDL_RenderPresent(ren); SDL_Delay(16);
++    }
++    ImGui_ImplSDLRenderer3_Shutdown(); ImGui_ImplSDL3_Shutdown(); ImGui::DestroyContext();
++    if (quit) state_stop("the window was closed");
++}
+--- a/runtime/src/host/settings.cpp
++++ b/runtime/src/host/settings.cpp
+@@ -36,6 +36,11 @@
+ free_play = false
+ pause_button = false
+ violence = false
++
++[player]
++rewind_seconds = 0
++rewind_key = Backspace
++rewind_pad = leftshoulder
+ 
+ [audio]
+ ; percent
+@@ -138,7 +143,7 @@
+ 
+ // The range a number may take, by key.
+ static const struct { const char* key; int lo, hi; } kRanges[] = {
+-    {"difficulty", 1, 8}, {"vitality", 0, 7}, {"lives", 1, 4}, {"scale", 1, 8}, {"size", 50, 200}, {"volume", 0, 100}, {"stick", 5, 95}, {"trigger", 5, 95}, {"multitap", 0, 2}};
++    {"rewind_seconds", 0, 20}, {"difficulty", 1, 8}, {"vitality", 0, 7}, {"lives", 1, 4}, {"scale", 1, 8}, {"size", 50, 200}, {"volume", 0, 100}, {"stick", 5, 95}, {"trigger", 5, 95}, {"multitap", 0, 2}};
+ 
+ static std::string trim(const std::string& s) {
+     size_t a = s.find_first_not_of(" \t\r"), b = s.find_last_not_of(" \t\r");
+--- a/runtime/src/machine/saturn.h
++++ b/runtime/src/machine/saturn.h
+@@ -83,6 +83,8 @@
+     std::string progress_keep;      // "ADDR:BYTES,...": the ranges
+     std::string resume_label;       // what the window says while --resume plays
+     std::string after;              // with it, the menu has Save files, which writes "saves" here and quits
++    int rewind_seconds = 0; // opt-in; bounded to 20 seconds and 512 MiB
++    uint64_t rewind_at = 0, rewind_frames = 0; // headless verification
+     std::string quick_path;
+     bool quick_start = false;
+     uint64_t quick_save_at = 0, quick_load_at = 0; // opt-in deterministic verification
+--- a/runtime/src/machine/state.cpp
++++ b/runtime/src/machine/state.cpp
+@@ -252,6 +252,93 @@
+     if (!ok || at != bytes.size()) { g_quick_pending.clear(); quick_message("Rejected incomplete state parts"); return false; }
+     return true;
+ }
++
++struct RewindDelta { uint64_t frame; size_t size; std::vector<uint8_t> bytes; };
++static std::deque<RewindDelta> g_rewind;
++static std::vector<uint8_t> g_rewind_image;
++static uint64_t g_rewind_seen = ~0ull, g_rewind_steps, g_rewind_captures;
++static size_t g_rewind_bytes, g_rewind_peak;
++static double g_rewind_ms;
++static bool g_rewind_tested, g_rewind_loading;
++static uint64_t g_rewind_checked = ~0ull;
++static void quick_payload(std::vector<uint8_t>& payload) {
++    payload.clear(); payload.reserve(5*1024*1024);
++    // Reuse allocations: snapshotting should copy state, not allocate megabytes every field.
++    static State states[sizeof(kQuickParts)/sizeof(kQuickParts[0])];
++    size_t i = 0;
++    for (auto& part : kQuickParts) {
++        State& s = states[i++]; s.data.clear(); part.fn(s);
++        put(payload, part.name, std::strlen(part.name)); quick_u64(payload, s.data.size());
++        put(payload, s.data.data(), s.data.size());
++    }
++}
++static void rewind_pending() {
++    size_t at = 0; g_quick_pending.clear();
++    for (auto& part : kQuickParts) {
++        at += std::strlen(part.name); uint64_t size = 0;
++        for (int i = 7; i >= 0; --i) size = size << 8 | g_rewind_image[at+i];
++        at += 8;
++        g_quick_pending.emplace_back(g_rewind_image.begin()+at, g_rewind_image.begin()+at+size); at += size;
++    }
++}
++static bool rewind_tick() {
++    if (!g_cfg.rewind_seconds) { g_rewind.clear(); g_rewind_image.clear(); g_rewind_bytes = 0; return false; }
++    bool held = host_rewind_held();
++    if (!g_rewind_tested && g_cfg.rewind_at && sat_vblanks() >= g_cfg.rewind_at) {
++        g_rewind_tested = true; g_rewind_steps = (g_cfg.rewind_frames+1)/2;
++    }
++    if (sat_vblanks() != g_rewind_seen && sat_vblanks()%2 == 0) {
++    auto start = std::chrono::steady_clock::now();
++    static std::vector<uint8_t> bytes;
++    quick_payload(bytes);
++    if (!g_rewind_image.empty()) {
++        RewindDelta d{g_rewind_seen, g_rewind_image.size(), {}};
++        d.bytes.reserve(256*1024);
++        size_t n = std::max(bytes.size(), g_rewind_image.size());
++        bytes.resize(n); g_rewind_image.resize(n);
++        for (size_t off = 0; off < n; off += 256) {
++            size_t len = std::min(size_t(256), n-off);
++            if (!std::memcmp(bytes.data()+off, g_rewind_image.data()+off, len)) continue;
++            uint32_t offset = (uint32_t)off;
++            size_t start = d.bytes.size(); d.bytes.resize(start+4+len);
++            std::memcpy(d.bytes.data()+start, &offset, 4);
++            for (size_t k = 0; k < len; ++k) d.bytes[start+4+k] = bytes[off+k] ^ g_rewind_image[off+k];
++        }
++        g_rewind_bytes += d.bytes.capacity(); g_rewind.push_back(std::move(d));
++        while (g_rewind.size() > size_t(g_cfg.rewind_seconds*30) || g_rewind_bytes > 512u*1024*1024) {
++            g_rewind_bytes -= g_rewind.front().bytes.capacity(); g_rewind.pop_front();
++        }
++    }
++    g_rewind_image.swap(bytes); g_rewind_seen = sat_vblanks();
++    g_rewind_peak = std::max(g_rewind_peak, g_rewind_bytes + g_rewind_image.size());
++    g_rewind_ms += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now()-start).count();
++    ++g_rewind_captures;
++    }
++    if (held || g_rewind_steps) {
++        if (!g_rewind.empty()) {
++            auto& d = g_rewind.back();
++            for (size_t at = 0; at < d.bytes.size();) {
++                uint32_t off; std::memcpy(&off, d.bytes.data()+at, 4); at += 4;
++                size_t n = std::min(size_t(256), g_rewind_image.size()-off);
++                for (size_t k = 0; k < n; ++k) g_rewind_image[off+k] ^= d.bytes[at+k];
++                at += n;
++            }
++            g_rewind_image.resize(d.size); g_rewind_seen = d.frame;
++            g_rewind_bytes -= d.bytes.capacity(); g_rewind.pop_back();
++            rewind_pending(); g_rewind_loading = true;
++            if (g_rewind_steps) --g_rewind_steps;
++            throw QuickLoad{};
++        }
++        g_rewind_steps = 0;
++        if (held) { host_rewind_frame(); return true; }
++    }
++
++    return false;
++}
++void quick_rewind_report() {
++    if (g_rewind_captures) sat_note("rewind: %llu captures, %.3f ms/capture, peak %zu bytes, %zu snapshots retained",
++        (unsigned long long)g_rewind_captures, g_rewind_ms/g_rewind_captures, g_rewind_peak, g_rewind.size());
++}
+ void quick_poll() {
+     if (!quick_available()) return;
+     if (!g_save_triggered && g_cfg.quick_save_at && sat_vblanks() >= g_cfg.quick_save_at) {
+@@ -260,20 +347,19 @@
+     if (!g_load_triggered && g_cfg.quick_load_at && sat_vblanks() >= g_cfg.quick_load_at) {
+         g_load_triggered = true; quick_request(true);
+     }
+-    if (!g_quick_request) return;
++    if (!g_quick_request && !g_cfg.rewind_seconds) return;
++    if (!g_quick_request && g_rewind_checked == sat_vblanks()) return;
+     extern bool arcade_continuation_ready();
+     if (!arcade_continuation_ready()) return;
++    g_rewind_checked = sat_vblanks();
++    while (rewind_tick()) {}
++    if (!g_quick_request) return;
+     int request = g_quick_request; g_quick_request = 0;
+     if (request == 2) {
+         if (quick_read()) throw QuickLoad{};
+         return;
+     }
+-    std::vector<uint8_t> payload;
+-    for (auto& part : kQuickParts) {
+-        State s; part.fn(s);
+-        put(payload, part.name, std::strlen(part.name)); quick_u64(payload, s.data.size());
+-        put(payload, s.data.data(), s.data.size());
+-    }
++    std::vector<uint8_t> payload; quick_payload(payload);
+     std::vector<uint8_t> bytes;
+     put(bytes, "STVQUICK", 8); quick_u64(bytes, 1); quick_u64(bytes, g_quick_identity);
+     quick_u64(bytes, payload.size()); quick_u64(bytes, quick_hash(payload.data(), payload.size()));
+@@ -305,6 +391,14 @@
+     }
+     g_quick_pending.clear();
+     host_quick_reset();
++    if (g_rewind_loading) {
++        g_rewind_loading = false;
++        // Rewind again before running any guest instruction. Release resumes this exact continuation.
++        host_rewind_frame();
++        while (rewind_tick()) {}
++        return true;
++    }
++    g_rewind.clear(); g_rewind_image.clear(); g_rewind_bytes = 0; g_rewind_seen = ~0ull;
+     sat_note("quick state: loaded VB %llu", (unsigned long long)sat_vblanks());
+     quick_message("Quick save loaded");
+     return true;
+--- a/runtime/src/machine/state.h
++++ b/runtime/src/machine/state.h
+@@ -78,6 +78,7 @@
+ void quick_init(const std::string& path, uint64_t identity, bool (*resume)(SH2Context&, uint32_t));
+ void quick_request(bool load);
+ void quick_poll();
++void quick_rewind_report();
+ bool quick_restore();
+ void quick_run_master();
+ bool quick_available();

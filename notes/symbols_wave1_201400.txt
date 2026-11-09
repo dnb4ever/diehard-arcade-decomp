@@ -1,0 +1,30 @@
+# Wave-1 functional decomp - band cart [0x201400, 0x20a000)  (SH2 0x02201400..0x0220a000)
+# Format: 0x<SH2addr> <name>   # <confidence> <note>
+# For later merge into notes/symbols.txt. All DECOMPILED this wave unless marked.
+
+0x02201590 boot_display_mode_task      # HIGH  state task: alloc, table-select next state from g_060987cc, spawn func_02209188, BIOS display callback *g_0600060c
+0x02201b6c obj_install_noop_handler    # HIGH  alloc_array_zeroed(obj,1,0x6c); g_06098678=obj; *obj=&noop_handler(0x02201b8e)
+0x02202a28 keyframe_object_mover       # HIGH  task: keyframe table 0x0604edc0 (stride0x10) + 0x0604eec0 (s16 stride6); integrates pos/vel; calls func_0221b330; pokes *g_06098f08 at keyframe 4
+0x02202ba8 thrown_object_gravity_task  # HIGH  task: init arc (pos/vel, unk1C=-0x1400), sound_queue_push(0xa01400ff); step: func_0221080a + integrate g_06098b1c vec; tail func_0221b330
+0x02203500 rumble_dispatch_pulse       # HIGH  task: gated by g_060987bc&entity->unk50; parity of entity->unk40 selects two *g_0609029c dispatch calls
+0x02203576 rumble_hud_service_2p       # HIGH  both players: build 0x0609d7b0 record (f_2203de8/f_2203e0a) and dispatch via *g_0609029c; periodic (parity) + event (g_0609879a bits)
+0x02203afc rumble_hud_service_1p       # HIGH  sibling of 0x02203576, player 1 only, ctx 0xB, event mask &3
+0x0220340c scene_hud_task_init         # HIGH  template task: BIOS *g_06000660 read, select handler (0x203500/0x203576/0x20376c/0x203afc/0x203c28) from cfg byte g_060987e8; set entity->unk50
+0x022044cc warning_hud_blink           # HIGH  leaf: timed notice HUD, arms g_06098680=0x3c countdown, dispatches icon/glyph/position records via *g_0609029c
+0x02207224 stage_vram_loader           # HIGH  task: DMAC ROM blobs to VDP VRAM (loop over 0x226d1fe4 table), layer init, spawn func_022072ce via func_0220ff54
+0x02207772 scene_layer_loader_spawn    # HIGH  task: func_0220828 + 2 DMACs + func_021675e loop (table 0x226edc14) + func_022156c; spawn func_02207884
+0x02207884 draw_transform_stub         # HIGH(stub) task: clears g_060b3d50; tail func_02213a8((e->unk8+e->unk10)<<2, 0x01000000-(e->unkC>>1)); larger body at 0x022078a8 is a SEPARATE fn
+0x02207b3e framebuffer_bringup         # HIGH  leaf: 2 DMACs to VDP, clear_vec4_array(0x25e78000,0x400), func_0220ade(0x06050aa4), func_022156c
+0x0220825c scene_layer_loader          # HIGH  leaf: 2 DMACs + clear_vec4_array + func_021675e + func_0220ade(0x06050b6c) + func_022156c
+0x02208030 scene_layer_loader_spawn_a  # HIGH  task: loader; spawn func_022080ac via func_0220ff54; seeds (obj->unk8)->unk8=0x01600000
+0x022089d0 scene_layer_loader_spawn_b  # HIGH  task: loader; spawn func_02208a52 via func_0220ff54; seeds (obj->unk8)->unk10=0x50000, ->unk32=0x20
+
+# --- referenced callees / new entries observed (NOT decompiled this wave) ---
+0x02203c28 scene_hud_handler_cfg5      # MED   5th handler selected by scene_hud_task_init (cfg bit2=0,bit1=1); real prologue, missed by fn.units (sat in the 0x203bfa trailing-pool region)
+0x0220ff54 spawn_obj_ret              # MED   spawn/init object, returns new object in r0 (callers seed obj->unk8 fields); sibling of spawn family 0x20fece/0x20feec
+0x022156c  vdp1_draw_submit?          # GUESS 5-arg (flag, p, p, p, p) draw/submit used by layer loaders
+0x021675e  sprite_char_block?         # GUESS 6-arg sprite/char-block emitter used by layer loaders
+0x0220ade  cmdlist_init?              # GUESS 1-arg command-list struct init (0x06050xxx)
+0x0220828  cmdlist_init2?             # GUESS 1-arg command-list init (0x060509dc)
+0x0221b330 object_post_update?        # GUESS 1-arg(entity) per-frame finisher, tail-called by mover/gravity tasks
+0x0221080a orient_step?               # GUESS (vel*, ang*) rotate/orient step

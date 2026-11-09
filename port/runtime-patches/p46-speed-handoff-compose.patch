@@ -1,0 +1,293 @@
+--- a/runtime/src/machine/machine.cpp
++++ b/runtime/src/machine/machine.cpp
+@@ -46,6 +46,9 @@
+ #include <mutex>
+ #include <thread>
+ #include <vector>
++#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__)
++#include <immintrin.h>
++#endif
+ 
+ SaturnConfig g_cfg;
+ SH2Context g_master, g_slave;
+@@ -331,15 +334,33 @@
+ // ---- the slave: a coroutine on its own thread -----------------------------------------------
+ static std::mutex g_mu;
+ static std::condition_variable g_cv;
+-static int g_turn;                  // 0 the master runs, 1 the slave
++static std::atomic<int> g_turn;     // 0 the master runs, 1 the slave; set under g_mu
+ static bool g_slave_on, g_slave_idle = true, g_slave_reset, g_slave_thread;
+ static int g_slave_polls;
+ 
+-static void give(int to) {          // hand the CPU over and wait until it comes back
++// Waits for `me`'s turn. A turn is mostly tens of microseconds, shorter than a sleep and a wake-up take
++// on a busy host (hundreds of turns a frame), so the waiting thread spins a while (about a millisecond)
++// before it sleeps. Only the wait changes: whose turn it is, and so the run, is the same.
++static void wait_turn(int me) {
++    for (int i = 0; i < 20000; ++i) {
++        if (g_turn.load(std::memory_order_acquire) == me) return;
++#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__)
++        _mm_pause();
++#elif defined(__aarch64__)
++        __asm__ __volatile__("yield");
++#endif
++    }
+     std::unique_lock<std::mutex> lk(g_mu);
+-    g_turn = to;
++    g_cv.wait(lk, [&] { return g_turn.load(std::memory_order_acquire) == me; });
++}
++
++static void give(int to) {          // hand the CPU over and wait until it comes back
++    {
++        std::lock_guard<std::mutex> lk(g_mu);
++        g_turn.store(to, std::memory_order_release);
++    }
+     g_cv.notify_all();
+-    g_cv.wait(lk, [&] { return g_turn == 1 - to; });
++    wait_turn(1 - to);
+ }
+ 
+ static void to_slave() {
+@@ -355,10 +376,7 @@
+ }
+ 
+ static void slave_main() {
+-    {
+-        std::unique_lock<std::mutex> lk(g_mu);
+-        g_cv.wait(lk, [] { return g_turn == 1; });
+-    }
++    wait_turn(1);
+     g_cpu = &g_slave;
+     for (;;) {
+         try {
+--- a/runtime/src/video/vdp2.cpp
++++ b/runtime/src/video/vdp2.cpp
+@@ -40,6 +40,7 @@
+ #include <cmath>
+ #include <cstdlib>
+ #include <cstring>
++#include <thread>
+ #include <vector>
+ 
+ uint8_t g_vdp2_vram[0x80000], g_vdp2_cram[0x1000], g_vdp2_regs[0x200];
+@@ -807,111 +808,121 @@
+     // top or second image of a colour calculation
+     static const int kGradLayer[8] = {L_SPRITE, -1, L_NBG0, -1, L_NBG1, L_NBG2, L_NBG3, -1};
+     int grad = reg(0xEC) & 0x8000 && hreso < 2 && cram_mode() == 0 ? kGradLayer[reg(0xEC) >> 12 & 7] : -1;
+-    std::vector<uint32_t> blur(grad >= 0 ? f.w : 0);
+-    for (int y = 0; y < f.h; ++y) {
+-        int line = dd ? y >> 1 : y;
+-        Win win[2] = {window_line(0, y, dd), window_line(1, y, dd)};
+-        back.rgb = rgb555(vw(bk + (bk_lines ? (uint32_t)line * 2 : 0)));
+-        // a table word a line, a line of either field in double-density interlace
+-        line_colour.rgb = cram(vw(lc_table + (lc_lines ? (uint32_t)y * 2 : 0)) & 0x7FF, nullptr);
+-        if (grad >= 0) {
+-            // each dot averaged with the average of the two before it; a dot the screen does not draw is black
+-            auto avg = [](uint32_t a, uint32_t b) { return (a + b - ((a ^ b) & 0x010101)) >> 1; };
+-            uint32_t prev[2] = {0, 0};
+-            for (int x = 0; x < f.w; ++x) {
+-                Pix p{};
+-                bool drawn = grad == L_SPRITE ? sprite_pixel(sprite_dot(x, y, dd), p) == S_DOT
+-                                              : nbg[grad - L_NBG0].on && nbg_pixel(nbg[grad - L_NBG0], x, y, p);
+-                uint32_t here = drawn ? p.rgb : 0;
+-                if (x == 0) prev[0] = prev[1] = here;
+-                blur[x] = avg(avg(prev[0], prev[1]), here);
+-                prev[0] = prev[1];
+-                prev[1] = here;
+-            }
+-        }
+-        for (int x = 0; x < f.w; ++x) {
+-            Pix l[L_COUNT];
+-            int top = -1, second = -1;
+-            auto consider = [&](int i) {
+-                if (!l[i].prio) return;
+-                if (top < 0 || l[i].prio > l[top].prio) { second = top; top = i; }
+-                else if (second < 0 || l[i].prio > l[second].prio) second = i;
+-            };
+-            // in the order that wins ties: sprite, then NBG0..NBG3
+-            l[L_SPRITE] = {};
+-            uint8_t shadow = 0;                  // the priority of a shadow dot here
+-            if (!windowed(wctl[L_SPRITE], win, x)) {
+-                switch (sprite_pixel(sprite_dot(x, y, dd), l[L_SPRITE])) {
+-                case S_DOT: consider(L_SPRITE); break;
+-                case S_SHADOW: shadow = l[L_SPRITE].prio; l[L_SPRITE] = {}; break;
+-                case S_NONE: break;
++    // Each line is composed from the setup above, which nothing changes from here on, and the video
++    // memories, which nothing writes while the machine waits for the picture; so bands of lines go to a
++    // few threads at once. Each band has its own back and line colour screens (the lambda's copies).
++    auto lines = [&, back, line_colour](int y0, int y1) mutable {
++        std::vector<uint32_t> blur(grad >= 0 ? f.w : 0);
++        for (int y = y0; y < y1; ++y) {
++            int line = dd ? y >> 1 : y;
++            Win win[2] = {window_line(0, y, dd), window_line(1, y, dd)};
++            back.rgb = rgb555(vw(bk + (bk_lines ? (uint32_t)line * 2 : 0)));
++            // a table word a line, a line of either field in double-density interlace
++            line_colour.rgb = cram(vw(lc_table + (lc_lines ? (uint32_t)y * 2 : 0)) & 0x7FF, nullptr);
++            if (grad >= 0) {
++                // each dot averaged with the average of the two before it; a dot the screen does not draw is black
++                auto avg = [](uint32_t a, uint32_t b) { return (a + b - ((a ^ b) & 0x010101)) >> 1; };
++                uint32_t prev[2] = {0, 0};
++                for (int x = 0; x < f.w; ++x) {
++                    Pix p{};
++                    bool drawn = grad == L_SPRITE ? sprite_pixel(sprite_dot(x, y, dd), p) == S_DOT
++                                                  : nbg[grad - L_NBG0].on && nbg_pixel(nbg[grad - L_NBG0], x, y, p);
++                    uint32_t here = drawn ? p.rgb : 0;
++                    if (x == 0) prev[0] = prev[1] = here;
++                    blur[x] = avg(avg(prev[0], prev[1]), here);
++                    prev[0] = prev[1];
++                    prev[1] = here;
+                 }
+             }
+-            // RBG0 (the rotation BG) wins ties over the NBGs but loses to the sprite, so it is
+-            // considered right after the sprite.
+-            l[L_RBG0] = {};
+-            if (rbg.on && rbg.prio && !windowed(wctl[L_RBG0], win, x) && rbg_pixel(rbg, x, y, l[L_RBG0])) {
+-                Pix& p = l[L_RBG0];
+-                p.prio = rbg.prio;
+-                p.cc = rbg.cc;
+-                p.ratio = rbg.ratio;
+-                p.offset = rbg.offset;
+-                p.offset_b = rbg.offset_b;
+-                consider(L_RBG0);
+-            }
+-            // RBG1 sits in NBG0's slot: it loses ties to the sprite and RBG0 but wins over NBG1-3,
+-            // so it is considered right after RBG0 (NBG0 itself is suppressed when RBG1 is on).
+-            l[L_RBG1] = {};
+-            if (rbg1.on && rbg1.prio && !windowed(wctl[L_RBG1], win, x) && rbg_pixel(rbg1, x, y, l[L_RBG1])) {
+-                Pix& p = l[L_RBG1];
+-                p.prio = rbg1.prio;
+-                p.cc = rbg1.cc;
+-                p.ratio = rbg1.ratio;
+-                p.offset = rbg1.offset;
+-                p.offset_b = rbg1.offset_b;
+-                consider(L_RBG1);
+-            }
+-            for (int n = 0; n < 4; ++n) {
+-                Pix& p = l[L_NBG0 + n];
+-                p = {};
+-                const Nbg& s = nbg[n];
+-                if (!s.on || !s.prio || windowed(wctl[L_NBG0 + n], win, x)) continue;
+-                if (!nbg_pixel(s, x, y, p)) continue;
+-                p.prio = s.prio;
+-                if ((sfprmd >> (n * 2) & 3) == 1) p.prio = (uint8_t)((s.prio & 6) | p.spr);
+-                if (!p.prio) continue;
+-                switch (sfccmd >> (n * 2) & 3) {
+-                case 1: p.cc = s.cc && p.scc; break;
+-                case 3: p.cc = s.cc && p.msb; break;
+-                default: p.cc = s.cc; break;
++            for (int x = 0; x < f.w; ++x) {
++                Pix l[L_COUNT];
++                int top = -1, second = -1;
++                auto consider = [&](int i) {
++                    if (!l[i].prio) return;
++                    if (top < 0 || l[i].prio > l[top].prio) { second = top; top = i; }
++                    else if (second < 0 || l[i].prio > l[second].prio) second = i;
++                };
++                // in the order that wins ties: sprite, then NBG0..NBG3
++                l[L_SPRITE] = {};
++                uint8_t shadow = 0;                  // the priority of a shadow dot here
++                if (!windowed(wctl[L_SPRITE], win, x)) {
++                    switch (sprite_pixel(sprite_dot(x, y, dd), l[L_SPRITE])) {
++                    case S_DOT: consider(L_SPRITE); break;
++                    case S_SHADOW: shadow = l[L_SPRITE].prio; l[L_SPRITE] = {}; break;
++                    case S_NONE: break;
++                    }
+                 }
+-                p.ratio = s.ratio; p.offset = s.offset; p.offset_b = s.offset_b;
+-                consider(L_NBG0 + n);
+-            }
+-            const Pix& t = top >= 0 ? l[top] : back;
+-            Pix u = top >= 0 && (lnclen >> (top == L_SPRITE ? 5 : top == L_RBG0 ? 4 : top == L_RBG1 ? 0 : top - L_NBG0) & 1) && grad < 0 ? line_colour
+-                  : second >= 0 ? l[second] : back;
+-            if (grad >= 0 && (top == grad || second == grad)) u.rgb = blur[x];
+-            uint32_t rgb = t.rgb;
+-            if (top >= 0 && t.cc && !windowed(cc_wctl, win, x)) {
+-                uint32_t out = 0;
+-                int ratio = second_ratio ? u.ratio : t.ratio;
+-                for (int sh = 16; sh >= 0; sh -= 8) {
+-                    int a = (int)(t.rgb >> sh & 0xFF), b = (int)(u.rgb >> sh & 0xFF);
+-                    // ratio 0 is 31:1, not 32:0: the second image always shows through a little
+-                    int c = add ? std::min(a + b, 255) : (a * (31 - ratio) + b * (ratio + 1)) >> 5;
+-                    out |= (uint32_t)c << sh;
++                // RBG0 (the rotation BG) wins ties over the NBGs but loses to the sprite, so it is
++                // considered right after the sprite.
++                l[L_RBG0] = {};
++                if (rbg.on && rbg.prio && !windowed(wctl[L_RBG0], win, x) && rbg_pixel(rbg, x, y, l[L_RBG0])) {
++                    Pix& p = l[L_RBG0];
++                    p.prio = rbg.prio;
++                    p.cc = rbg.cc;
++                    p.ratio = rbg.ratio;
++                    p.offset = rbg.offset;
++                    p.offset_b = rbg.offset_b;
++                    consider(L_RBG0);
++                }
++                // RBG1 sits in NBG0's slot: it loses ties to the sprite and RBG0 but wins over NBG1-3,
++                // so it is considered right after RBG0 (NBG0 itself is suppressed when RBG1 is on).
++                l[L_RBG1] = {};
++                if (rbg1.on && rbg1.prio && !windowed(wctl[L_RBG1], win, x) && rbg_pixel(rbg1, x, y, l[L_RBG1])) {
++                    Pix& p = l[L_RBG1];
++                    p.prio = rbg1.prio;
++                    p.cc = rbg1.cc;
++                    p.ratio = rbg1.ratio;
++                    p.offset = rbg1.offset;
++                    p.offset_b = rbg1.offset_b;
++                    consider(L_RBG1);
++                }
++                for (int n = 0; n < 4; ++n) {
++                    Pix& p = l[L_NBG0 + n];
++                    p = {};
++                    const Nbg& s = nbg[n];
++                    if (!s.on || !s.prio || windowed(wctl[L_NBG0 + n], win, x)) continue;
++                    if (!nbg_pixel(s, x, y, p)) continue;
++                    p.prio = s.prio;
++                    if ((sfprmd >> (n * 2) & 3) == 1) p.prio = (uint8_t)((s.prio & 6) | p.spr);
++                    if (!p.prio) continue;
++                    switch (sfccmd >> (n * 2) & 3) {
++                    case 1: p.cc = s.cc && p.scc; break;
++                    case 3: p.cc = s.cc && p.msb; break;
++                    default: p.cc = s.cc; break;
++                    }
++                    p.ratio = s.ratio; p.offset = s.offset; p.offset_b = s.offset_b;
++                    consider(L_NBG0 + n);
+                 }
+-                rgb = out;
++                const Pix& t = top >= 0 ? l[top] : back;
++                Pix u = top >= 0 && (lnclen >> (top == L_SPRITE ? 5 : top == L_RBG0 ? 4 : top == L_RBG1 ? 0 : top - L_NBG0) & 1) && grad < 0 ? line_colour
++                      : second >= 0 ? l[second] : back;
++                if (grad >= 0 && (top == grad || second == grad)) u.rgb = blur[x];
++                uint32_t rgb = t.rgb;
++                if (top >= 0 && t.cc && !windowed(cc_wctl, win, x)) {
++                    uint32_t out = 0;
++                    int ratio = second_ratio ? u.ratio : t.ratio;
++                    for (int sh = 16; sh >= 0; sh -= 8) {
++                        int a = (int)(t.rgb >> sh & 0xFF), b = (int)(u.rgb >> sh & 0xFF);
++                        // ratio 0 is 31:1, not 32:0: the second image always shows through a little
++                        int c = add ? std::min(a + b, 255) : (a * (31 - ratio) + b * (ratio + 1)) >> 5;
++                        out |= (uint32_t)c << sh;
++                    }
++                    rgb = out;
++                }
++                if (t.offset) rgb = apply_offset(rgb, t.offset_b);
++                // A shadow halves the top screen under it when SDCTL enables that screen (bit 5: the back screen).
++                bool shaded = top == L_SPRITE ? t.shade
++                            : shadow && shadow >= t.prio && (sdctl >> (top == L_RBG0 ? 4 : top == L_RBG1 ? 0 : top >= 0 ? top - L_NBG0 : 5) & 1);
++                if (shaded) rgb = rgb >> 1 & 0x7F7F7F;
++                f.px[(size_t)y * f.w + x] = rgb;
+             }
+-            if (t.offset) rgb = apply_offset(rgb, t.offset_b);
+-            // A shadow halves the top screen under it when SDCTL enables that screen (bit 5: the back screen).
+-            bool shaded = top == L_SPRITE ? t.shade
+-                        : shadow && shadow >= t.prio && (sdctl >> (top == L_RBG0 ? 4 : top == L_RBG1 ? 0 : top >= 0 ? top - L_NBG0 : 5) & 1);
+-            if (shaded) rgb = rgb >> 1 & 0x7F7F7F;
+-            f.px[(size_t)y * f.w + x] = rgb;
+         }
+-    }
++    };
++    int bands = (int)std::clamp(std::thread::hardware_concurrency(), 1u, 8u);
++    std::vector<std::thread> others;
++    for (int k = 1; k < bands; ++k) others.emplace_back(lines, f.h * k / bands, f.h * (k + 1) / bands);
++    lines(0, f.h / bands);
++    for (auto& t : others) t.join();
+ }
+ 
+ void vdp2_state(State& s) { s(g_vdp2_vram), s(g_vdp2_cram), s(g_vdp2_regs); }

@@ -1,0 +1,82 @@
+# Band 0x231xxx - functional decomp symbols (worker band231)
+# C function names are func_<8hex addr>; descriptive name + behaviour follow.
+# All 7 compile clean with gcc -c -fsyntax-only -Wall -Wextra.
+
+0x0223101c  effect_prescatter_task   # HIGH  2-state task. state0: init ent (counter unk58=0,
+#   unk5D=0, palette unk68=g_0604EBE4[unk34], unk64=0xE000, unk62=0x53, unk60=0x14,
+#   unk38=0x40000, unkC=0x2000), state++, fall through. state1: optional actor_pair_propagate
+#   (0x22f3c0) when unk5D; ++unk58; when prior>1 spawn child via spawn_from_template
+#   (0x20ff28, handler effect_scatter_task 0x02230F74), copy pos/anim fields, kill task.
+#   else tail drawlist_prepend (0x22eea2). sound_queue_push(0xA01403FF) gated by g_060E0DDC.
+
+0x0223152c  projectile_launch_dual_task  # HIGH  launch-init variant (sibling of 0x2317c0).
+#   ent=task->unk8, oent=task->unk14->unk8. src=&g_06097D58[(oent.unk34<<8)+(u8)ent.unk5F*0x10].
+#   Reserve ammo func_0223c74a(oent); fail -> kill. Seed pos/unk34/unk38/palette/counter;
+#   optional sound(0xA01312FF). Spawn two spawn_obj_0x6c (0x20fece) children (handlers
+#   0x02239194, 0x0223938C) wiring unkF=oent.unk44, unk13=ent.unk59; ent.unk78=child1.
+#   ent.unk70=0xC000; next step task->unk0 = 0x02231630.
+
+0x02231a80  entity_orient_from_angles  # HIGH  void(ent, params). fwd={0,0,
+#   g_06087F84[((ent.unk62&0x3F)-0xB)*4]}; mtx_push_rotate_apply(fwd,&params.unk24) ->
+#   g_06098B1C; ent.unk14/18/1C = world vec; func_0221055c look-at -> ent.unk24=elev,
+#   ent.unk26=head+0x4000.
+
+0x02231b14  launched_actor_task  # HIGH  2-state. state0: pos from src (g_06097D58),
+#   func_02238dde, optional sound(0xA01303FF), mtx_push_rotate_apply(g_06087F24,&oent.unk24),
+#   copy g_06098B1C, anim unk30=0x17A, push matrix(+0x30), mtx_load_abc, mtx_apply_vec_at0 x2
+#   (src and local vec), func_02154fc(ent,0x40000,0x20000,2), pop, entity_orient_from_angles,
+#   unk30=0x179, state++. state1: --unk58; kill if <=0; else integrate pos+=vel(unk14/18/1C),
+#   func_02154fc(ent,0x20000,0x10000,1).
+
+0x02231c30  projectile_emitter_task  # HIGH  2-state periodic child emitter.
+#   state0: pos from src; entity_orient_from_angles; unk5A = ashl_var(12,g_06096C90)+1; state++.
+#   state1: c=--unk5A; when ((ashl_var(4,g_06096C90)-1)&c)==0 spawn child spawn_from_template
+#   (0x20ff28, handler 0x02231D72), copy pos/angles(unk24/26/28)/vel/counter, unk30=0x179,
+#   func_02238dde, optional sound(0xA0130BFF), g_0609974C[oent.unk34]=0x49; kill when unk5A==0.
+
+0x02231db8  rising_split_projectile_task  # HIGH  2-state. state0: pos from src, func_02238dde,
+#   optional sound(0xA01306FF), entity_orient_from_angles, unk30=0x191, unk58=30,
+#   unk6C=(unkC>=0)?0x500:0xFFE00001, state++. state1: if g_06098580&0x20000 clear+kill.
+#   Split (unkC>unk6C && --unk58!=0 && !(g_06098580&0x10000)): spawn_obj_variant(0x20feec,
+#   handler 0x02231336), copy pos, unk32=0, unk64=0x40000; integrate pos; drag vel
+#   (unk14+=unk14>>3, unk18-=0x100, unk1C+=unk1C>>3); tail func_022154fc(ent,0x60000,0x8000,1).
+#   Normal: task->unk0=0x02231FD4, state=0, g_06098580|=0x10 (& clear 0x10000); clamp unkC;
+#   publish g_06098574[0..2]=pos; unk30=0x185, unk32=0, unk58=0; tail draw_child_sprite
+#   (0x2153f6)(ent,0x80000,1).
+
+0x02231fd4  effect_spawner_task  # HIGH  2-state (continuation of 0x02231db8). state0:
+#   spawn_obj_0x6c(0x20fece, handler obj_anim_step 0x02238E94) discarded; optional
+#   sound(0xA01403FF); unk58=0, unk6C=0x8000; spawn_obj_variant(0x20feec, handler 0x0223115C),
+#   copy pos; state++. state1: n=unk58; ++unk58; when n>1 spawn_from_template(0x20ff28,
+#   template 0x022320D4), copy pos, unk70=0xA0000, unk5A=ashl_var(26,g_06096C90); kill task.
+
+# --- confirmed globals used in this band ---
+g_0604ebe4  0x0604EBE4  # s32[] palette/attr table, stride 4, indexed by (s8)entity.unk34
+g_06087f24  0x06087F24  # s32[3] fixed forward/source vector (0x231b14)
+g_06087f84  0x06087F84  # 16-byte param records (stride 0x10), idx (ent.unk62&0x3F)-0xB
+g_06096C90  0x06096C90  # scale/level driver = shift count for ashl_var/ashr_var
+g_06097d58  0x06097D58  # u8[] per-slot anim/pos records: [(oent.unk34<<8)+(u8)ent.unk5F*0x10]
+g_06098574  0x06098574  # s32[3] published position vector (0x231db8 normal path)
+g_06098580  0x06098580  # projectile trigger/state flag bits (0x10 / 0x10000 / 0x20000)
+g_06098878  0x06098878  # active-matrix stack pointer (push/pop +/-0x30)
+g_06098b1c  0x06098B1C  # matrix-apply output vector (s32[3])
+g_0609974c  0x0609974C  # s16[] per-slot status words (set 0x49)
+g_060e0ddc  0x060E0DDC  # sound-enable gate
+
+# --- external callees referenced (names per existing symbols.txt / src_functional) ---
+func_0220fece  spawn_obj_0x6c(parent, handler) -> obj
+func_0220feec  spawn_obj_variant(parent, handler) -> obj
+func_0220ff28  spawn_from_template(parent, template) -> obj
+func_0221055c  look-at angles(x,y,z,bx,by,bz,*elev,*head)
+func_0221080a  mtx_push_rotate_apply(vec, angles) -> g_06098B1C
+func_022149aa  mtx_load_abc(void)
+func_02214a50  mtx_apply_vec_at0(obj)
+func_02215f6c  sound_queue_push(cmd)
+func_022153f6  draw_child_sprite(obj, scale, mode)
+func_02154fc/022154fc  renderer(entity, s32, s32, s32)
+func_0222eea2  drawlist_prepend(entity)
+func_0222f3c0  actor_pair_propagate(entity)
+func_02238dde  post-clone init(void)
+func_02238e94  obj_anim_step (used as spawn handler)
+func_0223c74a  reserve ammo(oent) -> !=0 on failure
+func_0224a360  ashl_var(value r0, count r1) -> value<<count  [NON-STANDARD r0/r1 ABI]

@@ -1,0 +1,27 @@
+# Entity-behaviour state-machine family + shared tail dispatcher (cart offsets)
+# Session: unlock the 'braf -> 0x22eee4' family deferred by the 0x210-band agent.
+# addr(runtime)  name                               conf  notes
+0x0222eee4  spatial_grid_insert           HIGH  shared tail dispatcher; inserts entity into a 32x16 spatial-hash grid. col=((ent->unk8-originX)>>16)&0x1F, row=((ent->unk10-originY)>>16)&0xF; 8-byte node pool at 0x06097450 (<=32), bucket heads 0x06097558, origin 0x0609742c, count 0x06097550. ABI: r4=entity; void. Entity silently dropped when pool full.
+0x02210690  orientation_angle_builder     HIGH  from 2 angle-sets build M, extract look-at angles into *out (unk0/2/4). Indirect jsr resolved to mtx_apply_vec(0x02213538). ABI: r4=anglesA, r5=anglesB, r6=out.
+0x0221185c  actor_update_spin_popup       HIGH  spin+scale-popup actor; state0 init(rand spin/table), state1 spin+ease unk60 up/down by life unk58, else draw. ABI: r4=task; entity=task->unk8.
+0x02212b20  actor_update_sway             HIGH  sinusoidal sway AI (no own draw); clamp unk2C[-256,256], bob unkC=unk98+sin(unk2A), reseed accel every 32 frames. ABI: r4=task.
+0x02212c80  actor_update_breakable        HIGH  breakable actor: arm -> break (spawn debris cbb0(6,3,0)+a924) -> despawn; braf tail grid-insert. ABI: r4=task.
+0x02212e00  actor_update_risingfx         HIGH  rising/spinning fx; 5 states; cbb0(5,3,0); blink+despawn in state4; braf tail. ABI: r4=task.
+0x0221214a  actor_update_orbiter          HIGH  8-phase facing oscillation + on-trigger spawn cbb0(11,3,0); state2 cleanup; braf tail. ABI: r4=task.
+0x02212350  actor_update_scripted_spawner HIGH  script-list interpreter g_060906e8[task->unkF]; walks 16-byte entries spawning children via cbb0 / feec/fece/ff28/ff0a; mova+add handler=func_0221279c. braf tail. ABI: r4=task.
+0x02211108  actor_update_thrown           HIGH  thrown/tumbling enemy, re-hittable, bounces, dies(blink). indirect jsr r10=sin_lookup(0x02213190); spawn handler func_0223194a. braf tail (except dying). ABI: r4=task.
+0x022114b0  actor_update_debris_emitter   HIGH  timed emitter: scatter popups (func_0221185c) along timeline g_06090730[unk64], burst (ff28 func_0223194a), loop; anim-seq child func_022119a4. NO grid-insert tail. ABI: r4=task.
+0x02211b04  actor_update_grenade          HIGH  largest; arcing projectile: fly/arm->aim->bounce->settle->rest->explode(blink). jsr r10=move(0x022170ea), jsr r8=func_0223a924, ff28 handler func_0223194a. braf tail (except exploding). ABI: r4=task.
+#
+# Out-of-band helpers resolved to named externs (ABIs pinned this session):
+#   func_0223e4a0  = nullary free-slot query -> s32          (per 0223e4a0.c)
+#   func_0223cbb0  = spawn object (s32,s32,void*) -> void*
+#   func_0223a924  = (s32 idx, s32 mode, void *src, void *save)  (per 0223a924.c)
+#   func_02210858  = register value in g_060E1218[obj->unk34]  (obj, val-as-ptr)  (per 02210858.c)
+#   func_0221080a  = mtx_push_rotate_apply(s32 *vec, u16 *angles)  (per 0221080a.c)
+#   func_022109d4  = anim_channel_interp_abs(entity) -> s16 (nonzero when sequence ends)
+#   func_022170ea  = entity_move_dispatch(entity, mode)
+#   func_0221707c  = actor_slot_record_reg(entity, a0,a1,a2,a3)
+#   func_02228106  = collision-slot alloc -> s32 (slot; <0 = fail)
+#   func_0220feec/fece/ff28/ff0a = spawn holder (task/parent, handler) -> obj
+#   func_0222db44  = actor init helper (entity) [r5 ignored - verified]

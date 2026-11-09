@@ -1,0 +1,24 @@
+# Functional decomp batch (scheduler/spawn band, cart 0x228000-0x22b000)
+# Names for the 20 functions decompiled this batch. SH2 addresses (cart + 0x02000000).
+# Range owned: 0x228000 <= cart < 0x22b000. Single serial worker.
+
+0x0222a5d0 process_spawn_list        # HIGH spawn-list processor: for each 24-byte descriptor in arg0->unk30, spawn an actor (type 0 -> func_02227b60(&func_0222a300); type 7 -> func_02227b60(&func_0222a970); else func_02227bc4(type-1)); copy descriptor into entity; func_0222ca54; HP seed g_06099788; late-join hooks func_0223dd96/func_0223e3d0. *** PORT: process_spawn_list (runtime 0x0602E5D0). ***
+0x0222a120 actor_spawn_list_tick     # HIGH task handler: timed/paced spawn-list driver (state machine on task->unk16). Picks cursor from scene->unk1C row (g_0609856C&7), spawns via func_02227b60/func_02227bc4, seeds HP, paces by node delay (low16 of unk4). Sibling of process_spawn_list.
+0x02228168 player_join_spawn         # HIGH player-join actor builder (arg0=player index). join-state g_06098674[i]==1 BEGIN / ==4 COMMIT; fixed-id spawn func_02227bc4, 44-byte template g_06060814[g_060B3D54], per-player facing/pos/HP, init seq (a91a/ca54/da90/1707c), publishes per-slot arrays. (scene-81 state-5 family.)
+0x02229074 actor_main_state_step     # HIGH main actor state dispatcher (task,entity). Gated by unk4C; two-level switch on unk88, keyed by HP word unk56 (==0 drained vs live). Tails func_02216110 / animation_update.
+0x02228f08 actor_anim_state_dispatch # MED actor anim-phase handler (task,entity); switch unk88 (0x3B-0x4A) re-arms anim/request, calls animation_update.
+0x0222934a actor_hit_spawn_enter     # MED spawn linked partner/effect via func_0220ff72(g_06099580, template@0x02226EB8); links spawned->unk10/unk14; tail actor_hit_state_enter.
+0x022293b8 actor_hit_state_enter     # MED actor hit/grab state entry (task,entity); switch unk88 (0x45-0x49); cases 0x46/0x48 tail animation_update.
+0x0222ab18 actor_apply_damage        # HIGH subtract amount from HP unk56; on drain raise late-join request (g_0609882C->unkD, unkAE/B0/B2, func_02210020); gated by g_06099584[+8]/g_06098670/g_06098830. Kin to func_0222ac60.
+0x0222ae40 actor_pose_resolve        # MED directional pose/anim resolver (entity); 8-dir x 4-quad frame from facing angle unk62/unk60 via (**g_060866FC); publishes g_06099780[unk34-1].
+0x0222afba actor_pose_resolve_b      # MED sibling of actor_pose_resolve using table g_060866F8[sel] (sel 1/3); full 8-dir pick; extra func_0222acf8, unkC8 += 0x600, tail func_022160a0.
+0x02228bb6 func_0228bb6              # MED actor state handler (task,entity); unk48/unkBA&0x40 or unk54&2 paths; tail animation_update.
+0x02228c70 func_0228c70              # MED actor state handler; when anim counter unk58 >= unk90 runs func_0223a740, request 14; tail animation_update.
+0x02228ca2 func_0228ca2             # MED actor state handler; animation_update then (unk54&2) reset to idle.
+0x02228738 func_0228738             # MED actor state handler; (unk54&1)->request 9; func_0222c220; tail animation_update.
+0x02228768 func_0228768             # MED actor fall/settle handler; integrates unkC8 (gravity -0x400), unkC4, unk7C; land/reset below floor; tail animation_update.
+0x022286cc func_02286cc             # LOW actor state handler; func_0222c39c then tail animation_update.
+0x0222988e func_022988e             # MED actor state handler; unk48->pose_dispatch / unk54&2->pose_load+req13; tail animation_update.
+0x02229bb0 func_0229bb0             # LOW animation_update then tail func_0229c00.
+0x02229bce func_0229bce             # MED clears unk56, arms unkC8=60/unkCC=1, request 32, func_022170b4, tail func_0223abd0.
+0x02229640 func_02229640           # LOW empty leaf (rts;nop) - no-op handler slot.

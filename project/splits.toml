@@ -1,0 +1,41 @@
+# Die Hard Arcade (Sega ST-V) decomp split registry
+# addr = cart.bin offset ; SH2 addr = addr + 0x02000000
+# status: "matched" = C in src/ that must byte-equal the ROM extent (code+pool)
+#         "raw"     = still unmatched (counts toward denominator only)
+#         "reserved"= owned by another agent; do NOT write C for these here
+
+[meta]
+code_start = 0x200400
+text_end   = 0x290000
+rom        = "../cart.bin"
+
+# ---- matched C functions -------------------------------------------------
+[[func]]
+addr   = 0x2143b8
+name   = "func_2143b8"
+src    = "src/2143b8.c"
+status = "matched"
+flags  = "-optimize=1"
+
+[[func]]
+addr   = 0x226144
+name   = "func_226144"
+src    = "src/226144.c"
+status = "matched"
+flags  = "-optimize=1"
+
+[[func]]
+addr   = 0x223780
+name   = "func_223780"
+src    = "src/223780.c"
+status = "matched"
+flags  = "-optimize=1"
+
+# ---- reserved (other agents own these 26 leaves; keep out) ---------------
+[[reserved]]
+addrs = [
+  0x23e5cc, 0x23e5bc, 0x2131a8, 0x213ce4, 0x213538, 0x213434, 0x213b5c,
+  0x221800, 0x213fb4, 0x24a830, 0x213474, 0x2134d8, 0x223e70, 0x24a7a8,
+  0x23e520, 0x2139b8, 0x24a120, 0x24a06c, 0x24a1c8, 0x213694, 0x2138b8,
+  0x213570, 0x21377c, 0x21400c, 0x213a70, 0x24a884,
+]

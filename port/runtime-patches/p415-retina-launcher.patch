@@ -1,0 +1,46 @@
+--- /dev/null
++++ b/runtime/src/host/imgui_scale.h
+@@ -0,0 +1,15 @@
++// SDLRenderer3 clips in logical units when SDL supplies the framebuffer scale.
++// Apply that same scale to geometry, then preserve the caller's renderer state.
++#pragma once
++#include <SDL3/SDL.h>
++#include "imgui.h"
++#include "imgui_impl_sdlrenderer3.h"
++
++inline void render_imgui_scaled(ImDrawData* data, SDL_Renderer* renderer) {
++    float old_x = 1.0f, old_y = 1.0f;
++    SDL_GetRenderScale(renderer, &old_x, &old_y);
++    const bool change = old_x != data->FramebufferScale.x || old_y != data->FramebufferScale.y;
++    if (change) SDL_SetRenderScale(renderer, data->FramebufferScale.x, data->FramebufferScale.y);
++    ImGui_ImplSDLRenderer3_RenderDrawData(data, renderer);
++    if (change) SDL_SetRenderScale(renderer, old_x, old_y);
++}
+--- a/runtime/src/host/launcher.cpp
++++ b/runtime/src/host/launcher.cpp
+@@ -13,6 +13,7 @@
+ #include "imgui.h"
+ #include "imgui_impl_sdl3.h"
+ #include "imgui_impl_sdlrenderer3.h"
++#include "imgui_scale.h"
+ #include <algorithm>
+ #include <cstring>
+ #include <fstream>
+@@ -249,7 +250,7 @@
+             ImGui::Render();
+             SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
+             SDL_RenderClear(ren);
+-            ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), ren);
++            render_imgui_scaled(ImGui::GetDrawData(), ren);
+             if (want_picture_) host_save_picture(cfg_.out + "/launcher.png");
+             want_picture_ = false;
+             if (shot && frame == capture_frame) {                // ImGui lays a window out over its first frames
+@@ -615,7 +616,7 @@
+         if (ImGui::Button("Back to pause menu")) open = false;
+         player_features(true); ImGui::End(); ImGui::Render();
+         SDL_SetRenderDrawColor(ren, 15, 18, 24, 255); SDL_RenderClear(ren);
+-        ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), ren);
++        render_imgui_scaled(ImGui::GetDrawData(), ren);
+         if (const char* shot = SDL_getenv("SATURN_PLAYER_SHOT"); shot && frame == 3) host_save_picture(shot);
+         SDL_RenderPresent(ren); SDL_Delay(16);
+     }

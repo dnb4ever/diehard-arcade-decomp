@@ -1,0 +1,64 @@
+# Die Hard Arcade (ST-V, SH-2 BE) - post-81 / gameplay-scene + credit-coupling symbols
+# Wave: "post-81 gameplay scene + credit->director wire" (read-only decomp; cart = sh2 - 0x02000000).
+# Scene descriptor handler fields hold HWRAM pointers: hwram = cart_sh2 + 0x03E04000.
+# These supplement notes/symbols.txt - do NOT merge into it.
+
+# ---- the scene-0 fallback handler (what scene-81 next44=0 reaches) ----
+0x02205c96 scene0_attract_select   # HIGH (decompiled this wave -> 02205c96.c) scene-0 off14 task.
+#   3-state SM. state0: build display shadow (==scene81_game_sm state0), force g_06098668=2 -> state1.
+#   state1: ATTRACT/SCENE-SELECT loop - panel UP(0x80)/DOWN(0x40) scroll g_06098668 over [0..81]
+#   (wrap), print index line (fmt 0x06050DE4, word table g_0609031C[idx]); ACTION bits 0x7 -> state2.
+#   state2: set director entity->unk3c bit0 (advance), blank VDP2, kill_objects_above_id(0).
+#   NOTE: with no input it parks on index 2; the director's own scene-0 selector (cur[43]=-1) also
+#   picks idx 2. So 81 -> (next44=0) -> scene 0 -> scene 2 (first gameplay stage).
+
+# ---- scene table (cart 0x26E660 / hwram 0x06072660, stride 0x50, 90 entries) ----
+# Descriptor fields used by the scene system:
+#   +0x00/04/08  draw/update obj handler ptrs (hwram)
+#   +0x10        off16 handler (hwram)   -- scene 81: func_02206c88 (camera intro, NOT a round loop)
+#   +0x14        off14 handler (hwram)   -- the scene's per-frame "content/game SM" task
+#   +0x1C        SPAWN-LIST SUB-RECORD ptr (hwram): 3 spawn-list ptrs {unk0=1P-even, unk4=1P-odd,
+#                                          unk8=2P/default}. 0 on scenes 79,80,81 (no player spawn).
+#   +0x20/+0x24  tile/texture group args (passed to func_02216c38)
+#   +0x29        scene-variant index (into per-handler record tables, e.g. 0x06074550)
+#   +0x2A (42)   g_0609868e seed
+#   +0x2B (43)   signed director selector  -> picks next index from +0x2C/+0x2D
+#   +0x2C (44)   next-index "A"   +0x2D (45) next-index "B"
+# Scene 0  sel=-1 (->2), next44=0 ; Scene 1 sel=4 (g_06098670?45:44 = 2 or loop 1), credit-wait.
+# Scene 73 sel=3 (credit both==2 ? 45=74 : 44=79) ; Scene 80 next44=81 ; Scene 81 sel=0 next44=0.
+
+# ---- stage/round scene handlers (the REAL gameplay scenes; player spawns in these) ----
+0x0221b080 scene_bootstrap_dispatch_4550   # (exists) even-stage off14 trampoline -> func_02218038
+0x02218038 scene_record_bootstrap_sm       # (exists) shared stage bootstrap SM (gameplay scene body)
+0x02232610 stage_intro_bootstrap           # (exists) odd/fade-stage off14 SM
+0x0221ce1c / 0x0221d2e0 / 0x0221eac0 / 0x0221f240  # per-stage-group off14 content SMs (exist)
+
+# ---- player-character spawn-script install path (JOB 2) ----
+0x0222a878 scene_value_select     # (exists) returns (*g_0609866C)->unk1C->{unk0|unk4|unk8} spawn-list,
+#                                   chosen by g_06098670 (2P present) + parity g_06098564.
+0x0222a5d0 process_spawn_list     # (exists) walks the 24-byte spawn-list at arg0->unk30; per entry:
+#   type==0 -> func_02227b60(&func_0222a300); type==7 -> func_02227b60(&func_0222a970);
+#   else (type-1) -> func_02227bc4(type-1)  == FIXED-ID player slot. type 1 = Player 1, type 2 = P2.
+0x02227bc4 spawn_register_fixed_id   # (exists) registers actor at slot (arg0+1) in table 0x06099584.
+0x0222a300 player_actor_fsm_arm      # (exists) player-actor FSM arm state; installs func_0222a418.
+0x0222a418 player_actor_anim_step    # (exists) player-actor config-script anim step.
+# Install point = scene DATA at descriptor+0x1C. Verified: scene 2/3/4/6 1P spawn-lists begin with a
+# type=1 (Player 1) entry (scene 3 p4 = type=2 Player 2; p8 = both). evt_actor_spawn_* tasks
+# (func_0221ca1e / 0221d4fc / 0221bf72 / 0221c690 / 0221cee8 / 0221eb62 / 0221f004 / 0221f088 ...)
+# set entity->unk30 = scene_value_select() then process_spawn_list(entity) -> the player spawns.
+
+# ---- credit -> director coupling globals (JOB 3) ----
+0x06098668 g_scene_index          # director's current scene index (0..81). Writers: func_02205b20
+#                                   (selector), func_022058a8 (boot: =0 test/auto, =1 normal coin-op),
+#                                   func_02205c96 (scene-0 scroll/force=2).
+0x0609866C g_scene_desc_ptr       # ptr to current scene descriptor (0x06072660 + idx*0x50).
+0x06098670 g_credit_armed         # "2P-armed"/credit-present. Scene-1 selector-4 gate (set->advance
+#                                   to scene 2). Set by scene_credit_join_sm(func_0220600e) + boot.
+0x06098674 g_credit_byte_p1       # P1 credit byte (0..4). 0x06098675 = P2. scene-73 selector-3 test.
+0x06098798 g_start_enable         # u16: bit4=P1 start-enable, bit5=P2 start-enable. BIOS/SYSTEM-
+#                                   SYNTHESIZED - NO cart code writes it. Read by scene81_game_sm
+#                                   START gate, scene_credit_join_sm, func_022016ac preamble.
+0x06000654 bios_credit_word       # BIOS: bit0x200=2P panel, low7=insert-coin countdown (0x7F idle).
+0x06000660 bios_panel_read        # BIOS fn-ptr: read control panel into buf. (*slot)(buf).
+0x06000664 bios_coin_consume      # BIOS fn-ptr: consume one coin for player; nonzero=accepted.
+0x06000798 bios_config_word       # BIOS: bit5 = test/service-mode flag (read by boot + bootstrap).

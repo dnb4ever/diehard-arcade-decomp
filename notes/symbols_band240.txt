@@ -1,0 +1,24 @@
+# Symbols discovered in band 0x02240000-0x0224c000 (worker: band240)
+# Format: addr(SH2)  name  notes
+# NOTE: these are band-local notes only; NOT merged into notes/symbols.txt.
+
+# --- decompiled this pass ---
+022444b6  func_022444b6   per-actor sweep-toward-target collision/path resolver (s32 ret: 0/1/2). DONE (src_functional/022444b6.c)
+
+# --- callees referenced by func_022444b6 (named, not decompiled; outside band) ---
+022448d0  func_022448d0   reachability test(actor, tgt, &actor->unk8) -> s32 (0 = blocked/clear path)
+022130b4  func_022130b4   angle(dy, dx) atan2-like; args r4=dy r5=dx; returns packed angle (used >>12 as step seed)
+02217838  func_02217838   collision hit-test(&pos{x,0,y}, &box[4], 0, playerIdx) -> hit-object* or NULL
+                          (call site is jsr @r8; r8 = mova(0x0224458c)+0xFFFD32AC = 0x02217838, hand-resolved)
+
+# --- per-player scratch/table globals (HWRAM) used by func_022444b6 ---
+06097128  g_actor_scratch10   base; stride 0x24 by actor->unk34. +0x00 seq-selector(s16); +0x10.. found-target ptrs
+060B6D9C  g_actor_box13       base; stride 0x48 by actor->unk34. +0x18,+0x1C,+0x20,+0x24 = collision box bounds
+0608DBD4  g_step_seq_tbl      s32[] : selector -> pointer to s16 step-code sequence
+0608DB6C  g_step_delta_tbl    {s32 dx, s32 dy}[] indexed by (step & 0xE)
+0608DBF4  g_step_status_tbl   s32[] : found-count -> status word (==2 means abort)
+
+# --- actor struct field offsets observed (0x02240000 band, "actor"/entity object) ---
+# +0x08 s32 posX    +0x10 s32 posY    +0x34 s8 playerIdx    +0x41 s8 turn-flag
+# +0x44 s8 facing/dir-sign flag    +0x5A u16 cur-dir    +0x5C s16 want-dir
+# +0x124 ptr target-actor    +0x158 ptr dir-table-holder (deref +0 -> s16 dir[])

@@ -1,0 +1,12 @@
+# Gen-3 symbols, band 0x210000-0x218000 (cart offsets) = runtime 0x02210000-0x02217fff
+# addr(runtime)  name                              confidence  notes
+0x022100f8  func_022100f8  (recoil_axis_ramp)        HIGH   per-frame recoil/shake channel ramp on ctrl->unk8; 3-phase; tail-calls 0x022386fc
+0x0221039a  func_0221039a  (obj_intensity_ramp)      HIGH   fade/intensity ramp; drives 16.16 fields via fxmul 0x022131c8 + 0x02213234; pokes *0x06098f08 nibble
+0x0221047c  func_0221047c  (vec2_magnitude)          HIGH   sqrt((|a|>>8)^2+(|b|>>8)^2); tail-calls isqrt 0x02213164 (first of 3 merged siblings)
+0x02210876  func_02210876  (anim_channel_interp)     HIGH   keyframe sampler ch=arg0->unk34; 32-bit outputs use cur-prev delta; interp helper 0x0024a420
+0x022109d4  func_022109d4  (anim_channel_interp_abs) HIGH   sibling of 0x02210876; 32-bit outputs use absolute keyframe value
+0x022119a4  func_022119a4  (actor_play_anim_seq)     MED    actor anim-script player (seq table 0x06053344); builds transform + submits model 0x02215a2c
+0x02214e2c  func_02214e2c  (displaylist_radix_sort)  HIGH   3-pass LSD radix sort of display records by 24-bit key rec[0x20]; no external calls
+0x022151d8  func_022151d8  (clear_sprite_tables)     HIGH   zero-fill 0x060cf0cc(0x3800) + 0x060d28cc(0x3400) via 0x022148ac (stub; extent over-runs)
+0x02215386  func_02215386  (clear_sprite_scratch)    HIGH   zero-fill 0x060d5ccc(0x200) via 0x022148ac (stub; extent over-runs into 0x2153f6)
+0x02215a2c  func_02215a2c  (submit_model_culled)     HIGH   screen-bounds/near-plane cull then ring-stage or immediate draw (0x02215cb4) of a model

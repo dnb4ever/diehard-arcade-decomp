@@ -1,0 +1,6 @@
+[
+  "reject poll-bearing C before replacing existing output",
+  "reject unsafe output work/converge/snapshot",
+  "reject unsafe output port/converge",
+  "identical generation preserves compiled-source mtimes"
+]

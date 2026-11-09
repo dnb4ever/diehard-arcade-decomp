@@ -1,0 +1,76 @@
+# Die Hard Arcade (Sega ST-V, SH-2 BE) - symbol map for the "gen2_218" functional wave.
+# MISSION: unlock the MERGED-EXTENT scripted-event sub-family (priority-1 from the
+# "gen" wave). Shared braf tail-call target 0x218038 locked, then the merged members
+# re-segmented into dispatcher + handler pairs, plus the deferred 0x21e8c4 cluster.
+# SH2 addr = cart offset + 0x02000000. Confidence HIGH = decompilation-proven,
+# hand-verified vs m2c_fn.py --asm, compiles clean gcc -Wall -Wextra (zero warnings).
+
+# ---- the shared branch target (locked ABI: r4 = task, r5 = record[12]) ----
+0x02218038 scene_record_bootstrap_sm  # HIGH  record-driven scene bootstrap FSM (4 states);
+                                      #       sibling of scene_bootstrap_sm (0x22027e4). The
+                                      #       braf tail-call target of the dispatcher family.
+
+# ---- merged-extent dispatchers (tiny per-scene trampolines, braf -> 0x218038) ----
+0x0221ce1c scene_bootstrap_dispatch_4b54  # HIGH  record = 0x06074b54 + (s8)(scene->unk29*12)
+0x0221b080 scene_bootstrap_dispatch_4550  # HIGH  record = 0x06074550 + (s8)(scene->unk29*12)
+0x0221f240 scene_bootstrap_dispatch_52b0  # HIGH  record = 0x060752b0 + (s8)(scene->unk29*12)
+                                          #       (census member 0x21f22e, pool-contaminated)
+0x0221eac0 scene_bootstrap_dispatch_51c0  # HIGH  record = 0x060751c0 + (u8)(scene->unk29*12)
+                                          #       (census member 0x21eaac, pool-contaminated)
+
+# ---- the separate handlers that FOLLOWED each braf (split out) ----
+0x0221ce3e evt_actor_spawn_flag1_once  # HIGH  one-shot: g_06098580|=1; pick+spawn list; terminate
+0x0221b0a2 evt_actor_anim_physics_step # HIGH  2-state motion/anim step; rng jitter; func_02154fc
+0x0221f262 evt_actor_spawn_respawn_b   # HIGH  spawn; timer=spawnlist->unk4; respawn on expiry
+0x0221eae2 evt_actor_spawn_notify_sfx  # HIGH  spawn; func_022332d4(g_060751B0); flag 0xC; sfx
+
+# ---- deferred 0x21e8c4 cluster (pool-contaminated; now resolved) ----
+0x0221e8c8 evt_actor_fall_proximity_step # HIGH  fall + per-frame draw; despawn on player proximity
+0x0221e9c6 evt_proximity_spawn           # HIGH  2D box proximity test -> spawn body 0x227906, ret -1/0
+
+# ---- callees referenced / newly named this wave ----
+0x02233388 func_02233388         # GUESS  2-arg(task, record->unk4) helper (0x218038 state 1)
+0x020feb0  func_0220feb0         # (existing) p=f_220fc82(a,b); pool-init; return p
+0x0221ad58 func_0221ad58         # (existing) spawn_matched_entities (s32 obj)
+0x0222a8d8 func_0222a8d8         # (existing) player-ready status; writes 0x06098564
+0x0221603e func_0221603e         # (existing) sound_emit_gated (s16 id)
+0x020fece  spawn_obj_0x6c        # (existing) allocate+init 0x6c-byte object (jsr target in 0x218038)
+0x020feec  func_0220feec         # (existing) spawn holder (parent, handler) -> obj
+0x02154fc  func_02154fc          # MED    4-arg(entity, s32, s32, s32); r7&3 switch; called in 0x21b0a2
+0x02227906 func_02227906         # GUESS  spawned-body handler (passed by ptr from 0x21e9c6)
+0x0222a878 func_0222a878         # (existing) scene_value_select -> active spawn-list ptr
+0x0222a5d0 process_spawn_list    # (existing) walk+spawn a spawn-descriptor list (arg = entity)
+0x022332d4 func_022332d4         # (existing) notify/register helper (arg g_060751B0)
+0x02210020 func_02210020         # (existing) rng_next (nilary)
+0x022149aa func_022149aa         # (existing) mtx_load_abc (ignores arg)
+0x02214a50 func_02214a50         # (existing) draw helper (entity+8)
+0x022149e4 func_022149e4         # (existing) mtx_rotate_zyx (u16* angles)
+0x02213ce4 func_02213ce4         # (existing) mat3_scale_columns (s32 x,y,z)
+0x02215a2c func_02215a2c         # (existing) sprite submitter (entity, 0)
+
+# ---- data globals referenced this wave ----
+0x06074b54 g_sceneRecordTbl_4b54 # void[12][] per-scene bootstrap records (dispatch_4b54)
+0x06074550 g_sceneRecordTbl_4550 # void[12][] per-scene bootstrap records (dispatch_4550)
+0x060752b0 g_sceneRecordTbl_52b0 # void[12][] per-scene bootstrap records (dispatch_52b0)
+0x060751c0 g_sceneRecordTbl_51c0 # void[12][] per-scene bootstrap records (dispatch_51c0)
+0x0609866c g_sceneStatePtr       # ptr to scene state struct (unk29 = variant, unk2B = mode)
+0x06098560 g_bootSpawnObj        # <- func_0220feb0 result (0x218038 state 1)
+0x06098564 g_playerReadyFlags    # player-ready bitfield (written by func_0222a8d8)
+0x06098568 g_playerActiveFlags   # copy of ready flags; bits 0/1 gate per-player proximity
+0x06098664 g_sceneReadyFlag      # == 1 gates state-2 spawn / cleared on teardown
+0x06098670 g_sceneModeFlag       # == 1 gate in 0x218038 state 2
+0x06098734 g_ctrl1Word           # player-1 input word (& 7 gate)
+0x0609874c g_ctrl2Word           # player-2 input word (& 7 gate)  [= 0x06098734 + 24]
+0x060996d0 g_bootSpawnArg        # ptr arg forwarded to func_0220feb0
+0x06098f08 g_vdp2Shadow          # ptr to VDP2 shadow-register block (unk0/unk114/116/118)
+0x060995b0 g_060995B0            # void*[] per-slot source objects (idx by entity->unk34)
+0x06099580 g_entitySysCtx        # global entity-system context ptr (spawn parent)
+0x060995b4 g_player1Obj          # player-1 object ptr
+0x060995b8 g_player2Obj          # player-2 object ptr
+0x06099788 g_slotCounters        # s16[] per-slot counters (+=8, clamped by g_06099794*2)
+0x06099794 g_slotCounterMax      # s16 clamp base (doubled) for g_06099788
+0x06074efc g_fallInitConst       # s32 init const (entity->unk8 in 0x21e8c8)
+0x06098878 g_drawPriority        # draw-context accumulator (+/- 0x30)
+0x0609882c g_curActorObj         # current scene/actor object ptr
+0x06098580 g_eventFlags          # event-flags word (|= 1 / 0xC by handlers)
+0x060e0ddc g_sfxEnableFlag       # gate: nonzero -> handlers fire their sfx

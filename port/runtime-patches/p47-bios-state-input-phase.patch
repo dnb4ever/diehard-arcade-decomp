@@ -1,0 +1,147 @@
+--- a/runtime/src/machine/bios.cpp
++++ b/runtime/src/machine/bios.cpp
+@@ -400,6 +400,23 @@
+ //   STV_SCENEPIN ="idx"           every frame: pin g_06098668=idx, g_0609866c=desc(idx)
+ //   STV_SCENEJOIN="startvb"       from VB>=startvb: g_06098674=g_06098675=2 (scene-73 branch -> 74)
+ //   STV_SCENECHAR="v"             every frame: g_0609856c=v (scene-75 branch -> 76 + (v&3))
++// Physical panel pins are scheduled at the host/raster boundary. The BIOS scans
++// them only when the guest calls service 0x610 (ROM 0x30114 -> 0x31498).
++static uint16_t g_stv_physical_raw[2], g_stv_physical_sys;
++static void stv_scan_inputs() {
++    for (unsigned p = 0; p < 2; ++p) {
++        uint32_t a = 0x06000708u + 8*p;
++        uint16_t prev = (uint16_t)ld16(a), now = g_stv_physical_raw[p];
++        st16(a, now); st16(a+2, prev);
++        st16(a+4, (uint16_t)(now & ~prev)); st16(a+6, (uint16_t)(prev & ~now));
++    }
++    uint16_t prev = (uint16_t)ld16(0x06000728u), now = g_stv_physical_sys;
++    st16(0x06000728u, now); st16(0x0600072Au, prev);
++    st16(0x0600072Cu, (uint16_t)(now & ~prev));
++    st16(0x0600072Eu, (uint16_t)(prev & ~now));
++    if (now & ~prev & 1) deliver_coin(0);
++    if (now & ~prev & 2) deliver_coin(1);
++}
+ static bool s_playroute_fired = false;   // set once STV_PLAYROUTE seeds the director; read by STV_JOINHOLD
+ void stv_scene_probe_tick(uint64_t vb) {
+     // Publish physical controls once per VBlank even if no panel service is called.
+@@ -416,8 +433,8 @@
+     raw_controls[0] |= live_raw[0];
+     raw_controls[1] |= live_raw[1];
+     stv_autoplay(vb, raw_controls[0]);
+-    st16(0x06000708u, raw_controls[0]);
+-    st16(0x06000710u, raw_controls[1]);
++    g_stv_physical_raw[0] = raw_controls[0];
++    g_stv_physical_raw[1] = raw_controls[1];
+ 
+     // The BIOS system-switch record at 0x06000728 (fifth raw input record). The real BIOS
+     // (ROM 0x31764) packs ~PORTC every frame as COIN1 0x01, COIN2 0x02, TEST 0x04,
+@@ -430,21 +447,8 @@
+         static const uint16_t kSysBit[] = {0, 0x10, 0x20, 0x01, 0x02, 0x08};
+         if (event.kind >= 1 && event.kind <= 5) sys |= kSysBit[event.kind];
+         if (event.kind == 8) sys |= 0x04; // Physical TEST switch (still exits to unimplemented BIOS menus).
+-        if ((event.kind == 3 || event.kind == 4) && !event.fired) {
+-            event.fired = true;
+-            deliver_coin(event.kind - 3);
+-        }
+-    }
+-    static uint16_t live_prev;                 // a coin switch closing at the window inserts one coin
+-    if (live_sys & ~live_prev & 0x01) deliver_coin(0);
+-    if (live_sys & ~live_prev & 0x02) deliver_coin(1);
+-    live_prev = live_sys;
+-    sys |= live_sys;
+-    uint16_t sys_prev = (uint16_t)ld16(0x06000728u);
+-    st16(0x06000728u, sys);
+-    st16(0x0600072Au, sys_prev);
+-    st16(0x0600072Cu, (uint16_t)(sys & ~sys_prev));
+-    st16(0x0600072Eu, (uint16_t)(sys_prev & ~sys));
++    }
++    g_stv_physical_sys = sys | live_sys;
+ 
+     // Read-only P4.1 diagnostics; print each VBlank, including empty player slots.
+     static const bool p41trace = std::getenv("STV_P41TRACE") != nullptr;
+@@ -1408,6 +1412,15 @@
+             } else if (sp == 0x06000660u) {              // "log" (and any other) keep the real read
+                 stv_panel_read(c.r[4]);
+             }
++        } else if (sp == 0x06000610u) {
++            if (stv_sysbios_on()) stv_scan_inputs();
++        } else if (sp == 0x06000634u) {
++            // ROM 0x4DC0: eight game-setting bytes for the selected slot.
++            uint32_t source = 0x0600079Eu + 10 * ld8(0x06000650u);
++            for (unsigned i = 0; i < 8; ++i) st8(c.r[4] + i, ld8(source + i));
++        } else if (sp == 0x0600063Cu) {
++            // ROM 0x372C: slot's backup-RAM area, not a device query result.
++            c.r[0] = 0x20180100u + 0xF00u * ld8(0x06000650u);
+         } else if (sp == 0x06000660u) {                  // DEFAULT: the control-panel read
+             stv_panel_read(c.r[4]);
+         } else if (sp == 0x0600066Cu) {                  // DEFAULT: in-game flags to the BIOS
+--- a/runtime/tests/CMakeLists.txt
++++ b/runtime/tests/CMakeLists.txt
+@@ -8,5 +8,5 @@
+   set(CMAKE_BUILD_TYPE Release)
+ endif()
+ include(${CMAKE_CURRENT_LIST_DIR}/../runtime.cmake)
+-add_executable(runtime_tests main.cpp no_modules.cpp vdp2_test.cpp onchip_test.cpp bup_test.cpp pads_test.cpp settings_test.cpp touch_test.cpp pace_test.cpp frame_change_test.cpp modem_test.cpp scu_test.cpp cdrom_test.cpp cdblock_test.cpp clock_test.cpp tasks_test.cpp scsp_test.cpp)
++add_executable(runtime_tests main.cpp no_modules.cpp stv_bios_test.cpp vdp2_test.cpp onchip_test.cpp bup_test.cpp pads_test.cpp settings_test.cpp touch_test.cpp pace_test.cpp frame_change_test.cpp modem_test.cpp scu_test.cpp cdrom_test.cpp cdblock_test.cpp clock_test.cpp tasks_test.cpp scsp_test.cpp)
+ target_link_libraries(runtime_tests saturn_core saturn_machine saturn_host Threads::Threads)
+--- a/runtime/tests/stv_bios_test.cpp
++++ b/runtime/tests/stv_bios_test.cpp
+@@ -0,0 +1,58 @@
++#include "saturn.h"
++#include "test.h"
++
++extern void stv_scene_probe_tick(uint64_t vb);
++
++TEST(stv_bios_scans_physical_panel_when_guest_calls_frame_service) {
++    stv_input_script("1:P1RIGHT:2,1:START1:2");
++    for (uint32_t a = 0x06000700; a < 0x06000780; a += 4) st32(a, 0);
++    SH2Context c{};
++    c.pr = 0x06005000;
++    stv_scene_probe_tick(1);
++    CHECK_EQ(ld16(0x06000708), 0);
++    CHECK_EQ(ld16(0x06000728), 0);
++    CHECK_EQ(bios_call(c, 0x4010), true);
++    CHECK_EQ(c.pc, c.pr);
++    CHECK_EQ(ld16(0x06000708), 0x200);
++    CHECK_EQ(ld16(0x0600070C), 0x200);
++    CHECK_EQ(ld16(0x06000728), 0x10);
++    CHECK_EQ(ld16(0x0600072C), 0x10);
++    stv_scene_probe_tick(2);
++    CHECK_EQ(ld16(0x0600072A), 0);
++    bios_call(c, 0x4010);
++    CHECK_EQ(ld16(0x0600072A), 0x10);
++    CHECK_EQ(ld16(0x0600072C), 0);
++    stv_scene_probe_tick(3);
++    bios_call(c, 0x4010);
++    CHECK_EQ(ld16(0x06000708), 0);
++    CHECK_EQ(ld16(0x0600070E), 0x200);
++    CHECK_EQ(ld16(0x06000728), 0);
++    CHECK_EQ(ld16(0x0600072E), 0x10);
++    stv_input_script("");
++}
++
++TEST(stv_bios_settings_copies_eight_bytes_for_selected_slot_only) {
++    SH2Context c{};
++    c.r[4] = 0x060F1004;
++    st8(0x06000650, 1);
++    st32(0x060F1000, 0x12345678);
++    st32(0x060F100C, 0x87654321);
++    for (unsigned i = 0; i < 8; ++i) st8(0x060007A8 + i, 0x30+i);
++    CHECK_EQ(bios_call(c, 0x4034), true);
++    CHECK_EQ(ld32(0x060F1000), 0x12345678);
++    CHECK_EQ(ld32(0x060F1004), 0x30313233);
++    CHECK_EQ(ld32(0x060F1008), 0x34353637);
++    CHECK_EQ(ld32(0x060F100C), 0x87654321);
++    st8(0x06000650, 0);
++}
++
++TEST(stv_bios_backup_area_is_selected_by_slot) {
++    SH2Context c{};
++    for (unsigned slot = 0; slot < 4; ++slot) {
++        st8(0x06000650, slot);
++        c.r[4] = 3; // ROM 0x372C ignores the caller's argument.
++        CHECK_EQ(bios_call(c, 0x403C), true);
++        CHECK_EQ(c.r[0], 0x20180100 + 0xF00*slot);
++    }
++    st8(0x06000650, 0);
++}

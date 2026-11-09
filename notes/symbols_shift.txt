@@ -1,0 +1,21 @@
+# Die Hard Arcade (ST-V, SH-2 BE) - callers unblocked by the variable-shift helpers
+# Format: 0x<SH2addr> <name>   # <confidence> <evidence>
+# NEW file for the shift-helper caller pass (do NOT merge into symbols.txt without review).
+# Helper ABIs (from notes/functional_disp.md / symbols_disp.txt):
+#   func_0224a360 ashl_var(value r0, count r1) -> value<<count   (count<0 unchanged; >=32 -> 0)
+#   func_0224a420 ashr_var(value r0, count r1) -> (signed)value>>count (count<0 unchanged; >=32 -> sign)
+
+# ---- VDP2 register-shadow packers (6-bit component matrix builders) ----
+0x02221bd4 vdp2_shadow_pack6_arr   # HIGH  void(s32 which, s32 *src16). *g_06098F08 block. 33 ashr_var. mode 11/12/13/14 from bits of shadow 0x2A/0x38; writes field 0x3E nibble + 8 words at 0x50/0x60 bank, each (comp(src[2i+1])<<8)|comp(src[2i]), comp(v)=ashr_var(v+0xDA200000,mode)&0x3F. Loop form (unroll collapsed). Hand-verified vs m2c --asm.
+0x0222184c vdp2_shadow_pack6_args  # HIGH  void(s32 which, s32 v0..v15). Same packer as 0x2221bd4 but 16 scalar args (v0..v2 in r5-r7, v3..v15 on stack) instead of an array. 33 ashr_var. real entry 0x22156c-style find_entry fix not needed (0x22184c is the corrected entry for mission's 0x221842). Hand-verified.
+0x0222156c vdp2_shadow_pack4_sel   # HIGH  void(s32 sel, s32 a1..a4). Same family, 4-way bank selector. 17 ashr_var. real entry 0x22156c (mission 0x221842->... actually find_entry: 0x22154e is pool-contaminated -> 0x22156c). sel 0..3 picks mode-input bits (shadow 0x28/0x2A + 0x30/0x32/0x34/0x36) and dest bank 0x40+4*sel/0x42+4*sel + nibble in 0x3C bits [4*sel..]. sel>3 = no-op. Hand-verified.
+
+# ---- object animation / draw state machines (shift-driven) ----
+0x02238e94 obj_anim_step     # HIGH  void(void *actor). obj=*(actor+8). phase byte @+0x10: 0=load start size, 1=load target + seed deltas (ashl_var(30,g_06096C90), ashr_var(4,g_06096C90)), 2=shrink per-frame & clear on expiry. All paths tail-call func_022386fc(obj+0x34). 1 ashl + 1 ashr. Hand-verified.
+0x0222ea94 rescale_active_slots  # HIGH  void(s32 level). if(level!=g_06096C90 && level>=0): for 8 slots with flag set, M8((*(ptr+8))+0x40) = ashl_var(that_byte, level-g_06096C90); then g_06096C90=level. 4 ashl_var (4x unrolled, 2 outer passes). Hand-verified.
+0x0221d176 obj_retract_step  # HIGH  void(void *actor). obj=*(actor+8). phase @+0x10: 0 latches 2 child ptrs (gated by g_06098568 bits 0/1) + counter=ashl_var(19,g_06096C90), FALLS THROUGH to 1; 1/2 pull each child's +0x10 coord in by ashr_var(const,g_06096C90). 1 ashl + 4 ashr. Hand-verified.
+0x0223115c obj_expand_draw4  # HIGH  void(void *actor). obj=*(actor+8). phase @+0x10: 0 seed (counter=ashl_var(30,g_06096C90)) FALLTHROUGH to 1; 1 grow/ease half-extents via 4 ashr_var; 2 clear actor. Draw tail: 4-quadrant sprite submit via func_022153f6(obj, obj->0x60, 1) (PIC jsr @r13 = mova(0x23129c)+0xFFFE415A -> 0x022153f6, 3-arg). 1 ashl + 4 ashr. Hand-verified.
+
+# ---- cross-referenced callees (resolved, used as externs; NOT shipped this pass) ----
+0x022386fc <copy_size_triple>   # tail-call target of 0x2238e94; void(void*). (already decompiled by prior pass)
+0x022153f6 <sprite_submit1>     # PIC draw callee of 0x223115c; void(void*,s32,s32). (already decompiled)

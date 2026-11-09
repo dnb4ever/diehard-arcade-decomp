@@ -1,0 +1,25 @@
+# Band: hard-tail 0x0222e3b0 (was deferred in banddraw). Functional (equivalence) decomp.
+# Worker: bande3b0. SH2 addresses (cart offset = addr - 0x02000000).
+#
+# ---- function shipped this band ----
+0x0222e3b0 pose_matrix_blend_decompose  # HIGH. void func(s32 arg0 jointIdx, s32 arg1 shiftBits, s32 arg2 weight). 16-joint loop (compiler 4x-unrolled; shipped rolled). off=(s16)(arg0*108); prev@0x0609661C+off next@0x06096910+off cur@0x06096328+off (6B/joint). w=arg2, b=(1<<arg1)-arg2 via ashl_var. Per joint: build rot matrix A from prev angles + B from next angles (mtx_rotate_zyx), copy basis cols 0&2 of each, blend col=A*w+B*b, then re-decompose: lookat_angles_xy((0,0,0)->blend0)->cur[+2],cur[+4]; rot_y(-cur[+2]).rot_z(-cur[+4]); mtx_apply_vec(blend1)->g_06098B1C; cur[+0]=angle_from_vec2(dvec[2],dvec[1]). Matrix cell *0x06098878 push +0x30 entry / pop -0x30 exit. All 41 computed branches resolved. Compiles -Wall -Wextra clean.
+#
+# ---- deferral now RESOLVED ----
+# The sliding-sp @-r15 pushes (0x22e508/50e/514/51a per block) are lookat_angles_xy's
+# 4 stack args; 4 blocks accumulate sp SP0->-16->-32->-48, bulk-cleaned add #64,r15
+# @0x22e9a2 + add #104,r15 epilogue @0x22e9f8. All blocks address identical frame
+# slots (disps carry +0/+16/+32/+48). => plain rolled 16-iter loop; no fixed-slot
+# hazard. m2c's sp24/sp28/sp38 "use-before-def" are shifted block2/3 reads, not bugs.
+#
+# ---- confirmed globals (HWRAM) ----
+0x06098878 g_mtx_stack_top    # active matrix cell pointer; push +0x30 / pop -0x30
+0x06098B1C g_mtx_out_vec      # mtx_apply_vec(0x02213538) output vector (3 longs)
+0x06096328 g_pose_buf_cur     # output angle buffer, stride 108, off=(s16)(arg0*108), 6B/joint
+0x0609661C g_pose_buf_prev    # prev-pose angle buffer (source A), stride 108
+0x06096910 g_pose_buf_next    # next-pose angle buffer (source B), stride 108
+#
+# ---- callees referenced (owned elsewhere; declared extern) ----
+0x0224a360 ashl_var(val,cnt)=val<<cnt     0x02213fb4 load_matrix_default()
+0x022149e4 mtx_rotate_zyx(u16* angles)    0x02213bf4 mtx_rotate_y(angle)
+0x02213c4c mtx_rotate_z(angle)            0x02213538 mtx_apply_vec(x,y,z)->g_06098B1C
+0x022130b4 angle_from_vec2(a,b)           0x02210622 lookat_angles_xy(6 vals,2 outptr)

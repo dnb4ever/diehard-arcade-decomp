@@ -1,0 +1,39 @@
+# symbols_combatSM.txt - worker: combatSM (player-input/combat state machine @0x02223ee0)
+# notes/symbols.txt left untouched per task. Function shipped as func_02223ee0 (file 02223ee0.c)
+# per task naming; symbols.txt already lists this addr as `actor_behavior_fsm` (same function).
+
+# --- SHIPPED (HIGH) ---
+0x02223ee0 func_02223ee0   # = actor_behavior_fsm (symbols.txt). Per-player input/combat state
+#   machine. void(void *entity/r4). Extent [0x02223ee0,0x02225fac) code + [,0x225fe8) pool,
+#   0x20cc code bytes / ~4150 insn. One function, one epilogue @0x225fa2. WHOLE function shipped.
+#   Reads player slot = M8(entity,0x34); input records g_06098734[slot-1] (stride 0x18) and
+#   g_060987AC[slot-1] (stride 6). Working copies: cat=M32(e,0x84) action-category bitfield,
+#   st=M32(e,0x88) state; committed back at epilogue. MAIN braf jump table @0x22403e on
+#   (st-14) states 14..23 (10 cases, table@0x224044 s16, target=0x224042+entry, default
+#   0x2243ca). Early combo-replay goto: if MU16(g_06096E90,slot*2)!=0 -> 0x225c12 (skip input).
+
+# --- callees ---
+0x0220fb98 func_20fb98     # called via bsrf@0x223fc2. func_20fb98(rec8734, rec87ac) - per-frame
+#   input-record preprocess (2 ptr args r4,r5; result ignored).
+0x0223c7f6 func_23c7f6     # called via bsrf x4 (@0x224b06,0x225654,0x225716,0x225d36).
+#   func_23c7f6(entity)->s32 (r4=entity; result tested !=0). Action-commit / transition probe.
+0x02225fac func_225fac     # bsr@0x225c6c (already shipped 02225fac.c). func_225fac(entity,
+#   src_desc, arr_base, (s16)b30): append interaction/shot records.
+
+# --- globals (HWRAM) ---
+0x06098734 g_06098734      # per-player input/zone record base, stride 0x18. fields: +0=cur buttons,
+#                            +4/+6 extra button words, +0xC/+0x10/+0x12 counters (s16)
+0x060987AC g_060987AC      # second per-player record base, stride 6 (+2 s16, +5 s8)
+0x06096C74 g_06096C74      # per-slot idle/neutral anim id (s32, idx slot)
+0x06096E90 g_06096E90      # per-slot combo-replay entry count (u16, idx slot)
+0x06096CA0 g_06096CA0      # per-slot combo-replay length/capacity (u16/s16, idx slot)
+0x06096EA0 g_06096EA0      # per-slot replay cursor/next-index (u16, idx slot)
+0x06096EB0 g_06096EB0      # per-slot hit/stale counter, clamped to 0x1F (s16, idx slot)
+0x06096CB0 g_06096CB0      # per-slot combo-record buffer, 0x3C bytes/slot, 6-byte entries
+0x060987BC g_060987BC      # global frame timer / render guard (s32)
+0x060862A8 g_060862A8      # per-slot pointer table (idx slot*4) -> move-set tables
+0x0604EBE4 g_0604EBE4      # per-slot collision/state flag words (s32, idx unk45)
+# animation/pose id tables (all indexed by char/move-set unk45; see report for stride):
+0x06087D48 g_pose_tab_D48  0x06087D78 g_pose_tab_D78  0x06087D90 g_pose_tab_D90
+0x06087DA8 g_pose_tab_DA8  0x06087DC0 g_pose_tab_DC0  # jump-table states 14-23 pose tables
+0x06087974 g_slotgate_974  # per-slot gate bytes, stride 4 (+0,+1,+2,+3 variants: 974/975/976/977)

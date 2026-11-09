@@ -1,0 +1,53 @@
+# Die Hard Arcade (Sega ST-V, SH-2 BE) - symbol map for the "gen" functional wave.
+# Scripted-event actor-step handlers (0x21cxxx-0x21fxxx), plus spawn/clone/dispatch
+# helpers (0x220xxx, 0x22cxxx, 0x230xxx, 0x233xxx, 0x23cxxx, 0x247xxx).
+# SH2 addr = cart offset + 0x02000000. Confidence: HIGH = decompilation-proven,
+# hand-verified vs m2c_fn.py --asm, compiles clean gcc -Wall -Wextra (zero warnings).
+
+# ---- functions decompiled this wave (project/src_functional/) ----
+0x0221ccf8 evt_actor_spawn_wait100   # HIGH  actor step FSM: spawn, wait 100f on entity->unk18, flag, end
+0x0221ce6e evt_actor_spawn_sfx66     # HIGH  actor step FSM: spawn+flag 0xC, sfx A01206FF, 0x42f timer, sfx A01207FF
+0x0221cee8 evt_actor_spawn_sfx40     # HIGH  actor step FSM: spawn, sfx A01208FF, 0x28f timer, sfx A01209FF, end
+0x0221d4fc evt_actor_spawn_respawn   # HIGH  actor step FSM: spawn, timer=spawnlist->unk4, re-run spawn on expiry
+0x0221eb62 evt_actor_spawn_notify    # HIGH  actor step FSM: spawn, func_022332d4(g_060751B0), flag 4, 0x34f timer, flag 2
+0x0221f1d6 evt_actor_spawn_wait11    # HIGH  actor step FSM: spawn, wait 11f on entity->unk1C, flag 1
+0x0221ca1e evt_actor_spawn_4state    # HIGH  actor step FSM (4 states): spawn, flag-refresh, re-spawn, end
+0x02219916 evt_actor_render          # HIGH  per-frame draw step; pose from (unkF<<8)|unk12; 4 draw helpers inside g_06098878 +/- 0x30
+0x0221f004 evt_actor_spawn_child     # HIGH  one-shot: spawn, flag 0xC, func_0220fece(task,&func_0221ad06) child, attach g_06075244
+0x02220190 spawn_entry_list          # HIGH  spawn one child task per entry of g_06090970[scene->unk28] (while entry->unk2 > 0)
+0x02247d6e actor_block_setup         # HIGH  set up a slot entity's block/guard reaction (rng_next&7 clamped, func_02245fc4)
+0x022301c4 spawn_clone_from          # HIGH  spawn from template g_06091354[idx], copy ~18 fields from a source entity
+0x02233122 evt_timed_dispatch        # HIGH  task step: init, countdown, then INDIRECT dispatch (*g_060902A0)(...), end
+0x0222c322 actor_fall_setup          # HIGH  init fall physics; dispatch via fp table g_060911BC[g_0609979A](actor,0xE)
+0x0223c6bc actor_draw_proximity      # HIGH  pick pose by player proximity (g_060995B4/B8), vec3_array_matmul draw
+
+# ---- callees referenced (named here; most already decompiled elsewhere) ----
+0x0222a878 scene_value_select        # (existing) returns the active spawn-list ptr by player mode
+0x0222a5d0 process_spawn_list        # (existing) walk+spawn a spawn-descriptor list (arg = entity, reads unk30)
+0x0222a708 slot_flag_refresh         # (existing) per-slot flag refresh (void)
+0x02210020 rng_next                  # (existing) PRNG - confirmed as the &7 small-random in actor_block_setup
+0x02213ca4 vec3_array_matmul         # (existing) 16.16 matrix*vector transform (draw path)
+0x0220fece spawn_child_task          # MED   (task, &template) -> spawn holder; returns obj whose unk8 is the entity
+0x0220ff28 spawn_from_template       # MED   (parent, template) -> spawn holder (used by spawn_clone_from)
+0x0220ff54 spawn_from_template2      # MED   (task, template) -> spawn (used by evt_timed_dispatch)
+0x02215f6c sfx_trigger              # MED   sound-effect trigger (u32 packed id, e.g. 0xA012xxFF / 0xA0130BFF)
+0x022332d4 func_022332d4            # GUESS (void* ) notify/register helper (arg g_060751B0)
+0x02238dde func_02238dde            # GUESS (void* obj) post-clone init (in spawn_clone_from)
+0x02245fc4 func_02245fc4            # GUESS (actor, entity) -> s32 tested; block-reaction sub-decision
+
+# ---- data globals named this wave ----
+0x06098580 g_eventFlags             # event-flags word (OR'd with 1/2/4/0xC by the evt handlers)
+0x060E0DDC g_sfxEnableFlag          # gate: when nonzero the evt handlers fire their sfx
+0x06098878 g_drawPriority           # draw-context accumulator (+/- 0x30 around draw-helper runs)
+0x06090970 g_sceneEntryLists        # void*[] per-scene entry-list pointers (idx scene->unk28)
+0x06091354 g_spawnTemplates         # void*[] spawn templates (idx by arg)
+0x060911BC g_stateDispatchTable     # fp table (void(*)(actor,s32)) idx g_0609979A
+0x060902A0 g_eventDispatchSlot      # single runtime fp slot (void(*)(void*,void*,void*))
+0x0609979A g_dispatchIndex          # s16 index into g_060911BC
+0x060997A4 g_evtWord1               # s32 set to 0x11 by evt_timed_dispatch
+0x060997A8 g_evtWord2               # s32 set to 3 by evt_timed_dispatch
+0x0609974C g_slotStatusWords        # s16[] per-slot status (set 0x49 in spawn_clone_from)
+0x060995B4 g_player1Obj             # player-1 object pointer (proximity test)
+0x060995B8 g_player2Obj             # player-2 object pointer (proximity test)
+0x060E0F6C g_proximityRecords       # u8[] per-actor proximity records (stride 4; u32 fields unk20/unk40)
+0x0609882C g_curActorObj            # (existing) current actor object pointer

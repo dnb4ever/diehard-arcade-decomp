@@ -1,0 +1,7 @@
+{
+  "version": "1.00",
+  "ranges": [
+    {"start": "0x06000000", "end": "0x06004000", "reason": "BIOS vectors/services replaced by port sentinels; BIOS work area and initial master stack. Known architectural difference, not game state."},
+    {"start": "0x060E0DD0", "end": "0x060E0DDC", "reason": "Slave command-ring read/write pointers and busy handshake; asynchronous sampling. Documented in notes/port/freeze_diagnosis.md."}
+  ]
+}

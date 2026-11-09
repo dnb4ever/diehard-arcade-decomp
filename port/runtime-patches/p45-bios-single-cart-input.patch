@@ -1,0 +1,301 @@
+--- a/runtime/src/machine/bios.cpp
++++ b/runtime/src/machine/bios.cpp
+@@ -258,121 +258,44 @@
+ }
+ 
+ // ---- the coin / credit path -----------------------------------------------------------
+-// How a coin becomes a credit in this game (all traced from the game's own code):
+-//   1. The ST-V BIOS coin-input service *0x06000664(player) reports a coin on a slot
+-//      (r4=0 P1, r4=1 P2). The game's coin-detect fn @runtime 0x060065f0 polls it and,
+-//      on a coin, raises the coin-pending flag 0x0609880C (word, =1).
+-//   2. The game's credit-accrual fn @0x060045f8 (called every frame from the attract
+-//      handler fn 06008868) gates on 0x0609880C==1 && 0x0609880E==1, then increments the
+-//      credit byte 0x06098674, updates the BIOS coin meter via *0x06000640, and clears
+-//      the pending flag. Credit display and the attract->play (START on the credit>0
+-//      branch of the coin-wait handler @0x060089b8) are then the game's own logic.
+-//
+-// REACHABILITY NOTE (honest): in the attract sub-state the boot-shortcut harness lands in,
+-// only 0x610/0x660/0x668 are polled per frame -- the coin-detect fn 0x060065f0 (and with it
+-// the 0x664 read) is NOT scheduled (it belongs to the title/insert-coin state a fuller boot
+-// would reach). So the 0x664 service below is implemented faithfully but is currently never
+-// called. To actually deliver a coin we therefore raise the coin-pending flag 0x0609880C
+-// directly (deliver_coin), i.e. we substitute ONLY the unrun hardware coin-switch -> 0x880C
+-// detect step; everything downstream (accrual, meter, display, play-mode transition) is the
+-// game's real code. If a future fuller boot reaches the 0x664-polling state, drop the direct
+-// 0x880C raise in stv_panel_read to avoid double-crediting.
++// The ST-V BIOS owns coins. Its per-frame service *0x06000610 (ROM 0x30114, run from RAM
++// 0x06000D14) samples the coin switches (PORTC bits 0/1) and accrues credits in backup RAM;
++// the cart never sees a coin. It sees only the credit count and per-player start code in
++// the 0x06000660 panel report (stv_panel_read), and it calls *0x06000664(player) to take one
++// credit when START is pressed (func_0220f9d4, func_0220600e). The factory default is a
++// common coin chute, 1 coin = 1 credit, so both slots feed one pool and a coin is accepted
++// at any time (MAME 0.285 with epr-17952a: notes/port/p45_bios_floors.md).
+ static void deliver_coin(int player) {
+-    // Faithful to the real coin-detect fn @runtime 0x060065f0 (cart 0x20faf8). That routine raises
+-    // the per-slot coin-pending flag ONLY when (a) the pending flag is not already set and (b) the
+-    // per-slot credit byte (0x06098674 P1 / 0x06098675 P2) is 0 or 3. The harness substitutes the
+-    // unrun coin-switch -> pending-flag step, so it must apply the SAME gate. The old code latched
+-    // 0x0609880C unconditionally (and, bug, used 0x0609880C for BOTH players): a 2nd coin re-raised
+-    // the pending flag in a credit state the real coin-detect never would, corrupting the credit/
+-    // arm bookkeeping and permanently parking the attract reel (2P-armed flag 0x06098670 held = 1).
+-    // With the gate, each coin accrues one credit and the attract reel self-recovers (the game's own
+-    // scene-81 reset-timeout clears 0x06098670 and the reel cascades) -- the faithful behaviour.
+-    uint32_t pend   = player == 0 ? 0x0609880Cu : 0x06098810u;
+-    uint32_t credit = player == 0 ? 0x06098674u : 0x06098675u;
+-    uint8_t cb = (uint8_t)ld8(credit);
+-    if (ld16(pend) == 0 && (cb == 0 || cb == 3)) {
+-        g_stv_credits++;    // FAITHFUL: bank a BIOS coin-credit for the 0x06000664 consumer path
+-        if (ld32(0x060987D0u) == 0u) {
+-            st16(pend, 1);
+-            sat_note("ST-V coin: P%d coin -> coin-pending 0x%08X=1, BIOS credit bank=%d at VB %llu (game accrues the credit)",
+-                     player + 1, pend, g_stv_credits, (unsigned long long)sat_vblanks());
+-        } else {
+-            sat_note("ST-V coin: P%d coin -> banked in BIOS credit bank=%d (scene-1 0x060987D0=1 awaits START via 0x06000664) at VB %llu",
+-                     player + 1, g_stv_credits, (unsigned long long)sat_vblanks());
+-        }
+-    } else {
+-        sat_note("ST-V coin: P%d coin ignored by coin-detect gate (credit byte=%u, pending=%u) at VB %llu",
+-                 player + 1, cb, (unsigned)ld16(pend), (unsigned long long)sat_vblanks());
+-    }
+-}
+-
+-// The ST-V BIOS coin-input read service body (0x06000664). Faithful but currently unreached
+-// (see note above). Reports a scripted coin on the given slot for a short window.
+-static int stv_coin_read(int player) {
+-    int want = player == 0 ? 3 : 4;
+-    uint64_t vb = sat_vblanks();
+-    for (StvEvent& e : g_stv_events)
+-        if (e.kind == want && vb >= e.vb && vb < e.vb + 2) return 1;
+-    return 0;
++    g_stv_credits++;
++    sat_note("ST-V coin: COIN%d -> BIOS credits=%d at VB %llu", player + 1, g_stv_credits,
++             (unsigned long long)sat_vblanks());
+ }
+ 
+ // ======================================================================================
+-// FAITHFUL ST-V SYSTEM-BIOS LAYER (the JAMMA control panel + coin/credit state the real
+-// ST-V BIOS publishes into system work RAM every frame). Implemented because, with no ST-V
+-// BIOS ROM, these system words were all left zero and the game sat in the attract/coin-wait
+-// fixed point (the prior sessions' diagnostic knobs STV_STARTENABLE/STV_SCENEGATE/STV_CFG798
+-// stood them in). This replaces those stand-ins with the real BIOS behavior, driven from the
+-// always-on VBlank tick (the real BIOS maintains them from its per-frame SMPC/JAMMA scan).
+-//
+-// The system words and what the game reads them for (all decompiled, see project/src_functional):
+-//   0x06000798  machine DIP / config word. bit5(0x20)=test/service mode (clear=normal),
+-//               bit6(0x40)=sound-enable. Read by func_0201b92 (sound gate), func_02201590,
+-//               func_022016ac, func_022058a8 (test/service branch). Faithful value for a
+-//               normal 2P cabinet with sound: 0x60.
+-//   0x06000654  BIOS panel/credit status word. bit9(0x200)=2-player control panel present,
+-//               bit8(0x100)=auto-start/free-play dip, bits12/13(0x1000/0x2000)=force-coin
+-//               P1/P2 dips, low 7 bits = insert-coin countdown timer (0x7F = idle). Read by
+-//               func_022058a8 (scene bootstrap) + func_0220600e (credit/join scene). Faithful
+-//               idle value for a 2P cabinet, coins-required, no force: 0x27F.
+-//   0x06098798  cooked system control word (field +4 of struct 0x06098794). bit2(0x04)=panel
+-//               poll-enable, bit4(0x10)=P1 control/start enable, bit5(0x20)=P2 control/start
+-//               enable. A full image scan (prior session) found NO cart code sets bits 4/5 --
+-//               they are BIOS/system-provided, cleared once by the game at boot (rt 0x06005580)
+-//               then only READ: the scene-81 START gate (func_02206876), the credit-scene join
+-//               (func_0220600e), and the per-frame controller SM (func_0220f9d4 coin latch) all
+-//               gate on bits 0x30. The real BIOS re-publishes this from its SMPC panel scan each
+-//               frame, so we re-assert it each frame AFTER the game's boot clear. For a connected
+-//               2-player panel the value is 0x04|0x10|0x20 = 0x34.
+-//               [FAITHFUL VALUE; the exact BIOS write-back address is fixed by this game's SDK
+-//                link and is reproduced here directly -- the one piece whose hardware mechanism
+-//                (how the BIOS learns the game's buffer address) is not pinned this session.]
+-//
+-// Coin path: the real BIOS coin service (0x06000664) consumes one coin-credit from a BIOS bank
+-// the coin mechanism fills; 0x06000640 is a free-running frame timer. We maintain both so the
+-// game's own credit code (func_0220600e credit scene, func_0220f9d4 controller SM) works if the
+-// director reaches a frame-paced scene. During attract the game polls only 0x06000660 (the
+-// coin-detect fn 0x060065f0 is not scheduled there), so deliver_coin still raises the coin-
+-// pending flag 0x0609880C directly (the faithful substitute for the unrun hardware coin-switch),
+-// and ALSO banks a credit here so both consumers agree. STV_NOSYSBIOS disables this whole layer
+-// for A/B regression (restores the pre-change behavior). (g_stv_credits / g_stv_frametimer are
+-// declared earlier so deliver_coin can bank a credit.)
+-static const uint16_t kStvPanelCtrl = 0x0034u;  // 0x06098798: bit2 poll | bit4 P1 en | bit5 P2 en
++// ST-V SYSTEM-BIOS LAYER: the system words the real BIOS (US epr-17952a) maintains in work
++// RAM, decoded from its disassembly (port/run/P45/bios_dis.txt) and checked against MAME 0.285.
++//   0x06000798  BIOS settings word, copied from backup RAM at boot. Factory default
++//               0x000808FD: bit5 (0x20) set = the cart runs its own attract, START and
++//               game-over loop (func_02201590 clears 0x060987D0, func_022016ac state 4 loops
++//               to state 1); clear = multi-cart rotation owned by the BIOS (state 4 calls
++//               *0x0600060C). bit6 (0x40) = sound. main_stv.cpp seeds it.
++//   0x06000654  multi-cart join-countdown word, written by the BIOS only when bit5 is clear;
++//               the cart reads it only on that path (func_022058a8, func_0220600e).
++//   0x06000728  system-switch record (COIN1/2, TEST, SERVICE, START1/2), published every
++//               VBlank in stv_scene_probe_tick. The cart derives its edge word 0x06098798.
++//   credits     held by the BIOS (deliver_coin), reported by 0x06000660, taken by 0x06000664.
++// 0x06000640 is modelled as a free-running frame timer (the real one reads a backup-RAM
++// counter). STV_NOSYSBIOS disables the per-frame tick for A/B checks.
+ static bool stv_sysbios_on() {
+     static bool v = (std::getenv("STV_NOSYSBIOS") == nullptr);
+     return v;
+ }
+ 
+ // Called every frame (from stv_scene_probe_tick, which video.cpp's vblank_in runs every frame).
+-// Re-publishes the BIOS-maintained system control word, exactly as the real BIOS's per-frame
+-// SMPC panel scan would, so the game's START gates / coin latches see a connected 2-player panel.
++// Advances the BIOS frame timer, as the real BIOS per-frame service does.
+ static void stv_system_bios_tick() {
+     if (!stv_sysbios_on()) return;
+     g_stv_frametimer++;
+-    // Re-assert the cooked system control word (start-enable + panel-poll). The game clears it at
+-    // boot and never sets bits 4/5; the BIOS owns them. Faithful for a 2-player panel.
+-    uint16_t cw = (uint16_t)ld16(0x06098798u);
+-    if ((cw & kStvPanelCtrl) != kStvPanelCtrl)
+-        st16(0x06098798u, (uint16_t)(cw | kStvPanelCtrl));
+ 
+     // FAITHFUL SUB-FIX #1 (default, not a knob): the BIOS insert-coin / attract countdown timer.
+     // 0x06000654 low 7 bits are the BIOS coin/attract countdown; the real ST-V BIOS decrements this
+@@ -402,8 +325,9 @@
+ // panel whenever the --stvinput timeline holds no P1 control. It only READS game memory (the actor
+ // slots the P41 trace prints) to choose physical inputs, exactly as a person watching the screen
+ // would: walk toward the nearest live enemy, face it, alternate A/B; with no enemy, keep tapping
+-// A/B (QTE prompts, cut-scene skips). When the CONTINUE? countdown is up (P1 credit state byte
+-// 0x06098674 == 3) it inserts a coin and presses START (the continue a player would buy). Nothing is written except BIOS input words and the
++// A/B (QTE prompts, cut-scene skips). When P1 has no game (P1 credit state byte 0x06098674 == 0,
++// the attract) or the CONTINUE? countdown is up (== 3) it inserts a coin and presses START, as a
++// player starting or continuing would. Nothing is written except BIOS input words and the
+ // same COIN/START events the timeline uses.
+ static void stv_autoplay(uint64_t vb, uint16_t& p1raw) {
+     static const char* env = std::getenv("STV_AUTOPLAY");
+@@ -411,11 +335,13 @@
+     static uint64_t last_continue = 0;
+     uint32_t task = ld32(0x060995B4u), me = task ? ld32(task + 8) : 0;
+     uint16_t hp = me ? ld16(me + 0x56) : 0;
+-    if (ld8(0x06098674u) == 3 && vb - last_continue > 600) {   // P1 state 3: the CONTINUE? countdown
++    uint8_t p1state = (uint8_t)ld8(0x06098674u);
++    if ((p1state == 0 || p1state == 3) && vb - last_continue > 600) {   // no game / CONTINUE?
+         last_continue = vb;
+         g_stv_events.push_back({vb + 1, 3, false});      // COIN
+         g_stv_events.push_back({vb + 30, 1, false});     // START1
+-        sat_note("AUTOPLAY VB %llu: CONTINUE? shown, coin + START", (unsigned long long)vb);
++        sat_note("AUTOPLAY VB %llu: %s, coin + START", (unsigned long long)vb,
++                 p1state ? "CONTINUE? shown" : "no game");
+     }
+     if (p1raw) return;                                   // the timeline has P1 this frame
+     if (!me || hp == 0) {                                // no live player: A to advance prompts
+@@ -486,6 +412,27 @@
+     st16(0x06000708u, raw_controls[0]);
+     st16(0x06000710u, raw_controls[1]);
+ 
++    // The BIOS system-switch record at 0x06000728 (fifth raw input record). The real BIOS
++    // (ROM 0x31764) packs ~PORTC every frame as COIN1 0x01, COIN2 0x02, TEST 0x04,
++    // SERVICE 0x08, START1 0x10, START2 0x20 (PAUSE 0x4000), with the previous value at +2,
++    // press edges at +4 and release edges at +6. func_0220f9d4 turns +0 into the cooked
++    // edge word 0x06098798 that the START, continue and TEST gates read.
++    uint16_t sys = 0;
++    for (StvEvent& event : g_stv_events) {
++        if (vb < event.vb || vb - event.vb >= event.duration) continue;
++        static const uint16_t kSysBit[] = {0, 0x10, 0x20, 0x01, 0x02, 0x08};
++        if (event.kind >= 1 && event.kind <= 5) sys |= kSysBit[event.kind];
++        if ((event.kind == 3 || event.kind == 4) && !event.fired) {
++            event.fired = true;
++            deliver_coin(event.kind - 3);
++        }
++    }
++    uint16_t sys_prev = (uint16_t)ld16(0x06000728u);
++    st16(0x06000728u, sys);
++    st16(0x0600072Au, sys_prev);
++    st16(0x0600072Cu, (uint16_t)(sys & ~sys_prev));
++    st16(0x0600072Eu, (uint16_t)(sys_prev & ~sys));
++
+     // Read-only P4.1 diagnostics; print each VBlank, including empty player slots.
+     static const bool p41trace = std::getenv("STV_P41TRACE") != nullptr;
+     if (p41trace) {
+@@ -1301,16 +1248,19 @@
+ 
+ static void stv_panel_read(uint32_t buf) {
+     if (!buf) return;
+-    // FAITHFUL: the ST-V BIOS/SMPC owns the control-panel start-enable bits
+-    // (0x06098798 bits 4/5 = kStvPanelCtrl). The game clears them each frame; the vblank
+-    // re-assert (stv_system_bios_tick) lands before the game's clear, so the credit/join
+-    // handler func_0220600e would read them clear and skip the START-join coin-consume
+-    // (0x06000664) -> no credit latched -> no round. Re-assert here, in the panel service
+-    // the handler calls immediately before the guard, matching the real BIOS keeping the
+-    // panel/start-enable bits live. Without this the faithful coin+START never enters a stage.
+-    st16(0x06098798u, (uint16_t)(ld16(0x06098798u) | kStvPanelCtrl));
+-    for (uint32_t i = 0; i < 0x20; ++i) st8(buf + i, 0);   // valid idle (bit0 of buf[0x10] clear)
+-    if (g_stv_credits > 0) st8(buf + 0x00, (uint8_t)g_stv_credits);  // BIOS credit count for panel slot
++    // The BIOS copies its 20-byte panel report (0x06000740, built by ROM 0x308FE) into the
++    // caller's buffer. Layout for a 2-player cabinet with a common coin chute (factory
++    // default): [0] credits, [1] coins toward the next credit, [2] credits per start (1),
++    // [3]/[7] P1/P2 start code (2 = enough credit to start, 1 = more coins needed,
++    // 0 = none), [0x10] cabinet flags (2 players, coin play), [0x11] 0x11.
++    for (uint32_t i = 0; i < 0x14; ++i) st8(buf + i, 0);
++    uint8_t start_code = g_stv_credits > 0 ? 2 : 0;
++    st8(buf + 0x00, (uint8_t)g_stv_credits);
++    st8(buf + 0x02, 1);
++    st8(buf + 0x03, start_code);
++    st8(buf + 0x07, start_code);
++    st8(buf + 0x10, 0x08);
++    st8(buf + 0x11, 0x11);
+     uint64_t vb = sat_vblanks();
+ 
+     // STV_SCENEJUMP (diagnostic, default off): the FAITHFUL scene-director game trigger. The boot/
+@@ -1382,16 +1332,12 @@
+     for (StvEvent& e : g_stv_events) {
+         bool held = vb >= e.vb && vb < e.vb + 2;
+         if (held) {
+-            if (e.kind == 1) st8(buf + 0x03, 2);           // P1 START action code
+-            if (e.kind == 2) st8(buf + 0x07, 2);           // P2 START action code
+             if (panelbtn && (e.kind == 6 || e.kind == 7))
+                 st16(0x0609879Au, (uint16_t)(ld16(0x0609879Au) | 1));  // verified cooked "pressed" bit
+         }
+         if (held && !e.fired) {
+             e.fired = true;
+-            if (e.kind == 3) deliver_coin(0);              // P1 coin -> coin-pending flag (see note)
+-            else if (e.kind == 4) deliver_coin(1);         // P2 coin
+-            else if (e.kind == 5)                          // SERVICE: expressible; 0x688 svc is inert here
++            if (e.kind == 5)                          // SERVICE: expressible; 0x688 svc is inert here
+                 sat_note("ST-V panel: SERVICE at VB %llu (expressed; BIOS 0x688 service inert)",
+                          (unsigned long long)vb);
+             else if (e.kind == 6 || e.kind == 7)
+@@ -1403,8 +1349,8 @@
+                 sat_note("ST-V panel: START kind %d via start-present flag (diag) at VB %llu",
+                          e.kind, (unsigned long long)vb);
+             } else {
+-                sat_note("ST-V panel: START kind %d (panel action buf[3]=2) at VB %llu",
+-                         e.kind, (unsigned long long)vb);
++                sat_note("ST-V panel: START kind %d (system switch START%d) at VB %llu",
++                         e.kind, e.kind, (unsigned long long)vb);
+             }
+         }
+     }
+@@ -1449,17 +1395,27 @@
+             } else if (sp == 0x06000660u) {              // "log" (and any other) keep the real read
+                 stv_panel_read(c.r[4]);
+             }
+-        } else if (sp == 0x06000660u || sp == 0x0600066Cu) {  // DEFAULT: the control-panel read
+-            // Both the 0x660 (coin-wait / scene-81 / attract) and 0x66C (per-frame controller SM
+-            // func_0220f9d4) panel-read services fill their caller's buffer with the decoded panel
+-            // report. Same faithful body for both.
++        } else if (sp == 0x06000660u) {                  // DEFAULT: the control-panel read
+             stv_panel_read(c.r[4]);
++        } else if (sp == 0x0600066Cu) {                  // DEFAULT: in-game flags to the BIOS
++            // ROM 0x305C8: copy 4 bytes from the caller (the cart passes its per-player
++            // in-game bytes 0x060987D4) to the BIOS at 0x06000828. Nothing is returned.
++            for (uint32_t i = 0; i < 4; ++i) st8(0x06000828u + i, (uint8_t)ld8(c.r[4] + i));
++        } else if (sp == 0x0600060Cu) {                  // exit to the BIOS (menu / next cart)
++            // ROM 0x413A resets the stack and never returns: the BIOS runs its own screens
++            // (test menu, multi-cart rotation) and reboots a cart. A single-cart cabinet
++            // (0x06000798 bit5 set) reaches it only from the TEST switch; the BIOS menus are
++            // not emulated, so the call is logged and returns.
++            static uint64_t last_vb = ~0ull;
++            if (sat_vblanks() != last_vb)
++                sat_note("ST-V BIOS: exit to BIOS *0x0600060C(%d) from pr %08X at VB %llu (BIOS menu not emulated)",
++                         (int)c.r[4], c.pr, (unsigned long long)sat_vblanks());
++            last_vb = sat_vblanks();
+         } else if (sp == 0x06000664u) {                  // DEFAULT: the coin-input read / consume (per player)
+-            // FAITHFUL: the real BIOS coin service returns nonzero and consumes one banked coin-
+-            // credit. deliver_coin banks a credit per inserted coin. Fall back to the scripted
+-            // window read if the bank is empty (so a scripted coin still reads at its VBlank).
+-            if (stv_sysbios_on() && g_stv_credits > 0) { g_stv_credits--; c.r[0] = 1; }
+-            else c.r[0] = (uint32_t)stv_coin_read((int)c.r[4]);
++            // ROM 0x30AB0: if the player's start code is 2 (enough credit), take one credit
++            // and return nonzero; otherwise return 0.
++            if (g_stv_credits > 0) { g_stv_credits--; c.r[0] = 1; }
++            else c.r[0] = 0;
+         } else if (sp == 0x06000640u) {                  // DEFAULT: free-running frame timer read
+             c.r[0] = g_stv_frametimer;
+         }

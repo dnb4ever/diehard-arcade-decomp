@@ -1,0 +1,93 @@
+--- a/runtime/src/machine/saturn.h
++++ b/runtime/src/machine/saturn.h
+@@ -88,6 +88,7 @@
+     bool unpaced = false;           // with a window: run as fast as the host can (virtual time still), for measuring
+     int stats = 0;                  // with a window: every this many seconds of the host's time, the speed and the audio queue
+     std::string title;              // the window's title; empty: saturn-recomp
++    std::string launch_info;        // optional caller-provided media paths, shown by the launcher
+ };
+ extern SaturnConfig g_cfg;
+ extern SH2Context g_master, g_slave;
+--- a/runtime/src/host/launcher.cpp
++++ b/runtime/src/host/launcher.cpp
+@@ -178,8 +178,10 @@
+         std::string name;
+         if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat) {
+             if (e.key.scancode == SDL_SCANCODE_ESCAPE) { binding_.clear(); return true; }
+-            if (binding_section_ == "keyboard") name = SDL_GetScancodeName(e.key.scancode);
+-        } else if (e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN && binding_section_ == "gamepad") {
++            if (binding_section_ == "keyboard" || (binding_section_ == "arcade" && binding_ != "pad_coin"))
++                name = SDL_GetScancodeName(e.key.scancode);
++        } else if (e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN &&
++                   (binding_section_ == "gamepad" || (binding_section_ == "arcade" && binding_ == "pad_coin"))) {
+             name = SDL_GetGamepadStringForButton((SDL_GamepadButton)e.gbutton.button);
+         } else if (e.type == SDL_EVENT_GAMEPAD_AXIS_MOTION && binding_section_ == "gamepad" &&
+                    e.gaxis.value > SDL_JOYSTICK_AXIS_MAX / 2) {
+@@ -218,11 +220,13 @@
+ 
+         if (ImGui::BeginTable("layout", 2, ImGuiTableFlags_SizingStretchSame)) {
+             ImGui::TableNextColumn();
++            if (!cfg_.launch_info.empty()) ImGui::TextWrapped("%s", cfg_.launch_info.c_str());
+             start_options();
+             players();
+             display_and_sound();
+             ImGui::TableNextColumn();
+-            controls();
++            if (cfg_.arcade) arcade_controls();
++            else controls();
+             ImGui::EndTable();
+         }
+         ImGui::End();
+@@ -230,7 +234,8 @@
+ 
+     void players() {
+         ImGui::SeparatorText("Players");
+-        for (int t = 0; t < 3; ++t)
++        if (cfg_.arcade) ImGui::TextUnformatted("ST-V: two players, common coin chute");
++        else for (int t = 0; t < 3; ++t)
+             if (ImGui::RadioButton(kTaps[t], taps_ == t)) taps_ = t;
+         auto row = [](int player, const char* what, bool held) {
+             ImGui::TextColored(held ? ImVec4(0.5f, 1, 0.5f, 1) : ImGui::GetStyleColorVec4(ImGuiCol_Text), "Player %d: %s",
+@@ -273,6 +278,42 @@
+             if (o.toggle && !o.chosen) continue;
+             std::stringstream args(o.items[o.toggle ? 0 : o.chosen].second);
+             for (std::string a; args >> a;) cfg_.launch_args.push_back(a);
++        }
++    }
++
++    void arcade_controls() {
++        ImGui::SeparatorText("Arcade controls");
++        if (!binding_.empty()) ImGui::TextWrapped("Press new key/button for %s (Esc cancels)", binding_.c_str());
++        auto bind = [&](const std::string& section, const std::string& key) {
++            const std::string id = set_.get(section, key) + "##" + section + key;
++            if (ImGui::Button((binding_ == key && binding_section_ == section ? "...##" + section + key : id).c_str()) && binding_.empty()) {
++                binding_ = key;
++                binding_section_ = section;
++            }
++        };
++        if (ImGui::BeginTable("arcade", 4, ImGuiTableFlags_SizingStretchSame)) {
++            for (const char* col : {"Control", "P1 key", "P2 key", "Gamepad"}) ImGui::TableSetupColumn(col);
++            ImGui::TableHeadersRow();
++            for (const char* key : {"up", "down", "left", "right", "a", "b", "c", "start", "coin"}) {
++                ImGui::TableNextRow();
++                ImGui::TableNextColumn(); ImGui::TextUnformatted(key);
++                ImGui::TableNextColumn(); bind("arcade", std::string("p1_") + key);
++                ImGui::TableNextColumn(); bind("arcade", std::string("p2_") + key);
++                ImGui::TableNextColumn();
++                if (!std::strcmp(key, "coin")) bind("arcade", "pad_coin");
++                else bind("gamepad", key);
++            }
++            ImGui::EndTable();
++        }
++        for (const char* key : {"test", "service", "pause"}) {
++            ImGui::TextUnformatted(key); ImGui::SameLine(); bind("arcade", key);
++        }
++        ImGui::TextWrapped("Gamepad bindings apply to both players. Guide opens pause. Model-specific overrides remain in the settings file.");
++        if (ImGui::Button("Default arcade controls")) {
++            Settings defaults;
++            for (const char* section : {"arcade", "gamepad"})
++                for (auto& key : defaults.keys(section)) set_.set(section, key, defaults.get(section, key));
++            save();
+         }
+     }
+ 

@@ -1,0 +1,57 @@
+diff --git a/runtime/src/machine/onchip.cpp b/runtime/src/machine/onchip.cpp
+--- a/runtime/src/machine/onchip.cpp
++++ b/runtime/src/machine/onchip.cpp
+@@ -196,7 +196,7 @@
+         if (ts == 3) {
+             for (int k = 0; k < 16; k += 4) st32(dar + (dm ? k : 0), ld32(sar + (sm ? k : 0)));
+             sar += step(sm); dar += step(dm);
+-            i += 3;
++            // n already counts 16-byte blocks; increment exactly once per block.
+             continue;
+         }
+         uint32_t v = u == 1 ? ld8(sar) : u == 2 ? ld16(sar) : ld32(sar);
+diff --git a/runtime/tests/CMakeLists.txt b/runtime/tests/CMakeLists.txt
+--- a/runtime/tests/CMakeLists.txt
++++ b/runtime/tests/CMakeLists.txt
+@@ -8,5 +8,5 @@
+   set(CMAKE_BUILD_TYPE Release)
+ endif()
+ include(${CMAKE_CURRENT_LIST_DIR}/../runtime.cmake)
+-add_executable(runtime_tests main.cpp no_modules.cpp vdp2_test.cpp bup_test.cpp pads_test.cpp settings_test.cpp touch_test.cpp pace_test.cpp frame_change_test.cpp modem_test.cpp scu_test.cpp cdrom_test.cpp cdblock_test.cpp clock_test.cpp tasks_test.cpp scsp_test.cpp)
++add_executable(runtime_tests main.cpp no_modules.cpp vdp2_test.cpp onchip_test.cpp bup_test.cpp pads_test.cpp settings_test.cpp touch_test.cpp pace_test.cpp frame_change_test.cpp modem_test.cpp scu_test.cpp cdrom_test.cpp cdblock_test.cpp clock_test.cpp tasks_test.cpp scsp_test.cpp)
+ target_link_libraries(runtime_tests saturn_core saturn_machine saturn_host Threads::Threads)
+diff --git a/runtime/tests/onchip_test.cpp b/runtime/tests/onchip_test.cpp
+--- /dev/null
++++ b/runtime/tests/onchip_test.cpp
+@@ -0,0 +1,31 @@
++#include "saturn.h"
++#include "test.h"
++#include <initializer_list>
++
++TEST(dmac_block_count_copies_all_longwords_and_publishes_end_addresses) {
++    SH2Context* saved = g_cpu;
++    g_cpu = &g_master;
++    // Exercise single and multiple blocks, with sentinels beyond each transfer.
++    for (uint32_t count : {4u, 8u, 28u, 64u, 126u}) {
++        const uint32_t copied = count & ~3u; // hardware ignores TCR[1:0] in block mode
++        onchip_reset(0);
++        const uint32_t src = 0x060F0000, dst = 0x060F1000;
++        for (uint32_t i = 0; i <= count; ++i) {
++            st32(src + i * 4, 0x13570000 + i);
++            st32(dst + i * 4, 0xDEADBEEF);
++        }
++        onchip_write(g_master, 0x180, src, 4);
++        onchip_write(g_master, 0x184, dst, 4);
++        onchip_write(g_master, 0x188, count, 4);
++        onchip_write(g_master, 0x1B0, 1, 4);
++        onchip_write(g_master, 0x18C, 0x5E11, 4);
++        for (uint32_t i = 0; i < copied; ++i)
++            CHECK_EQ(ld32(dst + i * 4), 0x13570000 + i);
++        CHECK_EQ(ld32(dst + copied * 4), 0xDEADBEEF);
++        CHECK_EQ(onchip_read(g_master, 0x180, 4), src + copied * 4);
++        CHECK_EQ(onchip_read(g_master, 0x184, 4), dst + copied * 4);
++        CHECK_EQ(onchip_read(g_master, 0x188, 4), 0);
++        CHECK_EQ(onchip_read(g_master, 0x18C, 4) & 2, 2);
++    }
++    g_cpu = saved;
++}

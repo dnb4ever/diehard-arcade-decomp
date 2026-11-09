@@ -1,0 +1,16 @@
+{
+  "epoch": 1794196800,
+  "timezone": "America/New_York",
+  "date": "2026-11-08 23:00:00 EST",
+  "difference": [
+    {
+      "address": "06098803",
+      "current": 1,
+      "frozen": 0
+    }
+  ],
+  "current_stock_sha256": "01d383571b298411d880cd48752081fdd254af99e7192c9924e9b67b5b987bd5",
+  "frozen_stock_sha256": "969dfa900be27d65175f5ea4445f7bd5ba13328574b0d6fa18057ab8c2790ed8",
+  "original_gate_ram_sha256": "969dfa900be27d65175f5ea4445f7bd5ba13328574b0d6fa18057ab8c2790ed8",
+  "frozen_override_sha256": "969dfa900be27d65175f5ea4445f7bd5ba13328574b0d6fa18057ab8c2790ed8"
+}

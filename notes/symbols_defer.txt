@@ -1,0 +1,18 @@
+# Die Hard Arcade (ST-V, SH-2 BE) - LARGE-DEFERRAL finishing wave
+# Format: 0x<SH2addr> <name>   # <confidence> <evidence>
+# (NEW file per task; do NOT merge into symbols.txt without review.)
+# All offsets below are runtime (SH2) addresses; cart = SH2 - 0x02000000.
+
+# ---- actor "clash" / tie-up interaction family (the documented 11-way table) ----
+0x02226eb8 actor_clash_state      # HIGH(structure)  two-actor clash/tie-up task handler; task r4, A=pair->16 B=pair->20 held in r8-r14. 11-way braf jump table @0x227088 (base 0x227076) decoded directly from ROM (states 0..10, 6/7 share). r8=animation_update 0x0222dc2c via mova+add. Preamble builds per-actor combo descriptor (0x06098734 + (s8)((unk34-1)*24)) + priority/hit-record (0x06098830 clamp 7, record *(*0x0609882c)->8 +0xAE/0xB0/0xB2). Every handler hand-traced vs --asm. NAMING GUESS. (was the 0x226eb8 "table decoded, handlers pending" deferral)
+0x022275e4 actor_combo_reset      # HIGH  leaf; clears halfword slot unk34*2 across tables 0x06096E90/CA0/EA0/EB0 and actor->unk52. sibling helper tail-called by actor_clash_state.
+0x02227602 actor_combo_advance    # HIGH  combo-input advance for actor_clash_state state 2. desc r4, owner r5, partner r6. mv=*(0x060862F4+sel*4)+step*8; commits unk5C codes + latches unk52; timer 0x06096EB0[i] clamped 31. no computed branches. NAMING GUESS.
+
+# ---- DEFERRED (see functional_defer.md for full reasoning) ----
+# 0x0220600e scene_director        # NOT DONE. The requested target 0x02206308 is NOT a
+#   standalone function - it is the middle of phase 2 of a ~0x85c-byte 4-phase scene
+#   director whose true entry is 0x0220600e (single prologue pushing r8-r14, single
+#   epilogue at 0x02206856). Dispatch on MU8(arg0,16): 0->0x206064 (VDP/scene init),
+#   1->0x206242, 2->0x20629e, 3->0x20625a (falls into 2), default->0x20684a (common
+#   tail: call *0x06090298; set 0x0609869C=1). 17 computed calls + 6 PIC pointers
+#   fully resolved (listed in functional_defer.md). Deferred: unverified, not shipped.

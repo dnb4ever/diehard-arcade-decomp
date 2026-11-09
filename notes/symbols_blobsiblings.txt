@@ -1,0 +1,118 @@
+# symbols_blobsiblings.txt - worker: blobsiblings
+# Sibling functions inside the two census blobs mapped by the lastgiants pass
+# (siblings of the shipped 0x02246ab8 / 0x022402c0). Appended discoveries only;
+# notes/symbols.txt left untouched per task.
+
+# ================================================================
+# SHIPPED (all compile gcc -O1 -c -Wall -Wextra with ZERO output)
+# ================================================================
+
+# --- the 0x246xxx run (blob [0x246ab8, 0x2470da)) ---
+0x02246cac func_02246cac    # void(obj). state-init helper, called 3x by f_246ab8.
+#   0xD4=1;0xD8=0;0x84=4; E0=(E0&0x21030)|2; switch(func_243fe0(obj)){1:func_24840a
+#   + 0x5C=0x14A; 2:tail func_249fb0; default:}. [0x246cac,0x246d0c).
+0x02246d0c func_02246d0c    # void(ctx,obj). slim sibling of f_246ab8. ctx=r4(r13,
+#   only forwarded to tail), obj=r5(r14). if(0x4C)func_2489d0; elif(func_246208)
+#   func_249a82; elif(*0x06097418)func_249f08; else computed call
+#   (*(0x06090214 + (s8)obj->0x6D*4))(obj). Universal tail func_22dc2c(ctx,obj).
+#   NOTE: table is 0x06090214 (NOT 0x06090230), index is signed byte 0x6D.
+0x02246dbc func_02246dbc    # void(obj). FSM. real fn [0x246dbc,0x246f32) (fn.py
+#   over-swallows into f_246f32). d=*(*(obj+0x158)+4) & flags=obj->0xE0 cached.
+#   if(flags&0x100){func_247d6e gate -> func_2469f2 tail}. if((0x8C&0x3FFFF)==0 &&
+#   flags&0x40){func_245d1c -> func_249836(obj,ret) 2-arg braf tail}. switch
+#   (func_244e2e){1:computed (*(0x06090230+0x100*4))(obj); 3:tail func_2470a2;
+#   2:func_247064 + continue; 0/def:continue}. continuation: (0x54&2) guard on
+#   d/0x40/((u16)*(s16*)(d+0x100*2)==(u16)0x58); if(E0&0x20){0x128 idx: active[]
+#   @0x06099590, obj[] @0x060995B0, func_24492c(obj,MP(src,8),0x18000,0x20000) ->
+#   func_2469f2}. switch(func_243fe0){1:func_24840a + 0x5C=0x14A; 2:tail
+#   func_249fb0; def:}. braf_resolve "0x246e68 bsrf r0 TABLE" is a phantom misread.
+0x02246f32 func_02246f32    # void(obj). slimmer sibling of f_246dbc (no 0x8C/0x40
+#   pre-gate, no 0x20/0x128 block). real fn [0x246f32,0x247036). Same 0x100 gate,
+#   switch(func_244e2e) {1 computed / 3 tail f_2470a2 / 2 f_247064+continue},
+#   continuation 0x54&2 guard, switch(func_243fe0){1/2/def}.
+0x02247036 func_02247036    # void(obj). thin dispatcher: (*(void(**)(void*))
+#   (0x06090230 + obj->0x100*4))(obj). [0x247036,0x247064). (prologue stack juggle
+#   is a dead scratch spill.)
+0x02247064 func_02247064    # void(obj). leaf. 0xD4=0x12;0x84=1;0x88=0;
+#   E0=(E0&0x20320)|1; if(obj->0x5A!=obj->0x148){0x41=1; 0x5C=0x148}.
+#   [0x247064,0x2470a2).
+0x022470a2 func_022470a2    # void(obj). leaf (f_246ab8/dbc/f32 case-3 tail).
+#   0xD4=0x12;0x84=1;0x88=0; E0=(E0&0x20030)|2; 0x41=1;
+#   0x5C = *(s16*)(*(void**)(*(void**)(obj+0x158)) + 0xC). [0x2470a2,0x2470da).
+
+# --- the 0x241xxx run (blob [0x2402c0, 0x241556)) ---
+0x0224124e func_0224124e    # void(obj, s32 *out, s32 arg). f_2402c0's shared tail
+#   (called f_24124e(obj,out,0)). func_2416c4(obj); facing-sprite resolve via a
+#   3-level ptr table: base=(0x38&0x400)?0x0608D854:0x0608D824; sel=*(s32*)
+#   (base+(u8)0x49*4); q60=((u16)0x60+0x6000)>>14; q62=((u16)0x62+(0x44?0x9000:
+#   0x1000))>>11; idx=((u16)q62&0x1C)+((u16)q60&3); pA=((void**)obj->0x164)[*out];
+#   pB=((void**)pA)[arg]; pC=((void**)pB)[sel]; 0x5C=*(s16*)(pC+idx*2).
+0x02241324 func_02241324    # void(obj, s32 *out). sibling of f_24124e. 0x108=1;
+#   0x74=0x4000; 0x60=0x2000; func_2415ee(obj); 0x78*=2; 0x84=0x1000; *out=2;
+#   same q60/q62/idx; pA=((void**)0x164)[*out]; pB=*(void**)(pA+12); pC=*(void**)
+#   pB; 0x5C=*(s16*)(pC+idx*2).
+0x022413e6 func_022413e6    # void(obj, s32 *out). sibling w/ random launch angle +
+#   PIC trigger. real fn [0x2413e6,0x2414ee) - 0x24148e is INTERIOR (not a fn).
+#   ptrB=0x06054080+(*(s8*)(0x060540E8+obj->0x5E))*8; rand=func_210020();
+#   0x108=1;0x74=0x4000; 0x60=(rand&0xFFF)+0x2800; func_2415ee(obj);
+#   0xF0 += (((u16)rand>>16)&0x7FF)+0x1400   [high term always 0 -> net +0x1400];
+#   0x84=0x1000;*out=2; q62=((u16)0x62+(0x44?0x9000:0x1000))>>11; idx=((u16)q62
+#   &0x1C)+2; pA=((void**)0x164)[*out]; pB=*(void**)(pA+12); pC=*(void**)pB;
+#   0x5C=*(s16*)(pC+idx*2); if(0x56>0 && *0x060E0DDC){ k=*(u8*)ptrB; func_215f6c(
+#   (*(s16*)(0x06053F04+k*2)<<8)|0xA00000FF) }.
+0x022414ee func_022414ee    # void(obj, s32 *out). leaf. 0xBC=-1;0x108=1;0x88=8;
+#   0x84=0x1000; E0|=0x08000000; *out=9; 0xEC=((u16)0x62>0x8000)?0x8000:-0x8000;
+#   bit=((u16)0x62>>15)&1; if(0x44)bit^=1; 0x5C=*(s16*)(0x0608672C+bit*2).
+
+# ================================================================
+# NOT A FUNCTION (deferred)
+# ================================================================
+0x0224148e (not a function)  # find_entry reports "already real" but this address
+#   is INTERIOR to func_022413e6: it begins mid-expression with `shar r5` and has
+#   no prologue. fn.py's extent for f_2413e6 (code 0x108 = [0x2413e6,0x2414ee))
+#   spans straight through it. The task's "0x0224148e?" is resolved: skip.
+
+# ================================================================
+# ALREADY SHIPPED BY THE LASTGIANTS PASS (present, re-verified clean) - not mine
+# ================================================================
+# 0x02241556 func_02241556   0x0224158c func_0224158c   0x022415ee actor_motion_init
+# 0x022416c4 func_022416c4   0x0224174e func_0224174e   0x022417a4 func_022417a4
+# 0x022417ea func_022417ea
+
+# ================================================================
+# callees referenced (extern; all bsrf/braf/bsr resolved via braf_resolve)
+# ================================================================
+0x02243fe0 func_243fe0      # s32(obj). switch selector (f_246cac / f_246dbc / f_246f32)
+0x0224840a func_24840a      # void(obj)
+0x02249fb0 func_249fb0      # void(obj); case-2 tail of f_246cac/dbc/f32
+0x022489d0 func_2489d0      # void(obj)
+0x02246208 func_246208      # s32(obj)
+0x02249a82 func_249a82      # void(obj)
+0x02249f08 func_249f08      # void(obj)
+0x0022dc2c func_22dc2c      # void(ctx,obj); universal tail
+0x02247d6e func_247d6e      # s32(obj)
+0x022469f2 func_2469f2      # void(obj); tail
+0x02245d1c func_245d1c      # s32(obj)
+0x02249836 func_249836      # void(obj, s32); 2-arg braf tail of f_246dbc
+0x02244e2e func_244e2e      # s32(obj); switch selector
+0x0224492c func_24492c      # s32(obj, target, s32, s32)
+0x02210020 func_210020      # s32(void); NO args (random/counter source)
+0x022415ee func_022415ee    # void(obj); actor_motion_init
+0x022416c4 func_022416c4    # void(obj); actor_facing_clamp
+0x00215f6c func_215f6c      # void(s32 cmd); PIC effect trigger
+
+# ================================================================
+# globals referenced
+# ================================================================
+0x06090214 g_06090214       # fn-ptr table (f_246d0c computed call, idx (s8)obj->0x6D)
+0x06090230 g_06090230       # fn-ptr table (f_246dbc/f32/247036 computed call, idx 0x100)
+0x06097418 g_06097418       # abort/interrupt flag (read in f_246d0c)
+0x06099584 g_06099584       # base: +0x0C(0x06099590) active-flag array,
+#                             +0x2C(0x060995B0) source-object array (idx obj->0x128)
+0x0608d824 g_0608D824       # long table, idx (u8)obj->0x49 (f_24124e, 0x38&0x400==0)
+0x0608d854 g_0608D854       # long table, idx (u8)obj->0x49 (f_24124e, 0x38&0x400!=0)
+0x060540e8 g_060540E8       # s8 table, idx (s16)obj->0x5E (f_2413e6)
+0x06054080 g_06054080       # base for ptrB = +r3*8 (f_2413e6)
+0x06053f04 g_06053F04       # s16 table, idx k*2 for PIC cmd (f_2413e6)
+0x060e0ddc g_060E0DDC       # effect-enable flag (f_2413e6; dup of symbols.txt)
+0x0608672c g_0608672C       # s16 table (2 entries), idx bit*2 (f_2414ee)

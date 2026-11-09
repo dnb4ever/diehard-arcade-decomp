@@ -1,0 +1,96 @@
+--- a/runtime/src/machine/bios.cpp
++++ b/runtime/src/machine/bios.cpp
+@@ -249,8 +249,8 @@
+                 // Cart raw peripheral ABI (0220f9d4 / 0220e1e2): let the game
+                 // compute its own edges, hold timers and direction latch.
+                 raw = b == "A" ? 1 : b == "B" ? 2 : b == "C" ? 4
+-                    : b == "UP" ? 0x40 : b == "DOWN" ? 0x80
+-                    : b == "LEFT" ? 0x100 : b == "RIGHT" ? 0x200 : 0;
++                    : b == "UP" ? 0x80 : b == "DOWN" ? 0x40
++                    : b == "LEFT" ? 0x200 : b == "RIGHT" ? 0x100 : 0;
+             }
+         }
+         if (kind) g_stv_events.push_back({vb, kind, false, raw, duration});
+@@ -373,8 +373,8 @@
+         return;
+     }
+     const int32_t px = 1 << 12;                           // world units: pixels << 12 (spawn X 160 = 0xA0000)
+-    uint16_t toward_x = bx < 0 ? 0x200 : 0x100;          // RIGHT walks -X, LEFT walks +X
+-    uint16_t toward_z = bz < 0 ? 0x040 : 0x080;          // UP walks -Z, DOWN walks +Z
++    uint16_t toward_x = bx < 0 ? 0x200 : 0x100;          // LEFT walks -X, RIGHT walks +X
++    uint16_t toward_z = bz < 0 ? 0x040 : 0x080;          // DOWN walks -Z, UP walks +Z
+     bool far_x = std::abs(bx) > 34 * px, near_x = std::abs(bx) < 10 * px, off_z = std::abs(bz) > 6 * px;
+     if (far_x || off_z || near_x) {
+         if (far_x) p1raw |= toward_x;
+--- a/runtime/src/host/host.cpp
++++ b/runtime/src/host/host.cpp
+@@ -296,7 +296,7 @@
+ 
+ static void bind_arcade() {
+     static const struct { const char* name; uint16_t raw, sys; } kPanel[] = {
+-        {"up", 0x040, 0}, {"down", 0x080, 0}, {"left", 0x100, 0}, {"right", 0x200, 0},
++        {"up", 0x080, 0}, {"down", 0x040, 0}, {"left", 0x200, 0}, {"right", 0x100, 0},
+         {"a", 0x001, 0}, {"b", 0x002, 0}, {"c", 0x004, 0}, {"start", 0, 0x10}, {"coin", 0, 0x01}};
+     g_arcade_keys.clear();
+     for (int p = 0; p < 2; ++p)
+@@ -408,7 +408,7 @@
+             sys |= a.sys;
+         }
+     static const struct { uint16_t saturn, raw; } kPadToPanel[] = {
+-        {B_UP, 0x040}, {B_DOWN, 0x080}, {B_LEFT, 0x100}, {B_RIGHT, 0x200}, {B_A, 0x001}, {B_B, 0x002}, {B_C, 0x004}};
++        {B_UP, 0x080}, {B_DOWN, 0x040}, {B_LEFT, 0x200}, {B_RIGHT, 0x100}, {B_A, 0x001}, {B_B, 0x002}, {B_C, 0x004}};
+     for (auto& p : g_pads) {
+         int s = g_slots.slot_of(p.id);
+         if (s < 0 || s > 1) continue;
+--- a/runtime/src/host/host.h
++++ b/runtime/src/host/host.h
+@@ -20,7 +20,7 @@
+ uint16_t host_pad(int slot);                         // buttons held on that player's controllers, smpc.cpp's bits
+ bool host_pad_connected(int slot);                   // a controller drives it: the keyboard always drives the first
+ // An ST-V control panel (g_cfg.arcade, with a window): P1's and P2's raw words (A 0x001, B 0x002, C 0x004,
+-// UP 0x040, DOWN 0x080, LEFT 0x100, RIGHT 0x200) and the system switches (COIN1 0x01, COIN2 0x02, TEST 0x04,
++// UP 0x080, DOWN 0x040, LEFT 0x200, RIGHT 0x100) and the system switches (COIN1 0x01, COIN2 0x02, TEST 0x04,
+ // SERVICE 0x08, START1 0x10, START2 0x20), as held at the last present; false (all zero) without them.
+ bool host_stv_panel(uint16_t raw[2], uint16_t& sys);
+ 
+--- a/runtime/tests/stv_bios_test.cpp
++++ b/runtime/tests/stv_bios_test.cpp
+@@ -13,8 +13,8 @@
+     CHECK_EQ(ld16(0x06000728), 0);
+     CHECK_EQ(bios_call(c, 0x4010), true);
+     CHECK_EQ(c.pc, c.pr);
+-    CHECK_EQ(ld16(0x06000708), 0x200);
+-    CHECK_EQ(ld16(0x0600070C), 0x200);
++    CHECK_EQ(ld16(0x06000708), 0x100);
++    CHECK_EQ(ld16(0x0600070C), 0x100);
+     CHECK_EQ(ld16(0x06000728), 0x10);
+     CHECK_EQ(ld16(0x0600072C), 0x10);
+     stv_scene_probe_tick(2);
+@@ -25,7 +25,7 @@
+     stv_scene_probe_tick(3);
+     bios_call(c, 0x4010);
+     CHECK_EQ(ld16(0x06000708), 0);
+-    CHECK_EQ(ld16(0x0600070E), 0x200);
++    CHECK_EQ(ld16(0x0600070E), 0x100);
+     CHECK_EQ(ld16(0x06000728), 0);
+     CHECK_EQ(ld16(0x0600072E), 0x10);
+     stv_input_script("");
+@@ -122,3 +122,18 @@
+     CHECK_EQ(ld16(0x0600072E), 0x4000);
+     stv_input_script("");
+ }
++
++TEST(stv_direction_names_match_the_real_us_bios_for_both_players) {
++    const char* buttons[] = {"UP", "DOWN", "LEFT", "RIGHT", "A", "B", "C"};
++    const uint16_t raw[] = {0x80, 0x40, 0x200, 0x100, 1, 2, 4};
++    SH2Context c{};
++    for (unsigned i = 0; i < 7; ++i) {
++        std::string button = buttons[i];
++        stv_input_script("1:P1" + button + ":2,1:P2" + button + ":2");
++        stv_scene_probe_tick(1); bios_call(c, 0x4010);
++        CHECK_EQ(ld16(0x06000708), raw[i]);
++        CHECK_EQ(ld16(0x06000710), raw[i]);
++        stv_scene_probe_tick(3); bios_call(c, 0x4010);
++    }
++    stv_input_script("");
++}

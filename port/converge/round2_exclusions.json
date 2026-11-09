@@ -1,0 +1,58 @@
+{
+  "02203ec2": {
+    "class": "call-boundary",
+    "reason": "Not a supported single terminal call"
+  },
+  "02237e6c": {
+    "class": "call-boundary",
+    "reason": "Not a supported single terminal call"
+  },
+  "02219ad2": {
+    "class": "input-model",
+    "reason": "Stronger qualification reaches an unmapped nested pointer"
+  },
+  "02223d98": {
+    "class": "inactive-device-path",
+    "reason": "No observed effects; hardware path not qualified"
+  },
+  "02244988": {
+    "class": "inlined-helper",
+    "reason": "C call is inlined in the port body; needs a mapped C helper boundary"
+  },
+  "022414ee": {
+    "class": "caller-stack-output",
+    "reason": "Attract supplies a caller-stack output"
+  },
+  "02214194": {
+    "class": "caller-stack-output",
+    "reason": "Autoplay supplies a caller-stack output"
+  },
+  "0221400c": {
+    "class": "stack-output-family",
+    "reason": "Conservatively withheld after sibling stack-output rejection"
+  },
+  "02214284": {
+    "class": "stack-output-family",
+    "reason": "Conservatively withheld after sibling stack-output rejection"
+  },
+  "02244874": {
+    "class": "live-bus-boundary",
+    "reason": "Scene 62 exceeds allowed transactional memory buses"
+  },
+  "022448d0": {
+    "class": "bus-boundary-family",
+    "reason": "Conservatively withheld after sibling live bus rejection"
+  },
+  "0224492c": {
+    "class": "bus-boundary-family",
+    "reason": "Conservatively withheld after sibling live bus rejection"
+  },
+  "02214a50": {
+    "class": "live-bus-boundary",
+    "reason": "Scene 72 vector pointer reads 20000210/physical low BIOS 00000210, outside proven transactional buses"
+  },
+  "02214a40": {
+    "class": "vector-boundary-family",
+    "reason": "Conservatively withheld after sibling live bus rejection"
+  }
+}

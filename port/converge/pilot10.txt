@@ -1,0 +1,11 @@
+# Original cart addresses; the generator canonicalizes these to HWRAM.
+02213190 # sin_lookup
+022131a8 # cos_lookup
+022131c8 # fixed_mul16
+022131d4 # squared distance XZ
+022131fc # squared distance XYZ
+0221330c # bounds_overlap_margin
+02213354 # aabb_overlap_3
+02215630 # clip_test
+0223e5bc # wrapped angle ordering
+02243fba # two-axis comparison mask

@@ -1,0 +1,78 @@
+--- a/runtime/src/sound/scsp.cpp
++++ b/runtime/src/sound/scsp.cpp
+@@ -226,10 +226,11 @@
+     return sh >= 0 ? fn << sh : fn >> -sh;
+ }
+ 
+-// Key scaling adds KRS + OCT, from 0 to 15, to a rate of 0-31, which the tables hold at every other step
++// SCSP's 64 rate steps: twice the register rate plus OCT, twice KRS and FNS bit 9.
++// KRS=15 disables key scaling. Negative octaves slow rates; clamp only the final index.
+ void compute_eg(Slot& s) {
+-    int scale = s.krs() == 15 ? 0 : std::clamp(s.krs() + s.oct(), 0, 15);
+-    auto rate = [&](int r, const int32_t* table) { return r ? table[2 * std::min(r + scale, 31)] : 0; };
++    int scale = s.krs() == 15 ? 0 : s.oct() + 2 * s.krs() + (s.fns() >> 9);
++    auto rate = [&](int r, const int32_t* table) { return table[std::clamp(2 * r + scale, 0, 63)]; };
+     s.ar = rate(s.ar_r(), g_ar_step);
+     s.d1r = rate(s.d1r_r(), g_dr_step);
+     s.d2r = rate(s.d2r_r(), g_dr_step);
+@@ -277,6 +278,7 @@
+         if (s.eg_vol >> (kEgShift + 5) <= s.dl) s.eg_state = EG_DECAY2;
+         break;
+     case EG_DECAY2:
++        if (!s.d2r_r()) break;                  // D2R=0 holds, independently of key scaling
+         s.eg_vol = std::max(0, s.eg_vol - s.d2r);
+         break;
+     case EG_RELEASE:
+--- a/runtime/tests/scsp_test.cpp
++++ b/runtime/tests/scsp_test.cpp
+@@ -54,7 +54,7 @@
+     scsp_write(0x0A, (uint32_t)(krs << 10 | rr), 2);
+     scsp_write(0x10, (uint32_t)((oct & 15) << 11), 2);
+     scsp_write(0x00, 0x1820, 2);                // KYONEX, KB, a loop
+-    sample();
++    samples(64);                              // max AR is not instant at a negative octave
+     scsp_write(0x00, 0x1020, 2);
+     samples(n);
+     scsp_write(0x408, 0, 2);                    // the monitor on slot 0
+@@ -343,18 +343,32 @@
+ 
+ // A full release, 1023 steps, takes 920 ms at rate 15 and 3.6 ms at 31: after 4410 samples at 15 the
+ // envelope is 111 steps down, which the monitor shows as 3, and 170 samples at 31 end it (31).
+-TEST(a_negative_octave_slows_no_rate) {
+-    CHECK_EQ(released(15, 0, -3, 4410), 3);
+-}
+-
+-TEST(key_rate_scaling_adds_krs_and_the_octave_to_the_rate) {
+-    CHECK_EQ(released(12, 2, 1, 4410), 3);
++TEST(a_negative_octave_slows_the_envelope) {
++    CHECK_EQ(released(15, 0, -3, 4410), 2);
++}
++
++TEST(key_rate_scaling_adds_twice_krs_but_only_once_the_octave) {
++    CHECK_EQ(released(12, 2, 1, 4410), 2);
+ }
+ 
+ TEST(krs_15_scales_nothing) {
+     CHECK_EQ(released(15, 15, 7, 4410), 3);
+ }
+ 
+-TEST(a_scaled_rate_stops_at_31) {
+-    CHECK_EQ(released(20, 14, 7, 170), 31);
+-}
++TEST(a_scaled_rate_reaches_step_63) {
++    CHECK_EQ(released(20, 14, 7, 150), 31);
++}
++
++TEST(fns_bit_9_selects_the_intermediate_envelope_rate) {
++    scsp_reset();
++    scsp_write(0x06, 0xFFFF, 2);
++    scsp_write(0x08, 31, 2);
++    scsp_write(0x0A, 15, 2);
++    scsp_write(0x10, 0x0200, 2);
++    scsp_write(0, 0x1820, 2);
++    samples(64);
++    scsp_write(0, 0x1020, 2);
++    samples(4410);
++    scsp_write(0x408, 0, 2);
++    CHECK_EQ(scsp_read(0x408, 2) & 31, 4);        // MAME 0.285: 4; FNS=0 gives 3
++}

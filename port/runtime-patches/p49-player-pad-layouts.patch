@@ -1,0 +1,287 @@
+--- a/runtime/src/host/host.cpp
++++ b/runtime/src/host/host.cpp
+@@ -274,7 +274,6 @@
+ struct ArcadeKey { SDL_Scancode key; int player; uint16_t raw, sys; };
+ static std::vector<ArcadeKey> g_arcade_keys;
+ static std::vector<SDL_Scancode> g_pause_keys;
+-static int g_pad_coin = -1;
+ static uint16_t g_stv_raw[2], g_stv_sys;           // as read at the last present
+ 
+ static void bind_arcade() {
+@@ -290,11 +289,7 @@
+     for (int k : names(g_settings, "arcade", "service", scancode_of)) g_arcade_keys.push_back({(SDL_Scancode)k, -1, 0, 0x08});
+     g_pause_keys.clear();
+     for (int k : names(g_settings, "arcade", "pause", scancode_of)) g_pause_keys.push_back((SDL_Scancode)k);
+-    std::vector<int> coin = names(g_settings, "arcade", "pad_coin", [](const std::string& n) {
+-        SDL_GamepadButton btn = SDL_GetGamepadButtonFromString(n.c_str());
+-        return btn == SDL_GAMEPAD_BUTTON_INVALID ? -1 : (int)btn;
+-    });
+-    g_pad_coin = coin.empty() ? -1 : coin[0];
++
+ }
+ 
+ static bool is_pause_key(SDL_Scancode k) {
+@@ -311,12 +306,31 @@
+ 
+ // A gamepad's bindings: its buttons and trigger axes, with the stick's and the triggers' travel.
+ struct PadInput { int button, axis; uint16_t bit; };
+-struct PadMap { std::vector<PadInput> inputs; int stick, trigger; };
++struct PadMap { std::vector<PadInput> inputs; int stick, trigger, coin; };
+ struct OpenPad { SDL_Gamepad* pad; SDL_JoystickID id; PadMap map; };
+ static std::vector<OpenPad> g_pads;
+ 
+-static PadMap bind_gamepad(const std::string& guid) {
+-    std::string section = g_settings.has_section("gamepad " + guid) ? "gamepad " + guid : "gamepad";
++static std::string pad_section(int slot, const std::string& guid) {
++    std::string player = "gamepad p" + std::to_string(slot + 1);
++    if (g_cfg.arcade && g_settings.has_section(player)) return player;
++    return g_settings.has_section("gamepad " + guid) ? "gamepad " + guid : "gamepad";
++}
++
++std::string host_gamepad_value(int slot, const std::string& key) {
++    std::string guid;
++    for (auto& p : g_pads) if (g_slots.slot_of(p.id) == slot) {
++        char text[33];
++        SDL_GUIDToString(SDL_GetGamepadGUIDForID(p.id), text, sizeof text);
++        guid = text;
++    }
++    std::string section = pad_section(slot, guid);
++    if (key == "coin" && section != "gamepad p1" && section != "gamepad p2")
++        return g_settings.get("arcade", "pad_coin");
++    return g_settings.get(section, key);
++}
++
++static PadMap bind_gamepad(const std::string& guid, int slot) {
++    std::string section = pad_section(slot, guid);
+     PadMap m;
+     for (auto& b : kSaturn)
+         for (int v : names(g_settings, section, b.name, [](const std::string& n) {
+@@ -326,6 +340,11 @@
+                  return btn == SDL_GAMEPAD_BUTTON_INVALID ? -1 : (int)btn;
+              }))
+             m.inputs.push_back(v >= 1000 ? PadInput{-1, v - 1000, b.bit} : PadInput{v, -1, b.bit});
++    bool player = section == "gamepad p1" || section == "gamepad p2";
++    auto coin = names(g_settings, player ? section : "arcade", player ? "coin" : "pad_coin", [](const std::string& n) {
++        return (int)SDL_GetGamepadButtonFromString(n.c_str());
++    });
++    m.coin = coin.empty() ? -1 : coin[0];
+     m.stick = SDL_JOYSTICK_AXIS_MAX * g_settings.number(section, "stick") / 100;
+     m.trigger = SDL_JOYSTICK_AXIS_MAX * g_settings.number(section, "trigger") / 100;
+     return m;
+@@ -378,7 +397,7 @@
+         for (auto& m : kPadToPanel)
+             if (b & m.saturn) raw[s] |= m.raw;
+         if (b & B_START) sys |= (uint16_t)(0x10 << s);
+-        if (g_pad_coin >= 0 && SDL_GetGamepadButton(p.pad, (SDL_GamepadButton)g_pad_coin)) sys |= (uint16_t)(0x01 << s);
++        if (p.map.coin >= 0 && SDL_GetGamepadButton(p.pad, (SDL_GamepadButton)p.map.coin)) sys |= (uint16_t)(0x01 << s);
+     }
+     for (auto& r : raw) {                       // not on a real lever
+         if ((r & 0x300) == 0x300) r &= (uint16_t)~0x300;
+@@ -435,7 +454,7 @@
+         SDL_CloseGamepad(pad);
+         return;
+     }
+-    g_pads.push_back({pad, id, bind_gamepad(guid)});
++    g_pads.push_back({pad, id, bind_gamepad(guid, s)});
+     sat_note("gamepad: %s (GUID %s), player %d", SDL_GetGamepadName(pad), guid, s + 1);
+ }
+ 
+@@ -455,7 +474,7 @@
+     for (auto& p : g_pads) {
+         char guid[33];
+         SDL_GUIDToString(SDL_GetGamepadGUIDForID(p.id), guid, sizeof guid);
+-        p.map = bind_gamepad(guid);
++        p.map = bind_gamepad(guid, g_slots.slot_of(p.id));
+     }
+ }
+ 
+@@ -469,7 +488,7 @@
+     std::vector<HostController> out;
+     for (auto& p : g_pads) {
+         int s = g_slots.slot_of(p.id);
+-        if (s >= 0) out.push_back({SDL_GetGamepadName(p.pad), s, gamepad_buttons(p.pad, p.map) != 0});
++        if (s >= 0) out.push_back({SDL_GetGamepadName(p.pad), s, gamepad_buttons(p.pad, p.map) != 0, p.id});
+     }
+     std::sort(out.begin(), out.end(), [](const HostController& a, const HostController& b) { return a.slot < b.slot; });
+     return out;
+@@ -921,9 +940,11 @@
+     case SDL_EVENT_GAMEPAD_BUTTON_DOWN: {
+         int b = e.gbutton.button;
+         if (!g_menu_open) {
+-            bool coin = g_cfg.arcade && b == g_pad_coin;    // an arcade board's coin, not the menu
+-            if (int s = g_slots.slot_of(e.gbutton.which); coin && (s == 0 || s == 1)) g_tap_sys |= (uint16_t)(0x01 << s);
+-            if ((b == SDL_GAMEPAD_BUTTON_BACK || b == SDL_GAMEPAD_BUTTON_GUIDE) && !coin) menu_open();
++            const OpenPad* pad = open_pad(e.gbutton.which);
++            int s = g_slots.slot_of(e.gbutton.which);
++            bool coin = g_cfg.arcade && pad && s >= 0 && s < 2 && b == pad->map.coin;
++            if (coin) g_tap_sys |= (uint16_t)(0x01 << s);
++            if ((b == SDL_GAMEPAD_BUTTON_GUIDE || (!g_cfg.arcade && b == SDL_GAMEPAD_BUTTON_BACK)) && !coin) menu_open();
+             break;
+         }
+         on_menu_key(b == SDL_GAMEPAD_BUTTON_DPAD_UP ? -1 : b == SDL_GAMEPAD_BUTTON_DPAD_DOWN ? 1 : 0,
+--- a/runtime/src/host/host_sdl.h
++++ b/runtime/src/host/host_sdl.h
+@@ -16,5 +16,6 @@
+ void host_rebind();                                  // the keyboard and the open gamepads bound by the settings again
+ 
+ void host_pad_event(const SDL_Event& e);             // a gamepad connecting or leaving
+-struct HostController { std::string name; int slot; bool held; };   // held: any of its bound buttons
++struct HostController { std::string name; int slot; bool held; SDL_JoystickID id; };   // held: any of its bound buttons
++std::string host_gamepad_value(int slot, const std::string& key); // effective layout, including model fallback
+ std::vector<HostController> host_controllers();      // the open gamepads, by player
+--- a/runtime/src/host/settings.cpp
++++ b/runtime/src/host/settings.cpp
+@@ -67,6 +67,9 @@
+ stick = 50
+ ; a trigger presses its button once pulled this far, in percent
+ trigger = 50
++; Arcade player layouts [gamepad p1] / [gamepad p2] include their own coin button.
++; Created by the launcher; absent player sections retain existing model/common bindings.
++coin = back
+ 
+ ; A Saturn pad on the screen for player 1, and the menu's button (the menu also changes these).
+ [touch]
+@@ -230,7 +233,7 @@
+     for (auto& [name, keys] : values_) {
+         std::string added;
+         for (auto& key : order_.at(name))
+-            if (!written[name][key] && keys.at(key) != defaults.get(name, key))
++            if (!written[name][key] && (name == "gamepad p1" || name == "gamepad p2" || keys.at(key) != defaults.get(name, key)))
+                 added += key + " = " + keys.at(key) + "\n";
+         if (added.empty()) continue;
+         auto end = section_end.find(name);
+--- a/runtime/src/host/launcher.cpp
++++ b/runtime/src/host/launcher.cpp
+@@ -124,6 +124,8 @@
+         ImGui_ImplSDL3_SetGamepadMode(ImGui_ImplSDL3_GamepadMode_AutoAll);
+ 
+         const char* shot = SDL_getenv("SATURN_LAUNCHER_SHOT");
++        const char* shot_frame = SDL_getenv("SATURN_LAUNCHER_SHOT_FRAME");
++        int capture_frame = shot_frame ? std::max(3, SDL_atoi(shot_frame)) : 3;
+         bool going = true;
+         for (int frame = 0; going && !started_; ++frame) {
+             SDL_Event e;
+@@ -150,7 +152,7 @@
+             ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), ren);
+             if (want_picture_) save_picture(ren, cfg_.out + "/launcher.png");
+             want_picture_ = false;
+-            if (shot && frame == 3) {                // ImGui lays a window out over its first frames
++            if (shot && frame == capture_frame) {                // ImGui lays a window out over its first frames
+                 save_picture(ren, shot);
+                 going = false;
+             }
+@@ -175,15 +177,25 @@
+     // when the event was taken.
+     bool listen(const SDL_Event& e) {
+         if (binding_.empty()) return false;
++        bool pad_binding = Settings::kind_of(binding_section_) == "gamepad";
++        if (pad_binding && (e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN || e.type == SDL_EVENT_GAMEPAD_AXIS_MOTION)) {
++            SDL_JoystickID id = e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN ? e.gbutton.which : e.gaxis.which;
++            if (binding_section_ == "gamepad p1" || binding_section_ == "gamepad p2") {
++                bool own = false;
++                for (auto& pad : host_controllers())
++                    if (binding_section_ == "gamepad p" + std::to_string(pad.slot + 1) && pad.id == id) own = true;
++                if (!own) return true; // also ignore other pads if the selected one disconnected
++            }
++        }
+         std::string name;
+         if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat) {
+             if (e.key.scancode == SDL_SCANCODE_ESCAPE) { binding_.clear(); return true; }
+             if (binding_section_ == "keyboard" || (binding_section_ == "arcade" && binding_ != "pad_coin"))
+                 name = SDL_GetScancodeName(e.key.scancode);
+         } else if (e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN &&
+-                   (binding_section_ == "gamepad" || (binding_section_ == "arcade" && binding_ == "pad_coin"))) {
++                   (pad_binding || (binding_section_ == "arcade" && binding_ == "pad_coin"))) {
+             name = SDL_GetGamepadStringForButton((SDL_GamepadButton)e.gbutton.button);
+-        } else if (e.type == SDL_EVENT_GAMEPAD_AXIS_MOTION && binding_section_ == "gamepad" &&
++        } else if (e.type == SDL_EVENT_GAMEPAD_AXIS_MOTION && pad_binding && binding_ != "coin" &&
+                    e.gaxis.value > SDL_JOYSTICK_AXIS_MAX / 2) {
+             if (e.gaxis.axis == SDL_GAMEPAD_AXIS_LEFT_TRIGGER) name = "lefttrigger";
+             if (e.gaxis.axis == SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) name = "righttrigger";
+@@ -191,6 +203,14 @@
+             return e.type == SDL_EVENT_KEY_DOWN || e.type == SDL_EVENT_KEY_UP || e.type == SDL_EVENT_TEXT_INPUT;
+         }
+         if (name.empty()) return true;
++        if (binding_section_ == "gamepad p1" || binding_section_ == "gamepad p2") {
++            int slot = binding_section_ == "gamepad p1" ? 0 : 1;
++            if (!set_.has_section(binding_section_)) {
++                std::vector<std::pair<std::string, std::string>> values;
++                for (auto& key : set_.keys("gamepad")) values.push_back({key, host_gamepad_value(slot, key)});
++                for (auto& value : values) set_.set(binding_section_, value.first, value.second);
++            }
++        }
+         set_.set(binding_section_, binding_, name);
+         binding_.clear();
+         settling_ = true;
+@@ -285,14 +305,17 @@
+         ImGui::SeparatorText("Arcade controls");
+         if (!binding_.empty()) ImGui::TextWrapped("Press new key/button for %s (Esc cancels)", binding_.c_str());
+         auto bind = [&](const std::string& section, const std::string& key) {
+-            const std::string id = set_.get(section, key) + "##" + section + key;
++            std::string value = section == "gamepad p1" || section == "gamepad p2"
++                ? host_gamepad_value(section == "gamepad p1" ? 0 : 1, key) : set_.get(section, key);
++            const std::string id = value + "##" + section + key;
+             if (ImGui::Button((binding_ == key && binding_section_ == section ? "...##" + section + key : id).c_str()) && binding_.empty()) {
+                 binding_ = key;
+                 binding_section_ = section;
+             }
++            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", value.c_str());
+         };
+-        if (ImGui::BeginTable("arcade", 4, ImGuiTableFlags_SizingStretchSame)) {
+-            for (const char* col : {"Control", "P1 key", "P2 key", "Gamepad"}) ImGui::TableSetupColumn(col);
++        if (ImGui::BeginTable("arcade", 5, ImGuiTableFlags_SizingStretchSame)) {
++            for (const char* col : {"Control", "P1 key", "P2 key", "P1 pad", "P2 pad"}) ImGui::TableSetupColumn(col);
+             ImGui::TableHeadersRow();
+             for (const char* key : {"up", "down", "left", "right", "a", "b", "c", "start", "coin"}) {
+                 ImGui::TableNextRow();
+@@ -300,19 +323,20 @@
+                 ImGui::TableNextColumn(); bind("arcade", std::string("p1_") + key);
+                 ImGui::TableNextColumn(); bind("arcade", std::string("p2_") + key);
+                 ImGui::TableNextColumn();
+-                if (!std::strcmp(key, "coin")) bind("arcade", "pad_coin");
+-                else bind("gamepad", key);
++                bind("gamepad p1", key);
++                ImGui::TableNextColumn(); bind("gamepad p2", key);
+             }
+             ImGui::EndTable();
+         }
+         for (const char* key : {"test", "service", "pause"}) {
+             ImGui::TextUnformatted(key); ImGui::SameLine(); bind("arcade", key);
+         }
+-        ImGui::TextWrapped("Gamepad bindings apply to both players. Guide opens pause. Model-specific overrides remain in the settings file.");
++        ImGui::TextWrapped("Choose a P1/P2 pad binding, then press that player's pad. Layouts follow player slots and are saved separately. Guide opens pause.");
+         if (ImGui::Button("Default arcade controls")) {
+             Settings defaults;
+-            for (const char* section : {"arcade", "gamepad"})
+-                for (auto& key : defaults.keys(section)) set_.set(section, key, defaults.get(section, key));
++            for (const char* section : {"arcade", "gamepad", "gamepad p1", "gamepad p2"})
++                for (auto& key : defaults.keys(Settings::kind_of(section)))
++                    set_.set(section, key, defaults.get(Settings::kind_of(section), key));
+             save();
+         }
+     }
+--- a/runtime/tests/settings_test.cpp
++++ b/runtime/tests/settings_test.cpp
+@@ -131,3 +131,22 @@
+     CHECK_EQ(problems.size(), 0);
+     CHECK_EQ(s.get("touch", "controls") == "on", true);
+ }
++
++TEST(arcade_player_layouts_survive_save_with_distinct_buttons_and_defaults) {
++    Settings s;
++    std::vector<std::string> problems;
++    s.read("[gamepad]\na = y\n", problems);
++    // P1 explicitly chooses factory A, P2 chooses a different button. Even the
++    // factory-valued P1 section must survive so it overrides the shared Y.
++    s.set("gamepad p1", "a", "x");
++    s.set("gamepad p2", "a", "rightshoulder");
++    s.set("gamepad p2", "coin", "leftstick");
++    Settings back;
++    back.read(s.write_over("; owner\n[gamepad]\na = y\n"), problems);
++    CHECK_EQ(problems.size(), 0);
++    CHECK_EQ(back.has_section("gamepad p1"), true);
++    CHECK_EQ(back.get("gamepad p1", "a") == "x", true);
++    CHECK_EQ(back.get("gamepad p2", "a") == "rightshoulder", true);
++    CHECK_EQ(back.get("gamepad p2", "coin") == "leftstick", true);
++    CHECK_EQ(back.get("gamepad", "a") == "y", true);
++}

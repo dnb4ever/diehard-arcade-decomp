@@ -1,0 +1,88 @@
+--- a/runtime/src/machine/bios.cpp
++++ b/runtime/src/machine/bios.cpp
+@@ -199,12 +199,10 @@
+ // was ever delivering a start. stv_input_script() drives buf[3]/buf[7]=2 as 1-VBlank
+ // press pulses at scripted VBlanks.
+ // kind: 1=START1 2=START2 3=COIN1 4=COIN2 5=SERVICE 6=P1 face/dir press 7=P2 face/dir press.
+-// START/COIN are delivered faithfully through the game's own consumers (panel action codes /
+-// coin-pending). SERVICE and the P1/P2 face/direction tokens exist so a --stvinput timeline can
+-// *express* full ST-V control-panel state (the task's "carry buttons/directions"); their runtime
+-// effect is bounded by what is actually decodable here -- see stv_panel_read and the notes file
+-// notes/port/stv_panel_input_status.md for exactly which panel bits are verified vs unmapped.
+-struct StvEvent { uint64_t vb; int kind; bool fired; };
++// START/COIN use the panel/credit services. P1/P2 A/B/C and directions feed the
++// raw peripheral words every VBlank, decoded by the cart's own controller state machine.
++// SERVICE and the legacy X/Y/Z tokens retain their previous diagnostic-only behavior.
++struct StvEvent { uint64_t vb; int kind; bool fired; uint16_t raw = 0; uint64_t duration = 2; };
+ static std::vector<StvEvent> g_stv_events;
+ 
+ // Faithful ST-V system-BIOS state (defined early so deliver_coin can bank a credit; the per-frame
+@@ -223,12 +221,19 @@
+         if (c == std::string::npos) continue;
+         uint64_t vb = strtoull(item.c_str(), nullptr, 10);
+         std::string tok = item.substr(c + 1);
++        uint64_t duration = 2;
++        size_t hold = tok.find(':');
++        if (hold != std::string::npos) {
++            duration = std::strtoull(tok.c_str() + hold + 1, nullptr, 10);
++            tok.resize(hold);
++        }
++        uint16_t raw = 0;
+         int kind = tok == "START1" || tok == "START" ? 1 : tok == "START2" ? 2
+                  : tok == "COIN" || tok == "COIN1"   ? 3 : tok == "COIN2"  ? 4
+                  : tok == "SERVICE" || tok == "SVC"  ? 5 : 0;
+         // P1/P2 face-button + direction tokens: "P1A".."P1C","P1UP".."P1RIGHT" (and P2*), or a bare
+-        // face/dir token (defaults to P1). These are grouped to a single per-player "press" event
+-        // because only the cooked "a-control-is-pressed" bit is verified decodable (see panel read).
++        // face/dir token (defaults to P1). Preserve the physical button/direction mask;
++        // VB:TOKEN:FRAMES holds it for FRAMES VBlanks (default 2).
+         if (!kind) {
+             const char* t = tok.c_str();
+             int player = 0;
+@@ -236,9 +241,16 @@
+             std::string b(t);
+             if (b == "A" || b == "B" || b == "C" || b == "X" || b == "Y" || b == "Z" ||
+                 b == "UP" || b == "DOWN" || b == "LEFT" || b == "RIGHT")
++            {
+                 kind = player == 0 ? 6 : 7;
+-        }
+-        if (kind) g_stv_events.push_back({vb, kind, false});
++                // Cart raw peripheral ABI (0220f9d4 / 0220e1e2): let the game
++                // compute its own edges, hold timers and direction latch.
++                raw = b == "A" ? 1 : b == "B" ? 2 : b == "C" ? 4
++                    : b == "UP" ? 0x40 : b == "DOWN" ? 0x80
++                    : b == "LEFT" ? 0x100 : b == "RIGHT" ? 0x200 : 0;
++            }
++        }
++        if (kind) g_stv_events.push_back({vb, kind, false, raw, duration});
+     }
+     sat_note("ST-V input script: %zu events", g_stv_events.size());
+ }
+@@ -404,6 +416,16 @@
+ //   STV_SCENECHAR="v"             every frame: g_0609856c=v (scene-75 branch -> 76 + (v&3))
+ static bool s_playroute_fired = false;   // set once STV_PLAYROUTE seeds the director; read by STV_JOINHOLD
+ void stv_scene_probe_tick(uint64_t vb) {
++    // Publish physical controls once per VBlank even if no panel service is called.
++    // Only BIOS raw input words are written; game actor/state globals are untouched.
++    uint16_t raw_controls[2] = {0, 0};
++    for (const StvEvent& event : g_stv_events)
++        if ((event.kind == 6 || event.kind == 7) && vb >= event.vb &&
++            vb - event.vb < event.duration)
++            raw_controls[event.kind - 6] |= event.raw;
++    st16(0x06000708u, raw_controls[0]);
++    st16(0x06000710u, raw_controls[1]);
++
+     stv_system_bios_tick();            // FAITHFUL: re-publish the BIOS system control word every frame
+     // STV_DESCDUMP="vb" (diagnostic, default off; byte-identical when unset): one-shot dump of the
+     // scene descriptor table (base 0x06072660, stride 0x50) for scenes 0..89. For each scene prints
+@@ -1491,8 +1513,8 @@
+                 sat_note("ST-V panel: SERVICE at VB %llu (expressed; BIOS 0x688 service inert)",
+                          (unsigned long long)vb);
+             else if (e.kind == 6 || e.kind == 7)
+-                sat_note("ST-V panel: P%d face/dir press at VB %llu%s", e.kind - 5,
+-                         (unsigned long long)vb, panelbtn ? " (cooked bit0 set)" : " (expressed; STV_PANELBTN off)");
++                sat_note("ST-V panel: P%d raw control %04X at VB %llu for %llu VBlanks", e.kind - 5,
++                         e.raw, (unsigned long long)vb, (unsigned long long)e.duration);
+             else if (startflag) {
+                 if (e.kind == 1) st8(0x06098688u, 1);      // DIAG: P1 start-present flag (no-credit path)
+                 else if (e.kind == 2) st8(0x06098689u, 1); // DIAG: P2 start-present flag

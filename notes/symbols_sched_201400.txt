@@ -1,0 +1,37 @@
+# Scheduler/scene-director wave - band cart [0x201400, 0x203000)  (SH2 0x02201400..0x02203000)
+# Format: 0x<SH2addr> <name>   # <confidence> <note>
+# For later merge into notes/symbols.txt. All DECOMPILED this wave unless marked.
+
+0x022016ac boot_scene_director          # HIGH  10-state jump-table machine (table @ cart 0x201738, all 10 entries decoded to a C switch). Real entry of pool-contaminated 0x022016a0. Installed as task handler by boot_display_mode_task (0x02201590). Sequences attract/boot/play scene bring-up; drives g_06098678 director object (*obj=handler) and the g_0600060c/40/80/88 BIOS slots.
+0x02202138 scene_vdp2_setup_sm          # HIGH  8-state (0..7) scene/VDP2-setup machine. state0 programs the VDP2 register shadow g_06098f08 and kicks scene loaders; states 1..7 spawn layers, fire timed sound cues (sound_queue_push), ramp fades/scrolls, enable display. NO computed jump table (wave1's "TABLE/COMPUTED" flags were braf_resolve mis-decoding embedded pools).
+0x02202d14 scene_timer_hud_task         # HIGH  compact task: state0 spawns scene_hud_task_init (0x20340c) + func_0220f990; pokes g_06098734 words at counter marks; decrements entity->unk50; tail-calls func_0221d302. (fn.extent wrongly merges 0x6f8 of sibling fns separated by braf tails; real fn is ~0x6a bytes.)
+0x022027e4 scene_bootstrap_sm           # HIGH(MED on 2 inherited-r4 calls) 4-state scene bootstrap. state1 installs handler 0x20f6f6 into g_0609882c, spawns HUD/gravity/layer tasks; state2 gates on g_06098664; state3 enables VDP2 display + tears down scene-ready globals, tail-calls func_0220fdc8.
+
+# --- resolved, NOT a separate function ---
+0x02201d2c (part of func_0201c9c)        # cart 0x201d2c is an internal branch label inside func_0201c9c (0x201c9c..0x201f20, already decompiled) - the fade/scene builder that writes g_0609866c. No separate entry; shared frame is func_0201c9c's own prologue.
+
+# --- referenced callees / spawn handlers observed (NOT decompiled this wave) ---
+0x0220fece spawn_obj_0x6c               # HIGH  spawn/init object, returns new obj in r0 (parent, handler). r12 jsr target in several of these fns.
+0x0220feec spawn_obj_variant            # MED   sibling spawn, returns obj (parent, handler)
+0x0220ff90 func_0220ff90                # GUESS 2-arg (task, handler) used by scene_vdp2_setup_sm state1
+0x0221d302 func_0221d302                # GUESS 1-arg(task) tail-called by scene_timer_hud_task
+0x0220f6f6 scene_obj_handler?           # GUESS handler installed into g_0609882c by scene_bootstrap_sm
+0x022100f8 scene_handler_2100f8         # GUESS spawn handler (setup/bootstrap state1)
+0x022101ce scene_handler_2101ce         # GUESS spawn handler (setup state2-counter, bootstrap state2)
+0x0221fe00 scene_handler_21fe00         # GUESS spawn handler (bootstrap state1)
+0x02204308 scene_handler_204308         # GUESS func_0220feec handler (setup state3, x2)
+0x022041d4 scene_handler_2041d4         # GUESS func_0220feec handler (setup state4)
+0x022191ec scene_handler_2191ec         # GUESS func_0220ff90 handler (setup state1)
+0x0220acf6 func_0220acf6                # GUESS returns a handle; stored to g_060987f4/g_06098800 (director state1)
+0x0220a962 func_0220a962               # (already in 0201c9c.c) elapsed-time consumer
+0x0220a992 func_0220a992               # GUESS elapsed-time consumer (director state4)
+0x0238364  func_0238364                # GUESS 3-arg (a,b,c) VDP/palette op (setup states5/6)
+0x021632e  func_021632e                # GUESS 4-arg (14, romptr, 0x25f00000, 0x80) VDP op (setup states3/4)
+0x0216154  func_0216154                # GUESS 1-arg(-1) init (setup state0)
+0x0222e44  func_0222e44               # GUESS 1-arg(7) init (setup state0)
+0x0223ac0  func_0223ac0               # GUESS 1-arg(desc->unk8) (setup state0)
+0x0217d6c  func_0217d6c               # GUESS 1-arg(task) (bootstrap state0)
+0x0217f04  func_0217f04               # GUESS 1-arg(task) (bootstrap state1)
+0x0216d58  func_0216d58               # GUESS (bootstrap state3; r4 inherited=task)
+0x0215fac  func_0215fac               # GUESS (bootstrap state1; r4 inherited=obj)
+0x0220f990 func_0220f990              # GUESS 1-arg(task) (scene_timer_hud_task state0)

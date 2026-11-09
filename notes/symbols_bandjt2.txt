@@ -1,0 +1,28 @@
+# symbols_bandjt2.txt - HARD-TAIL jump-table pass (bandjt2). Camera-mode family shipped,
+# func_0223b254 ABI pinned, big dispatchers triaged. Names here are for the bandjt2 report;
+# NOT merged into symbols.txt.
+
+# ---- SHIPPED (project/src_functional/, compile-clean -Wall -Wextra) ----
+0x0220ea06 camera_mode_service_a   # HIGH  camera service, mode dispatch off g_06099584 (mode=unk10+unk14; 0 noop,1/2 single src,3 dual src). First frame seeds pos(arg1)+angles(arg2 shorts); steady state eases triple(s) /4 (sdiv32) and rebuilds look-at via func_0221055c. by=fixed 0x14000. NOT a jump table (cmp/eq cascade; the 2 "TABLE" braf hits are phantom pool longs 0x0003b590/0x0003b57a).
+0x0220ef02 camera_mode_service_b   # HIGH  sibling of ea06; carries world pos(unk8/C/10)+velocity(unk14/18/1C). Transform = func_0220f45c (8-arg lookat shape, reached via mova+0x15D4 jsr). by offset 0x15000, slew /8. kind==0 step integrates pos+=vel (unreachable for mode 0..3). 6 "TABLE" braf hits are phantom (neighbour ebde pool, 0x0003b2xx sdiv deltas).
+0x0220ebde camera_mode_service_c   # HIGH  self-propelled sibling; velocity unk14/18/1C = arg2 >> g_06096C90 (ashr_var func_0224a420). Step: slew /4, rotate vel by facing via func_0221080a -> g_06098b1c, advance pos += g_06098b1c, rebuild look-at via func_0220e55c (8-arg, mova+0x18FC jsr). kind2 uses midpoints for bx/bz, unk94+0x15000 for by. All 24 "TABLE" braf hits phantom (interleaved ea06/ebde/ef02 pools).
+
+# ---- NEW ENTRIES IDENTIFIED ----
+0x0220f45c camera_transform_b?     # GUESS (shape only) 8-arg (x,y,z,bx,by,bz,*a6,*a7) lookat/transform; jsr target of ef02. Real entry.
+0x0220e55c camera_transform_c?     # GUESS (shape only) 8-arg (x,y,z,bx,by,bz,*a6,*a7) lookat/transform; jsr target of ebde. Real entry.
+
+# ---- ABI PINNED (from body) ----
+0x0223b254 actor_hit_anim_copy     # HIGH  1-ARG (r4=entity). Reads entity->unk6D (idx) -> g_060e106c[idx] (byte remap) -> copies 12-byte record g_0608cf3c[remap*12] to g_060996ec[entity->unk34 *12]. r5/r7 from callers are DEAD (ignored). Upgrades prior "GUESS/not fully decompiled". -> resolves 02239fc6 caveat: its r5/r7 differences across entry paths are irrelevant.
+0x0224a360 ashl_var                # HIGH (confirmed from body) s32(value r0, count r1) -> value<<count. count<0 unchanged, >=32 ->0. r2 callee-saved.
+0x0224a420 ashr_var                # HIGH (confirmed from body) s32(value r0, count r1) -> (signed)value>>count arithmetic. count<0 unchanged, >=32 -> sign. r2 callee-saved.
+
+# ---- DEFERRED (decoded, not shipped - see functional_bandjt2.md) ----
+0x0223bf86 obj_state_machine_8     # 8-state machine (state=entity->unk10; entity=MP(arg0,8)). cmp/eq dispatch -> 0:c010 1:c090 2:c428 3:c4ce 4:c560 5:c5d2 6:c5f2 7:c2c0 def:c5f6. Per-type data from HWRAM g_060e120c/g_060e0e88/g_060e1080/g_060e1209/g_060e0ddc indexed by entity->unk34 (type) & unk5E (subtype). "6 spawn pools" are PIC literal pools (all bsrf resolved: func_020ff0a spawn, func_0215f6c, fixmul 0x2131c8, cos 0x2131a8, func_020ff28, func_02173f4, RNG 0x210020, draw 0x2149aa/214a40/214a06/215a2c), NOT static data tables. DEFER: 1704B, state-7 stack-arg hover path needs a focused pass.
+0x0223e690 cmd_router_a            # LARGE guarded-tail-call router (36 computed branches, ALL resolved by braf_resolve). Checks entity flag bits (unk158->unk100 mask, unk8C & 0x3ffff, bit 0x40/0x100) then braf-tails to sub-handlers (func_022469f2/0249836/02470a2/0247036/02473ee/0249fb0/022eee4/02462bc/02153f6). NO computed jump table (prior "mov.b @(r0,r8) index table" flag is PHANTOM - braf misreads pool literal 0x0003ffff @0x23e72c). DEFER: 1930B, too large for zero-error guarantee this pass.
+0x0223f10e cmd_router_b            # LARGE sibling of e690 (46 computed branches, ALL resolved). Same flag-gated braf-tail router pattern + a cmp/eq #0/1/2 sub-switch @0x23f3bc. NO computed jump table (phantom 0x0003ffff @0x23f3dc). calls ashl_var 0x24a360, func_020feec. DEFER: 2808B.
+
+# ---- HWRAM tables referenced (runtime-populated; functional-decomp globals) ----
+# g_060e120c  per-type parameter table (bf86 r8, indexed by subtype unk5E-0xA, <<2)
+# g_060e0e88  per-type table (bf86 r9; +0x84 field-record, +0x72 substate longs)
+# g_060e1080  substate halfword table (bf86)
+# g_06096C90  global shift/scale level (ashr_var count for camera velocity)

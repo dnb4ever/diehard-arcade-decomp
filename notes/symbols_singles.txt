@@ -1,0 +1,23 @@
+# Die Hard Arcade (ST-V, SH-2 BE) - functional-decomp symbol additions (singles wave)
+# One worker, no forks. Format: 0x<SH2addr> <name>   # <confidence> <notes>
+# Confidence: HIGH = decomp-proven & hand-verified vs m2c --asm; MED = structure HIGH / name a reasoned guess.
+
+# ---- 0x2473ee unit: per-actor move/pose state family (02473ee.c, 0247508.c, 02475a8.c, 0247924.c) ----
+0x022473ee actor_move_init          # HIGH  init motion/anim state from a move descriptor; switch on func_02460c8 phase 0..3
+0x02247508 actor_move_launch0       # HIGH  pick rand variant from (*entity+0x174)[0], call actor_move_init
+0x02247530 actor_move_launch1       # HIGH  ditto, sub-list +0x4
+0x02247580 actor_move_launch2       # HIGH  ditto, sub-list +0x8
+0x022475a8 actor_move_step          # HIGH  per-frame step of the move state machine (phase unkD8 0..3), tails animation_update
+0x02247924 actor_face_resolve       # HIGH  resolve facing toward target; commit turn/strike or re-dispatch by phase
+0x022460c8 func_02460c8             # MED   actor phase/state classifier (reads unk8C), returns 0..3 (called, not defined)
+
+# ---- single large functions ----
+0x0223df30 hud_draw_player_status   # HIGH  per-player HUD status builder (timer/score digits + value); 2 PIC glyph draws
+0x02380c0  func_02380c0             # MED   4-arg HUD glyph draw (color,x,row,glyph) (PIC-called; not defined)
+0x02380fa  func_02380fa             # MED   4-arg HUD glyph draw (PIC-called; not defined)
+0x0223c95c hud_round_data_init      # HIGH  init per-round HUD/scoreboard tables from ROM; re-rolled unrolled copies
+0x02242272 actor_pose_hold_state    # HIGH  task-handler: timed pose/hit-reaction hold (state unkD4 0..3); name MED
+0x022425d0 actor_throw_sequence     # HIGH  task-handler: thrown/launched actor 8-state machine (unk10); name GUESS
+0x02243066 actor_special_move_state # HIGH  task-handler: special/grab move state machine (unkD4) w/ abort check; name GUESS
+0x0224680c func_0224680c            # MED   next task-handler swapped in by 0x242272 & 0x243066 (called, not defined)
+0x022462d0 func_022462d0            # MED   next task-handler swapped in by 0x2425d0 (called, not defined)

@@ -1,0 +1,330 @@
+--- a/runtime/src/host/host.cpp
++++ b/runtime/src/host/host.cpp
+@@ -1234,6 +1234,8 @@
+     }
+     static std::string last_title;
+     if (title != last_title) { SDL_SetWindowTitle(g_win, title.c_str()); last_title = title; }
++    if (!player_movie_status().empty())
++        ui_text(g_out_w-16.0f, 22, 14, player_movie_status(), rgba(.8f, .9f, 1, 1), true, UiAlign::Right);
+     if (host_fast_forward()) ui_text(16, 22, 16, "FAST FORWARD (audio muted)", rgba(1, .85f, .3f, 1), true, UiAlign::Left);
+     if (g_quitting) {
+         float u = display_scale();
+@@ -1438,3 +1440,7 @@
+     vdp2_compose(f); host_present(f);
+     SDL_Delay(16);
+ }
++
++void host_player_error(const std::string& message) {
++    if (g_win) SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Die Hard Arcade", message.c_str(), g_win);
++}
+--- a/runtime/src/host/host.h
++++ b/runtime/src/host/host.h
+@@ -35,3 +35,5 @@
+ bool host_rewind_held();
+ void host_rewind_frame(); // redraw restored video, pump controls, wait one field
+ void host_quick_reset(); // discard queued host audio and rebase pacing after a state load
++
++void host_player_error(const std::string& message);
+--- a/runtime/src/host/host_null.cpp
++++ b/runtime/src/host/host_null.cpp
+@@ -27,3 +27,5 @@
+ bool host_rewind_held() { return false; }
+ void host_rewind_frame() {}
+ void host_quick_reset() {}
++
++void host_player_error(const std::string&) {}
+--- a/runtime/src/host/launcher.cpp
++++ b/runtime/src/host/launcher.cpp
+@@ -56,9 +56,13 @@
+     auto& set = host_settings();
+     ImGui::SeparatorText("Training / cheats (all off by default)");
+     ImGui::TextWrapped("Affects both joined players. Cheats are marked in the HUD and title.");
++    bool fixed_training = player_movie_active();
++    if (fixed_training) ImGui::TextWrapped("Training options are fixed for this recording/replay. Choose them before starting the input file.");
++    ImGui::BeginDisabled(fixed_training);
+     for (auto item : {std::pair{"infinite_health", "Infinite health"}, std::pair{"infinite_lives", "Infinite lives"},
+                       std::pair{"infinite_credits", "Infinite credits (free play)"}}) {
+-        bool on = set.flag("training", item.first);
++        bool on = std::strcmp(item.first, "infinite_health") == 0 ? g_cfg.cheat_health :
++            std::strcmp(item.first, "infinite_lives") == 0 ? g_cfg.cheat_lives : g_cfg.cheat_credits;
+         if (ImGui::Checkbox(item.second, &on)) {
+             set.set("training", item.first, on ? "true" : "false"); player_settings(set); host_settings_save();
+         }
+@@ -74,14 +78,43 @@
+         player_settings(set); host_settings_save();
+     }
+ 
++    ImGui::EndDisabled();
+     ImGui::TextDisabled("Invincibility: no verified universal RAM flag. Hitboxes: not exposed.");
+     ImGui::TextWrapped("Scene select uses the game's own next-scene selector at power-on. Scene 2 is the intro; 3 is the first fight. Arbitrary mid-scene jumps are unavailable.");
+ }
+-void player_features() {
++static int movie_action;
++static std::string movie_path;
++void movie_features(bool running) {
++    auto& set = host_settings();
++    std::string path = set.get("player", "movie_path");
++    if (path.empty()) path = g_cfg.quick_path + ".inputs";
++    char buffer[1024]; std::snprintf(buffer, sizeof buffer, "%s", path.c_str());
++    ImGui::TextWrapped("Versioned input files contain physical P1/P2 controls and system switches. Replay uses the recorded settings and requires this exact build and ROM set.");
++    if (ImGui::InputText("Input file", buffer, sizeof buffer, ImGuiInputTextFlags_EnterReturnsTrue)) {
++        set.set("player", "movie_path", buffer); host_settings_save(); path = buffer;
++    }
++    if (running) {
++        ImGui::TextUnformatted(player_movie_status().empty() ? "Start recording or replay from the launcher." : player_movie_status().c_str());
++        return;
++    }
++    if (ImGui::Button("Record from power-on")) { movie_action = 1; movie_path = path; }
++    std::error_code error;
++    ImGui::BeginDisabled(!std::filesystem::exists(g_cfg.quick_path, error));
++    if (ImGui::Button("Record from quick save")) { movie_action = 2; movie_path = path; }
++    ImGui::EndDisabled();
++    ImGui::BeginDisabled(!std::filesystem::exists(path, error));
++    if (ImGui::Button("Play input file")) { movie_action = 3; movie_path = path; }
++    ImGui::EndDisabled();
++    ImGui::TextWrapped("These buttons start play. Record ends and writes the file when you quit. Rewind replaces the abandoned future. Quick load is unavailable while an input file is active.");
++}
++void player_features(bool running = false) {
+     if (ImGui::BeginTabBar("feature-kind")) {
+         if (ImGui::BeginTabItem("Time / autofire")) { time_features(); ImGui::EndTabItem(); }
+         if (ImGui::BeginTabItem("Training / cheats", nullptr, SDL_getenv("SATURN_TRAINING_SHOT") ? ImGuiTabItemFlags_SetSelected : 0)) {
+             training_features(); ImGui::EndTabItem();
++        }
++        if (ImGui::BeginTabItem("Input files", nullptr, SDL_getenv("SATURN_MOVIE_SHOT") ? ImGuiTabItemFlags_SetSelected : 0)) {
++            movie_features(running); ImGui::EndTabItem();
+         }
+         ImGui::EndTabBar();
+     }
+@@ -307,6 +340,12 @@
+                 feature_tab = true; player_features(); ImGui::EndTabItem();
+             }
+             ImGui::EndTabBar();
++        }
++        if (movie_action) {
++            cfg_.movie_record.clear(); cfg_.movie_play.clear();
++            cfg_.quick_start = movie_action == 2;
++            if (movie_action == 3) cfg_.movie_play = movie_path; else cfg_.movie_record = movie_path;
++            movie_action = 0; started_ = true;
+         }
+         if (!feature_tab && ImGui::BeginTable("layout", 2, ImGuiTableFlags_SizingStretchSame)) {
+             ImGui::TableNextColumn();
+@@ -560,7 +599,7 @@
+         ImGui::SetNextWindowPos(vp->WorkPos); ImGui::SetNextWindowSize(vp->WorkSize);
+         ImGui::Begin("Player features / training", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
+         if (ImGui::Button("Back to pause menu")) open = false;
+-        player_features(); ImGui::End(); ImGui::Render();
++        player_features(true); ImGui::End(); ImGui::Render();
+         SDL_SetRenderDrawColor(ren, 15, 18, 24, 255); SDL_RenderClear(ren);
+         ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), ren);
+         if (const char* shot = SDL_getenv("SATURN_PLAYER_SHOT"); shot && frame == 3) host_save_picture(shot);
+--- a/runtime/src/host/settings.cpp
++++ b/runtime/src/host/settings.cpp
+@@ -45,6 +45,7 @@
+ start_scene = 0
+ 
+ [player]
++movie_path =
+ rewind_seconds = 0
+ rewind_key = Backspace
+ rewind_pad = leftshoulder
+--- a/runtime/src/machine/bios.cpp
++++ b/runtime/src/machine/bios.cpp
+@@ -438,7 +438,7 @@
+     host_stv_panel(live_raw, live_sys);
+     raw_controls[0] |= live_raw[0];
+     raw_controls[1] |= live_raw[1];
+-    stv_autoplay(vb, raw_controls[0]);
++    if (!player_movie_playing()) stv_autoplay(vb, raw_controls[0]);
+ 
+ 
+     // The BIOS system-switch record at 0x06000728 (fifth raw input record). The real BIOS
+--- a/runtime/src/machine/player.cpp
++++ b/runtime/src/machine/player.cpp
+@@ -19,11 +19,12 @@
+         g_cfg.turbo_hz[p][b] = settings.number("player", key);
+     }
+ }
+-void player_input(uint64_t frame, uint16_t raw[2], uint16_t&) {
++void player_input(uint64_t frame, uint16_t raw[2], uint16_t& system) {
+     for (int p = 0; p < 2; ++p) for (int b = 0; b < 3; ++b) {
+         int rate = g_cfg.turbo_hz[p][b];
+         if (rate && (frame * unsigned(rate) % 60) >= 30) raw[p] &= uint16_t(~(1u << b));
+     }
++    player_movie_panel(frame, raw, system);
+ }
+ 
+ // Game data evidence: 0222ab18 subtracts actor+56; 02228168 seeds HP/lives;
+--- a/runtime/src/machine/player.h
++++ b/runtime/src/machine/player.h
+@@ -10,3 +10,9 @@
+ void player_training_tick();
+ void player_state(State&);
+ std::string player_cheat_label();
++bool player_movie_open(bool& resumed);
++void player_movie_panel(uint64_t frame, uint16_t raw[2], uint16_t& system);
++bool player_movie_finish();
++bool player_movie_playing();
++const std::string& player_movie_status();
++bool player_movie_active();
+--- a/runtime/src/machine/saturn.h
++++ b/runtime/src/machine/saturn.h
+@@ -83,6 +83,7 @@
+     std::string progress_keep;      // "ADDR:BYTES,...": the ranges
+     std::string resume_label;       // what the window says while --resume plays
+     std::string after;              // with it, the menu has Save files, which writes "saves" here and quits
++    std::string movie_record, movie_play;
+     bool cheat_health = false, cheat_lives = false, cheat_credits = false;
+     int start_scene = 0; // 0 = original route; 2..72 = original scene selector table
+     bool cheat_scene_used = false;
+--- a/runtime/src/machine/state.cpp
++++ b/runtime/src/machine/state.cpp
+@@ -20,6 +20,8 @@
+ #include <cstdio>
+ #include <filesystem>
+ #include <map>
++#include <stdexcept>
++#include <ctime>
+ #include <thread>
+ 
+ static const char kMagic[8] = {'S', 'A', 'T', 'S', 'T', 'A', 'T', 'E'};
+@@ -222,6 +224,7 @@
+ }
+ void quick_request(bool load) {
+     if (!quick_available()) return;
++    if (load && player_movie_active()) { quick_message("Quick load unavailable during input recording/replay; use rewind"); return; }
+     g_quick_request = load ? 2 : 1;
+ }
+ // Wire values are fixed little endian; device blobs are native to the exact
+@@ -407,3 +410,132 @@
+ void quick_run_master() {
+     if (!g_quick_resume(g_master, g_master.cont)) sat_fatal("state: master continuation returned");
+ }
++
++// ---- P4.13 input files: final physical panel pins at every VBlank -----------------------------
++// Header and panel records are little endian. Embedded state parts retain the
++// exact-build identity required by P4.10. No native pointers are written.
++static std::vector<uint8_t> movie_meta, movie_state, movie_panels;
++static uint64_t movie_first;
++static bool movie_recording, movie_playing, movie_failed;
++static std::string movie_message;
++const std::string& player_movie_status() { return movie_message; }
++bool player_movie_playing() { return movie_playing; }
++bool player_movie_active() { return movie_playing || movie_recording; }
++static uint64_t movie_u64(const std::vector<uint8_t>& b, size_t at) {
++    uint64_t v = 0; for (int i = 7; i >= 0; --i) v = v << 8 | b[at+i]; return v;
++}
++static bool movie_write() {
++    std::vector<uint8_t> body = movie_meta;
++    put(body, movie_state.data(), movie_state.size()); put(body, movie_panels.data(), movie_panels.size());
++    std::vector<uint8_t> b;
++    put(b, "STVINP13", 8); quick_u64(b, 1); quick_u64(b, g_quick_identity);
++    quick_u64(b, movie_first); quick_u64(b, movie_state.size()); quick_u64(b, movie_panels.size()/6);
++    quick_u64(b, quick_hash(body.data(), body.size())); quick_u64(b, movie_meta.size());
++    put(b, body.data(), body.size());
++    std::error_code error;
++    auto parent = std::filesystem::path(g_cfg.movie_record).parent_path();
++    if (!parent.empty()) std::filesystem::create_directories(parent, error);
++    std::string tmp = g_cfg.movie_record + ".part";
++    FILE* f = error ? nullptr : std::fopen(tmp.c_str(), "wb");
++    bool ok = f && std::fwrite(b.data(), 1, b.size(), f) == b.size();
++    if (f) ok = std::fclose(f) == 0 && ok;
++    if (ok) std::filesystem::rename(tmp, g_cfg.movie_record, error);
++    if (!ok || error) { movie_message = "Input recording: could not write file"; sat_note("%s", movie_message.c_str()); return false; }
++    return true;
++}
++static void movie_pending(const std::vector<uint8_t>& b) {
++    // The file header/checksum and every named part are validated before restore.
++    size_t at = 0; g_quick_pending.clear();
++    for (auto& part : kQuickParts) {
++        size_t n = std::strlen(part.name);
++        if (at > b.size() || b.size()-at < n+8 || std::memcmp(b.data()+at, part.name, n)) throw std::runtime_error("state part name");
++        at += n; uint64_t size = movie_u64(b, at); at += 8;
++        if (size > b.size()-at) throw std::runtime_error("state part size");
++        g_quick_pending.emplace_back(b.begin()+at, b.begin()+at+size); at += size;
++    }
++    if (at != b.size()) throw std::runtime_error("state trailing bytes");
++}
++bool player_movie_open(bool& resumed) {
++    if (g_cfg.movie_record.empty() && g_cfg.movie_play.empty()) return true;
++    if (!g_cfg.movie_record.empty() && !g_cfg.movie_play.empty()) { sat_note("input file: choose recording or replay"); return false; }
++    if (!g_cfg.movie_play.empty()) {
++        FILE* f = std::fopen(g_cfg.movie_play.c_str(), "rb");
++        if (!f) { sat_note("input replay: no readable file %s", g_cfg.movie_play.c_str()); return false; }
++        std::fseek(f, 0, SEEK_END); long size = std::ftell(f); std::rewind(f);
++        if (size < 64 || size > 256*1024*1024) { std::fclose(f); sat_note("input replay: invalid length"); return false; }
++        std::vector<uint8_t> b((size_t)size);
++        bool ok = std::fread(b.data(), 1, b.size(), f) == b.size(); std::fclose(f);
++        uint64_t state_bytes = movie_u64(b, 32), frames = movie_u64(b, 40), meta_bytes = movie_u64(b, 56);
++        if (!ok || std::memcmp(b.data(), "STVINP13", 8) || movie_u64(b, 8) != 1 || movie_u64(b, 16) != g_quick_identity ||
++            meta_bytes != 0x4000+32 || state_bytes > 64*1024*1024 || frames > 32*1024*1024 || !frames ||
++            meta_bytes+state_bytes+frames*6 != b.size()-64 ||
++            movie_u64(b, 48) != quick_hash(b.data()+64, b.size()-64)) {
++            sat_note("input replay: rejected stale, incompatible or corrupt file"); return false;
++        }
++        movie_first = movie_u64(b, 24);
++        if (movie_first > UINT64_MAX-frames || (!state_bytes && movie_first != 0)) { sat_note("input replay: invalid origin"); return false; }
++        movie_meta.assign(b.begin()+64, b.begin()+64+meta_bytes);
++        movie_state.assign(b.begin()+64+meta_bytes, b.begin()+64+meta_bytes+state_bytes);
++        movie_panels.assign(b.begin()+64+meta_bytes+state_bytes, b.end());
++        if (state_bytes) {
++            try { movie_pending(movie_state); }
++            catch (const std::exception& e) { g_quick_pending.clear(); sat_note("input replay: rejected embedded %s", e.what()); return false; }
++            resumed = quick_restore();
++            if (!resumed || sat_vblanks() != movie_first) { sat_note("input replay: embedded origin mismatch"); return false; }
++        } else if (resumed) { sat_note("input replay: power-on recording cannot start from a quick state"); return false; }
++        unsigned flags = unsigned(movie_u64(movie_meta, 0));
++        g_cfg.cheat_health = flags&1; g_cfg.cheat_lives = flags&2; g_cfg.cheat_credits = flags&4;
++        g_cfg.start_scene = int(movie_u64(movie_meta, 8));
++        g_cfg.clock = int64_t(movie_u64(movie_meta, 24));
++        if (!state_bytes) {
++            for (unsigned i = 0; i < 0x4000; ++i) st8(0x06000000+i, movie_meta[32+i]);
++            st32(0x060987CC, uint32_t(movie_u64(movie_meta, 16)));
++        }
++        movie_playing = true; movie_message = "REPLAY INPUTS";
++        uint64_t end = movie_first + frames;
++        if (!g_cfg.stop_vblanks || g_cfg.stop_vblanks > end) g_cfg.stop_vblanks = end;
++        sat_note("input replay: %llu fields from VB %llu, %s", (unsigned long long)frames, (unsigned long long)movie_first, state_bytes ? "embedded state" : "power-on");
++        return true;
++    }
++    movie_first = sat_vblanks();
++    // Freeze the host RTC origin only for an opted-in recording. Replay then
++    // advances it from virtual time, independent of the day or host time zone.
++    if (g_cfg.clock < 0) g_cfg.clock = int64_t(std::time(nullptr)) - int64_t(sat_now()/1000000000);
++    quick_u64(movie_meta, (g_cfg.cheat_health ? 1 : 0) | (g_cfg.cheat_lives ? 2 : 0) | (g_cfg.cheat_credits ? 4 : 0));
++    quick_u64(movie_meta, uint64_t(g_cfg.start_scene)); quick_u64(movie_meta, ld32(0x060987CC));
++    quick_u64(movie_meta, uint64_t(g_cfg.clock));
++    for (unsigned i = 0; i < 0x4000; ++i) movie_meta.push_back(uint8_t(ld8(0x06000000+i)));
++    if (resumed) quick_payload(movie_state);
++    movie_recording = true; movie_message = "RECORDING INPUTS";
++    // Check the destination before allowing play; failures never silently lose a recording.
++    if (!movie_write()) { movie_recording = false; return false; }
++    sat_note("input recording: from VB %llu (%s)", (unsigned long long)movie_first, resumed ? "embedded state" : "power-on");
++    return true;
++}
++void player_movie_panel(uint64_t frame, uint16_t raw[2], uint16_t& system) {
++    if (!movie_recording && !movie_playing) return;
++    // A loaded continuation can finish the field it was saved in without repolling inputs.
++    if (frame <= movie_first) return;
++    uint64_t index = frame-movie_first-1;
++    if (movie_playing) {
++        if (index >= movie_panels.size()/6) sat_stop("input replay complete");
++        size_t at = size_t(index)*6;
++        raw[0] = uint16_t(movie_panels[at] | movie_panels[at+1]<<8);
++        raw[1] = uint16_t(movie_panels[at+2] | movie_panels[at+3]<<8);
++        system = uint16_t(movie_panels[at+4] | movie_panels[at+5]<<8);
++    } else {
++        if (index > movie_panels.size()/6 || index >= 32*1024*1024) {
++            movie_failed = true; movie_recording = false; movie_message = "Recording stopped: incompatible state jump / size limit";
++            sat_note("%s", movie_message.c_str()); return;
++        }
++        // Rewind replaces the abandoned future; repeated physical frames have one final record.
++        movie_panels.resize(size_t(index)*6);
++        for (uint16_t value : {raw[0], raw[1], system}) { movie_panels.push_back(uint8_t(value)); movie_panels.push_back(uint8_t(value>>8)); }
++    }
++}
++bool player_movie_finish() {
++    if (g_cfg.movie_record.empty()) return true;
++    bool ok = movie_write() && !movie_failed;
++    if (ok) sat_note("input recording: wrote %llu fields, %zu bytes", (unsigned long long)(movie_panels.size()/6), 64+movie_meta.size()+movie_state.size()+movie_panels.size());
++    return ok;
++}

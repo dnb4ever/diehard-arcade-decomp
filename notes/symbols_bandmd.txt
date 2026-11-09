@@ -1,0 +1,87 @@
+# Band "mathdisp" (0x232610 / 0x232bc4, SH2) functional decomp - symbols
+# Worker: mathdisp. Function C-symbol = func_<full 8-hex SH2 addr>.
+# fidelity HIGH on both; every computed branch confirmed via braf_resolve.py and
+# both files compile with gcc -c -fsyntax-only -Wall -Wextra (zero warnings).
+# NOTE: these two are NOT math dispatchers (prior band23mid note was wrong) - they
+# are scene / stage-intro state machines; div1/mac in the raw listing = literal pools.
+
+# --- functions decompiled this pass ---
+0x02232610 stage_intro_task_a   # HIGH 6-state (task->unk10). Stage/round intro bootstrap:
+                                 #      VDP2/VDP1 bring-up, per-stage signature-gated texture/
+                                 #      entity/HUD reset (g_06072660), fade/layer spawns, handler-
+                                 #      node dispatch, countdown -> fade obj, per-frame TVMD + prune
+                                 #      tail func_0220fdc8. state1 FALLS THROUGH into state2.
+0x02232bc4 stage_intro_task_b   # HIGH 7-state sibling of 0x02232610. Resets are unconditional;
+                                 #      state2 drives a variadic glyph countdown (*g_060902a0),
+                                 #      state4 gates on both players' unk5A/unk54/unk56, state5
+                                 #      restart poll. state1 FALLS THROUGH into state2.
+
+# --- confirmed callees / globals referenced (not owned here) ---
+# (names marked (existing) already present in notes/symbols*.txt from prior passes)
+0x02216154 func_02216154  video_state_init(s32 mode)         # (existing) reads r4
+0x02222e44 func_02222e44  vdp2_setup_largefont(s32 mode)     # (existing) reads r4
+0x0223820c func_0223820c  gfx_vram_dma_setup(void)           # (existing) no args
+0x02214d26 func_02214d26  vdp1_draw_kick(void)               # (existing)
+0x02216b14 func_02216b14  (void *p)                          # r4 = &g_06088808
+0x022150d4 func_022150d4  upload_texture_groups(void *grp)   # (existing) 1 arg (r4), r5+ clobbered
+0x02215228 func_02215228  (void *p)                          # 1 arg (desc->unk4)
+0x0223ac0  func_0223ac0   (void *p)                          # 1 arg (desc->unk8)
+0x02227a84 func_02227a84  entity_system_reset(void)          # (existing)
+0x0223c95c func_0223c95c  hud_round_data_init(void)          # (existing)
+0x02216c38 func_02216c38  (void *a, void *b)                 # reads r4,r5 (stores 0x60b3d54/58)
+0x02215e20 func_02215e20  sound_send_command(s32 a, s32 b)   # (existing) reads r4,r5
+0x02233250 func_02233250  scene_stage_fade_spawn(void *task) # (existing)
+0x0220fece func_0220fece  (void *parent, void *tmpl)->obj    # (existing) fwds r4,r5 to ctor 0x20fc3c
+0x02246052 func_02246052  (void)                             # ignores caller r4/r5 (self-sets r4=44)
+0x02215fac func_02215fac  sound_cue_dispatch(void)           # (existing) ignores r4 (reads globals)
+0x0222a8d8 func_0222a8d8  (void)                             # (existing) player-ready; writes 0x6098564
+0x02216d58 func_02216d58  (void)                             # reloads r4 from *0x609882c -> NO args
+0x02243628 func_02243628  (void)                             # no args
+0x02228134 func_02228134  players_entities_ready(void)->s32  # (existing) -1 if a player's actor ...
+0x0220f990 func_0220f990  (void)                             # (existing) reset controller records
+0x0223cd98 func_0223cd98  (void)                             # (existing) active-effect slot sweep
+0x0223de20 func_0223de20  players_special_refresh(void)      # (existing) no args
+0x0223dd28 func_0223dd28  actor_status_publish(s32 which)    # (existing) reads r4 (1/2)
+0x0221603e func_0221603e  sound_emit_gated(s16 id)           # (existing) reads r4 (mov.w)
+0x02215f6c func_02215f6c  sound_queue_push(s32 cmd)          # (existing) reads r4
+0x0220fdc8 func_0220fdc8  (s32 depth)                        # (existing) prune by depth; reads r4 (byte)
+0x0223dcc2 func_0223dcc2  (s32 which)                        # 1 arg (1/2); ref'd by 0x02202c5c
+0x02208030 func_02208030  scene_layer_loader_spawn_a(void*)  # (existing) 1 arg (task); r5 clobbered
+0x0222a04e func_0222a04e  (void)->s32                        # reads 0x60995b0 globals; no args
+0x0222a0ec func_0222a0ec  (void)                             # reads 0x60995b0 globals; no args
+0x02233122 (embedded fn)                                     # handler ptr passed to func_0220fece
+                                                             #   in 0x232bc4 state2; real code in the
+                                                             #   function's data tail (separate entry).
+
+# indirect call slots (function pointers stored at the address)
+g_06090294  void(*)(void)        # VDP commit callback (0x232610/0x232bc4 state0). NO args
+                                 #   (m2c misrenders as (7): the 7 is leftover r4, dead).
+g_060902a0  void(*)(void*ctrl,s32 val)  # variadic glyph/text thunk; 2 stack args in
+                                 #   0x232bc4 state2: (0x608881C, entity->unk50>>5).
+
+# globals touched (HWRAM 0x06xxxxxx unless noted)
+g_06098f08  void*   VDP2 shadow-register block base (deref then field writes)
+g_0609866c  void*   active scene descriptor
+g_0609882c  void*   current source-actor holder
+g_06098678  void*   active handler-node holder (double-deref vs 0x22052xx/0x22048xx consts)
+g_06072660  u8[]    per-stage resource signature table, stride 0x50 (idx = g_0609868f)  [0x232610]
+g_0609868f  s8      stage index                                                          [0x232610]
+g_06088700  u8[]    fade-descriptor table, stride 0xC (unkA = s16)                        [0x232610]
+g_06088808  u8[]    arg block for func_02216b14
+g_0608881c  u8[]    glyph-thunk control block                                            [0x232bc4]
+g_060995b4  void*   player A      /  g_060995b8 void* player B                            [0x232bc4]
+g_060986b8  s32
+g_060bacac / g_060bacb0 / g_060bacb4  s32   enable-bit words (|=1 arm / &=~1 disarm)
+g_06098670  s32
+g_06098564  s32  /  g_06098568  s32                                                       [0x232610]
+g_06099578  s32
+g_0609861c  s8
+g_06098580  s32
+g_06096c90  s32                                                                          [0x232610]
+g_0609856c  s32
+g_06098812  u16  /  g_0609880e  u16
+g_06098674  u8[]  two phase bytes at +0,+1
+g_0609979a  u16                                                                          [0x232bc4]
+g_0609978c  u16[]  two words at +0,+2                                                     [0x232bc4]
+g_060997a4  s32  /  g_060997a8  s32                                                       [0x232bc4]
+g_25f80000  volatile u16   VDP2 TVMD register (hardware)

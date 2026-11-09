@@ -1,0 +1,42 @@
+# Band: deferred large matrix/draw routines (0x0222d0e8..0x0222e3b0)
+# Worker: banddraw. Functional (equivalence) decomp, NOT byte-exact.
+# Addresses are full SH2 (cart offset = addr - 0x02000000).
+#
+# ---- functions decompiled this band ----
+0x0222d0e8 draw_actor_hier_model      # HIGH  16x-unrolled articulated-model draw. Sets up per-actor arrays vec_src=0x0607976C+(s16)unk5E*180 (translations, stride 12), rot_src=0x06096328+(s16)((s8)unk34*108) (Euler angles, stride 6), id_tab=0x06096248+(s8)unk34*32 (u16 part ids). Walks a segment tree with matrix push/pop (*0x06098878 +-0x30), per-segment mtx_rotate_zyx/mtx_apply_vec_at0, latches id to entity->unk30, submits via func_02215b34. All 33 bsrf + 2 mova+add jsr resolved. Compiles -Wall -Wextra clean.
+0x0222dc2c actor_anim_frame_update    # HIGH  per-frame anim driver. recA=0x0607D124+(u16)unk5A*28, recB=+unk5C*28; (re)primes pose buffers buf_cur/prev/next (0x06096328/0x0609661C/0x06096910, stride 108, off=(s16)(unk34*108)); unk40=1<<(SHBASE+field) step count; interpolates 3-component root pos (next->prev by unk40, >>var_r12) into rec_out=0x06096388+off and 0x06096C58[unk34]; 5-way motion switch on (recA->unkA & 7); ret=func_022170ea(entity); event tail fires spawn/child/combo. All 34 bsrf resolved + 1 PC-rel bsr (->0x0222e3b0). Returns s32. Compiles clean.
+#
+# ---- deferred (documented, NOT written) ----
+0x0222e3b0 pose_matrix_blend_decompose  # DEFERRED. 1630-byte helper bsr'd by actor_anim_frame_update (0x22def8). 16-iteration loop, 4-way unrolled: per joint builds two rotation matrices (prev angles @spC, next angles @sp10 via load_matrix_default+mtx_rotate_zyx), blends M = A*arg2 + B*(1-arg2) over 6 elems, re-decomposes blended matrix to angles (mtx_rotate_y/z of -angle, vec3_matmul_out, angle_from_vec2, lookat_angles_xy), writes angle shorts to buf_cur (0x06096328+off, +6/joint). All 41 computed branches resolved. NOT transcribed: uses dynamic @-r15 argument pushes that shift the stack frame mid-function (bulk-cleaned at 22e9a2 add #64,r15 / 22e9f8 add #104,r15); this defeats fixed-slot modelling (m2c itself emits undefined sp24/sp28/sp38). Needs a careful frame-tracking pass + runtime equivalence check before it can be shipped safely.
+#
+# ---- confirmed globals (HWRAM) ----
+0x06098878 g_mtx_stack_top        # pointer to current matrix cell; push=+0x30, pop=-0x30
+0x06098B1C g_mtx_delta_vec        # 3-long translation delta read after default-matrix transform (dc2c)
+0x0607976C g_pose_translations    # per-variant translation table, stride 180, idx entity->unk5E (d0e8)
+0x06096328 g_pose_buf_cur         # working pose buffer (current), stride 108, idx (s16)(unk34*108)
+0x0609661C g_pose_buf_prev        # working pose buffer (prev), stride 108
+0x06096910 g_pose_buf_next        # working pose buffer (next), stride 108
+0x06096388 g_root_pos_rec         # transformed root position (3 longs), stride 108 + off
+0x06096248 g_part_id_table        # per-actor u16 model-id table, stride 32, idx (s8)unk34 (d0e8)
+0x06096C58 g_slot_scalar          # per-slot s32, stride 4, idx unk34
+0x06096C90 g_interp_shift_base    # s32 global shift base for interpolation (dc2c)
+0x06096C04 g_slot_pos_rec         # per-slot world-pos record, stride 12, idx (s8)(unk34*12)
+0x0607D124 g_anim_record_table    # animation record table, stride 28, idx unk5A / unk5C
+0x0609868E g_cur_actor_index      # s8 index into spawn-template dispatch (dc2c)
+0x06091334 g_spawn_template_base  # table of template-base pointers (dc2c)
+0x0608C538 g_child_param_table    # s32 per-code params for func_0220fece (dc2c)
+0x060E0DDC g_combo_enable_flag    # s32 gate for func_02215f6c combo events (dc2c)
+0x06053F04 g_combo_code_table     # s16 combo code table for func_02215f6c (dc2c)
+#
+# ---- callees referenced (owned elsewhere; declared extern) ----
+0x022149aa mtx_load_abc           0x02214a40 mtx_apply_vec_at8
+0x02214a06 mtx_rotate_zyx_at24    0x02213ca4 vec3_array_matmul
+0x022149e4 mtx_rotate_zyx         0x02214a50 mtx_apply_vec_at0
+0x02214a2e mtx_stack_push         0x02215b34 submit_model   (sibling of 0x02215a2c submit_model_culled)
+0x0224a280 block_copy(cnt,dst,src) 0x0224a360 ashl_var(v,c)
+0x0224a420 ashr_var(v,c)          0x02213390 interp_shorts_48(rec,shift,weight)
+0x02213fb4 load_matrix_default    0x02213538 vec3_matmul_out(x,y,z)
+0x02213bf4 mtx_rotate_y           0x02213c4c mtx_rotate_z
+0x022130b4 angle_from_vec2        0x02210622 lookat_angles_xy
+0x022170ea actor_post_update      0x0220ff28 spawn_from_template
+0x0220fece spawn_child            0x02215f6c combo_event

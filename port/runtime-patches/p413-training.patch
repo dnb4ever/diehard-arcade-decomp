@@ -1,0 +1,286 @@
+--- a/runtime/src/host/host.cpp
++++ b/runtime/src/host/host.cpp
+@@ -1224,6 +1224,16 @@
+         if (touch_shown()) draw_touch_pad();
+         if (menu_button_shown()) draw_menu_button();
+     }
++    std::string cheats = player_cheat_label();
++    std::string title = g_cfg.title.empty() ? "saturn-recomp" : g_cfg.title;
++    if (!cheats.empty()) {
++        title += " [" + cheats + "]";
++        float y = g_out_h - 46.0f;
++        ui_fill_rounded({8, y-14, ui_text_width(16, cheats, true)+16, 28}, 7, rgba(.04f, .05f, .07f, .9f));
++        ui_text(16, y, 16, cheats, rgba(1, .65f, .25f, 1), true, UiAlign::Left);
++    }
++    static std::string last_title;
++    if (title != last_title) { SDL_SetWindowTitle(g_win, title.c_str()); last_title = title; }
+     if (host_fast_forward()) ui_text(16, 22, 16, "FAST FORWARD (audio muted)", rgba(1, .85f, .3f, 1), true, UiAlign::Left);
+     if (g_quitting) {
+         float u = display_scale();
+--- a/runtime/src/host/launcher.cpp
++++ b/runtime/src/host/launcher.cpp
+@@ -20,7 +20,7 @@
+ #include <sstream>
+ 
+ namespace {
+-void player_features() {
++void time_features() {
+     auto& set = host_settings();
+     ImGui::SeparatorText("Player features");
+     int seconds = g_cfg.rewind_seconds;
+@@ -52,6 +52,41 @@
+         }
+     }
+ }
++void training_features() {
++    auto& set = host_settings();
++    ImGui::SeparatorText("Training / cheats (all off by default)");
++    ImGui::TextWrapped("Affects both joined players. Cheats are marked in the HUD and title.");
++    for (auto item : {std::pair{"infinite_health", "Infinite health"}, std::pair{"infinite_lives", "Infinite lives"},
++                      std::pair{"infinite_credits", "Infinite credits (free play)"}}) {
++        bool on = set.flag("training", item.first);
++        if (ImGui::Checkbox(item.second, &on)) {
++            set.set("training", item.first, on ? "true" : "false"); player_settings(set); host_settings_save();
++        }
++    }
++    int scene = g_cfg.start_scene;
++    if (ImGui::SliderInt("Start scene (next power-on)", &scene, 0, 72, "%d (0 = original)")) {
++        if (scene == 1) scene = 2;
++        set.set("training", "start_scene", std::to_string(scene)); g_cfg.start_scene = scene; host_settings_save();
++    }
++    if (ImGui::Button("Disable all cheats")) {
++        Settings defaults;
++        for (auto& key : defaults.keys("training")) set.set("training", key, defaults.get("training", key));
++        player_settings(set); host_settings_save();
++    }
++
++    ImGui::TextDisabled("Invincibility: no verified universal RAM flag. Hitboxes: not exposed.");
++    ImGui::TextWrapped("Scene select uses the game's own next-scene selector at power-on. Scene 2 is the intro; 3 is the first fight. Arbitrary mid-scene jumps are unavailable.");
++}
++void player_features() {
++    if (ImGui::BeginTabBar("feature-kind")) {
++        if (ImGui::BeginTabItem("Time / autofire")) { time_features(); ImGui::EndTabItem(); }
++        if (ImGui::BeginTabItem("Training / cheats", nullptr, SDL_getenv("SATURN_TRAINING_SHOT") ? ImGuiTabItemFlags_SetSelected : 0)) {
++            training_features(); ImGui::EndTabItem();
++        }
++        ImGui::EndTabBar();
++    }
++}
++
+ 
+ 
+ const struct { const char* key; const char* label; } kButtons[] = {
+--- a/runtime/src/host/settings.cpp
++++ b/runtime/src/host/settings.cpp
+@@ -36,6 +36,13 @@
+ free_play = false
+ pause_button = false
+ violence = false
++
++[training]
++infinite_health = false
++infinite_lives = false
++infinite_credits = false
++; Next power-on only. 0 original route; 2..72 scene index.
++start_scene = 0
+ 
+ [player]
+ rewind_seconds = 0
+@@ -153,7 +160,7 @@
+ 
+ // The range a number may take, by key.
+ static const struct { const char* key; int lo, hi; } kRanges[] = {
+-    {"turbo_p1_a", 0, 30}, {"turbo_p1_b", 0, 30}, {"turbo_p1_c", 0, 30},
++    {"start_scene", 0, 72}, {"turbo_p1_a", 0, 30}, {"turbo_p1_b", 0, 30}, {"turbo_p1_c", 0, 30},
+     {"turbo_p2_a", 0, 30}, {"turbo_p2_b", 0, 30}, {"turbo_p2_c", 0, 30}, {"rewind_seconds", 0, 20}, {"difficulty", 1, 8}, {"vitality", 0, 7}, {"lives", 1, 4}, {"scale", 1, 8}, {"size", 50, 200}, {"volume", 0, 100}, {"stick", 5, 95}, {"trigger", 5, 95}, {"multitap", 0, 2}};
+ 
+ static std::string trim(const std::string& s) {
+--- a/runtime/src/machine/machine.cpp
++++ b/runtime/src/machine/machine.cpp
+@@ -33,6 +33,7 @@
+ #include "host.h"
+ #include "video.h"
+ #include "state.h"
++#include "player.h"
+ #include <atomic>
+ #include <chrono>
+ #include <condition_variable>
+@@ -543,6 +544,7 @@
+     video_tick(now);
+     writes_due();
+     cheats_due();
++    player_training_tick();
+     agent_poll();
+     cd_tick();
+     if (g_modem) scu_external(kModemLine, g_modem->interrupting(now));
+--- a/runtime/src/machine/player.cpp
++++ b/runtime/src/machine/player.cpp
+@@ -1,11 +1,18 @@
+ #include "saturn.h"
+ #include "player.h"
+ #include "settings.h"
++#include "state.h"
++#include <cstdlib>
+ #include <algorithm>
+ 
+ void player_settings(const Settings& settings) {
+     if (!g_cfg.arcade) return;
+     if (!g_cfg.rewind_seconds) g_cfg.rewind_seconds = settings.number("player", "rewind_seconds");
++    g_cfg.cheat_health = settings.flag("training", "infinite_health");
++    g_cfg.cheat_lives = settings.flag("training", "infinite_lives");
++    g_cfg.cheat_credits = settings.flag("training", "infinite_credits");
++    g_cfg.start_scene = settings.number("training", "start_scene");
++    if (g_cfg.start_scene == 1) g_cfg.start_scene = 2;
+     g_cfg.fast_forward = settings.flag("player", "fast_forward");
+     for (int p = 0; p < 2; ++p) for (int b = 0; b < 3; ++b) {
+         std::string key = "turbo_p" + std::to_string(p+1) + "_" + char('a'+b);
+@@ -18,3 +25,59 @@
+         if (rate && (frame * unsigned(rate) % 60) >= 30) raw[p] &= uint16_t(~(1u << b));
+     }
+ }
++
++// Game data evidence: 0222ab18 subtracts actor+56; 02228168 seeds HP/lives;
++// 02229c00 consumes lives. Actor +4E is not a universal invulnerability gate.
++static bool credit_override;
++static uint16_t credit_before;
++static bool ram_pointer(uint32_t p, unsigned size) { return p >= 0x06004000 && p <= 0x06100000-size && !(p&1); }
++void player_start() {
++    if (g_cfg.start_scene >= 2 && g_cfg.start_scene <= 72) {
++        // 02205b20: scene descriptor +43 selects branch type, +44 the next scene.
++        // Replace scene 0's '-1 -> 2' with '0 -> N'. The game builds the descriptor,
++        // runs its loaders and task cleanup itself. No mid-scene pointer teleport.
++        st8(0x06072660+43, 0); st8(0x06072660+44, g_cfg.start_scene);
++        g_cfg.cheat_scene_used = true;
++        sat_note("training: scene-0 next selector -> scene %d", g_cfg.start_scene);
++    }
++}
++void player_training_tick() {
++    if (!g_cfg.arcade) return;
++    if (g_cfg.cheat_credits) {
++        if (!credit_override) { credit_before = uint16_t(ld16(0x06000794)); credit_override = true; }
++        // MAME Coin Assignments preset 25; existing BIOS 660/664 expose free play.
++        st16(0x06000794, 0x1901);
++    } else if (credit_override) {
++        st16(0x06000794, credit_before); credit_override = false;
++    }
++    if (!g_cfg.cheat_health && !g_cfg.cheat_lives) return;
++    for (unsigned p = 0; p < 2; ++p) {
++        if (ld8(0x06098674+p) != 2) continue; // joined player only; leave attract/enemies intact
++        uint32_t task = ld32(0x060995B0 + 4*(p+1));
++        if (!ram_pointer(task, 0x20)) continue;
++        uint32_t actor = ld32(task+8);
++        if (!ram_pointer(actor, 0x18c) || ld8(actor+0x34) != p+1) continue;
++        if (g_cfg.cheat_health) {
++            unsigned hp = ld16(0x06099794) * (ld16(0x0609979A) == 1 ? 2 : 1);
++            if (hp && hp <= 342) { st16(actor+0x56, hp); st16(0x06099788+2*p, hp); }
++        }
++        if (g_cfg.cheat_lives) st16(0x0609978C+2*p, 9);
++        static const bool trace = std::getenv("STV_PLAYER_TRACE") != nullptr;
++        static uint64_t seen[2] = {~0ull, ~0ull};
++        if (trace && seen[p] != sat_vblanks()) {
++            seen[p] = sat_vblanks();
++            sat_note("TRAIN VB=%llu p=%u actor=%08X hp=%u lives=%u inv=%u assignment=%04X scene=%u timer=%u",
++                (unsigned long long)sat_vblanks(), p+1, actor, ld16(actor+0x56), ld16(0x0609978C+2*p),
++                ld8(actor+0x4E), ld16(0x06000794), ld32(0x06098668), ld32(0x060987BC));
++        }
++    }
++}
++void player_state(State& s) { s(credit_override); s(credit_before); s(g_cfg.cheat_scene_used); }
++std::string player_cheat_label() {
++    std::string label;
++    if (g_cfg.cheat_health) label += " HP";
++    if (g_cfg.cheat_lives) label += " LIVES";
++    if (g_cfg.cheat_credits) label += " CREDITS";
++    if (g_cfg.cheat_scene_used) label += " SCENE";
++    return label.empty() ? label : "CHEATS:" + label;
++}
+--- a/runtime/src/machine/player.h
++++ b/runtime/src/machine/player.h
+@@ -4,3 +4,9 @@
+ class Settings;
+ void player_settings(const Settings&);
+ void player_input(uint64_t frame, uint16_t raw[2], uint16_t& system);
++#include <string>
++struct State;
++void player_start();
++void player_training_tick();
++void player_state(State&);
++std::string player_cheat_label();
+--- a/runtime/src/machine/saturn.h
++++ b/runtime/src/machine/saturn.h
+@@ -83,6 +83,9 @@
+     std::string progress_keep;      // "ADDR:BYTES,...": the ranges
+     std::string resume_label;       // what the window says while --resume plays
+     std::string after;              // with it, the menu has Save files, which writes "saves" here and quits
++    bool cheat_health = false, cheat_lives = false, cheat_credits = false;
++    int start_scene = 0; // 0 = original route; 2..72 = original scene selector table
++    bool cheat_scene_used = false;
+     bool fast_forward = false;
+     int turbo_hz[2][3] = {}; // A/B/C, 0 = off, otherwise 1..30 Hz
+     int rewind_seconds = 0; // opt-in; bounded to 20 seconds and 512 MiB
+--- a/runtime/src/machine/state.cpp
++++ b/runtime/src/machine/state.cpp
+@@ -13,6 +13,7 @@
+ // copy on a thread of its own, beside the file and renamed over it.
+ #include "saturn.h"
+ #include "state.h"
++#include "player.h"
+ #include "host.h"
+ #include <atomic>
+ #include <chrono>
+@@ -197,7 +198,7 @@
+ static const struct { const char* name; void (*fn)(State&); } kQuickParts[] = {
+     {"machine", arcade_machine_state}, {"video", video_state}, {"core", core_state},
+     {"mmio", mmio_state}, {"bios", bios_state}, {"stv", arcade_bios_state},
+-    {"scu", arcade_scu_state}, {"scudsp", scudsp_state}, {"onchip", onchip_state},
++    {"player", player_state}, {"scu", arcade_scu_state}, {"scudsp", scudsp_state}, {"onchip", onchip_state},
+     {"clock", clock_state}, {"smpc", smpc_state}, {"stv-smpc", arcade_smpc_state},
+     {"cdblock", cdblock_state}, {"cddrive", cddrive_state}, {"cdfs", cdfs_state}, {"cdpos", cdpos_state},
+     {"vdp1", vdp1_state}, {"vdp2", vdp2_state}, {"sound", arcade_sound_state},
+--- a/runtime/tests/CMakeLists.txt
++++ b/runtime/tests/CMakeLists.txt
+@@ -8,5 +8,5 @@
+   set(CMAKE_BUILD_TYPE Release)
+ endif()
+ include(${CMAKE_CURRENT_LIST_DIR}/../runtime.cmake)
+-add_executable(runtime_tests main.cpp no_modules.cpp player_test.cpp stv_bios_test.cpp vdp2_test.cpp onchip_test.cpp bup_test.cpp pads_test.cpp settings_test.cpp touch_test.cpp pace_test.cpp frame_change_test.cpp modem_test.cpp scu_test.cpp cdrom_test.cpp cdblock_test.cpp clock_test.cpp tasks_test.cpp scsp_test.cpp)
++add_executable(runtime_tests main.cpp no_modules.cpp player_test.cpp player_training_test.cpp stv_bios_test.cpp vdp2_test.cpp onchip_test.cpp bup_test.cpp pads_test.cpp settings_test.cpp touch_test.cpp pace_test.cpp frame_change_test.cpp modem_test.cpp scu_test.cpp cdrom_test.cpp cdblock_test.cpp clock_test.cpp tasks_test.cpp scsp_test.cpp)
+ target_link_libraries(runtime_tests saturn_core saturn_machine saturn_host Threads::Threads)
+--- /dev/null
++++ b/runtime/tests/player_training_test.cpp
+@@ -0,0 +1,35 @@
++#include "saturn.h"
++#include "player.h"
++#include "state.h"
++#include "test.h"
++TEST(training_writes_only_joined_player_actor_fields_and_restores_credit_assignment) {
++    auto old = g_cfg; g_cfg = SaturnConfig{}; g_cfg.arcade = true;
++    st8(0x06098674, 2); st8(0x06098675, 0);
++    st32(0x060995B4, 0x060F2000); st32(0x060F2008, 0x060F2100);
++    st8(0x060F2134, 1); st16(0x060F2156, 17); st8(0x060F214E, 0);
++    st16(0x06099794, 114); st16(0x0609979A, 0); st16(0x0609978C, 1); st16(0x0609978E, 3);
++    st16(0x06000794, 0x0101);
++    g_cfg.cheat_health = g_cfg.cheat_lives = g_cfg.cheat_credits = true;
++    player_training_tick();
++    CHECK_EQ(ld16(0x060F2156), 114); CHECK_EQ(ld16(0x06099788), 114);
++    CHECK_EQ(ld16(0x0609978C), 9); CHECK_EQ(ld16(0x0609978E), 3);
++    CHECK_EQ(ld8(0x060F214E), 0); CHECK_EQ(ld16(0x06000794), 0x1901);
++    CHECK_EQ(player_cheat_label().find("CHEATS:") == 0, true);
++    State saved; player_state(saved);
++    g_cfg.cheat_credits = false; player_training_tick(); CHECK_EQ(ld16(0x06000794), 0x0101);
++    g_cfg.cheat_credits = true; saved.loading = true; player_state(saved);
++    g_cfg.cheat_credits = false; player_training_tick(); CHECK_EQ(ld16(0x06000794), 0x0101);
++    // A stale slot pointing outside RAM must never be followed or patched.
++    st32(0x060F2008, 0x02200000); player_training_tick();
++    g_cfg = old; st8(0x06098674, 0);
++}
++TEST(training_scene_select_changes_branch_data_without_changing_current_scene_or_handler) {
++    auto old = g_cfg; g_cfg = SaturnConfig{};
++    st8(0x06072660+43, 255); st8(0x06072660+44, 2);
++    st32(0x06098668, 0); st32(0x0609866C, 0x06072660);
++    player_start(); CHECK_EQ(ld8(0x06072660+43), 255);
++    g_cfg.start_scene = 9; player_start();
++    CHECK_EQ(ld8(0x06072660+43), 0); CHECK_EQ(ld8(0x06072660+44), 9);
++    CHECK_EQ(ld32(0x06098668), 0); CHECK_EQ(ld32(0x0609866C), 0x06072660);
++    g_cfg = old;
++}

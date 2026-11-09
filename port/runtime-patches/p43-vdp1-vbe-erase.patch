@@ -1,0 +1,119 @@
+diff --git a/runtime/src/video/vdp1.cpp b/runtime/src/video/vdp1.cpp
+index 31b1604..2c3c0d8 100644
+--- a/runtime/src/video/vdp1.cpp
++++ b/runtime/src/video/vdp1.cpp
+@@ -28,7 +28,8 @@
+ // Hydlide's movie player does, once a draw has ended) gets it in the same
+ // blanking. One-cycle mode (FCM 0) changes frame every field and erases the
+ // framebuffer it shows as it shows it; manual mode changes frame when FCT is
+-// 1 and erases in the next field when FCT is 0. The erase writes EWDR over EWLR-EWRR. The CPU sees
++// 1, erases in the next field when FCT is 0, and erases during VBlank when
++// TVMR.VBE (bit 3) is 1. The erase writes EWDR over EWLR-EWRR. The CPU sees
+ // the framebuffer being drawn.
+ #include "saturn.h"
+ #include "state.h"
+@@ -632,8 +633,8 @@ static void erase(int which) {
+ }
+ 
+ void vdp1_vblank_out() {
+-    // the field that has just been shown erased the framebuffer shown, if it had to
+-    if (g_erase_field) { erase(g_draw_fb ^ 1); g_erase_field = false; }
++    // the field that has just been shown (or VBlank under TVMR.VBE) erased the framebuffer shown, if it had to
++    if (g_erase_field || (g_reg[TVMR] & 8)) { erase(g_draw_fb ^ 1); g_erase_field = false; }
+     bool one_cycle = !(g_reg[FBCR] & 2);
+     if (g_erase_pending) { g_erase_field = true; g_erase_pending = false; }
+     if (one_cycle || g_change_pending) {
+@@ -650,16 +651,6 @@ void vdp1_vblank_out() {
+             g_rec_last.vram.assign(g_vdp1_vram, g_vdp1_vram + sizeof g_vdp1_vram);
+         }
+         if (one_cycle) g_erase_field = true;
+-        // STV_VDP1ERASE (labeled, default off; byte-identical when unset): in MANUAL frame-change
+-        // mode (FBCR FCM=1) the game may trigger a buffer change (FCT=1, FBCR=0x0003) WITHOUT a
+-        // separate erase arm (FBCR=0x0002). The current model then leaves the new draw buffer
+-        // holding 2-frames-ago sprites, which accumulate as stale overdraw when the live draw
+-        // covers only part of the screen (e.g. a route-b round whose fighters are a compact group
+-        // over a VDP2 background). Setting this arms an erase on every manual change, exactly as
+-        // one-cycle mode does, so each field starts from a cleared buffer. Default off => the
+-        // erase gating is unchanged (byte-identical).
+-        static const bool force_erase = (std::getenv("STV_VDP1ERASE") != nullptr);
+-        if (force_erase) g_erase_field = true;
+         sat_trace("VDP1 frame change %llu", (unsigned long long)g_frame_changes);
+         if ((g_reg[PTMR] & 3) == 2) draw();
+     }
+diff --git a/runtime/tests/frame_change_test.cpp b/runtime/tests/frame_change_test.cpp
+index ab9b24b..13d2eba 100644
+--- a/runtime/tests/frame_change_test.cpp
++++ b/runtime/tests/frame_change_test.cpp
+@@ -6,7 +6,11 @@
+ namespace {
+ 
+ const uint64_t kLineNs = video_frame_ns() / 263;
++const int kTVMR = 0;
+ const int kFBCR = 2;
++const int kEWDR = 6;
++const int kEWLR = 8;
++const int kEWRR = 10;
+ 
+ // Machine time at a line of a frame, counted from power-on.
+ uint64_t at(uint64_t frame, int line) { return (frame * 263 + line) * kLineNs; }
+@@ -20,7 +24,12 @@ uint64_t fresh_frame() {
+ }
+ 
+ // One-cycle mode, as the other tests expect VDP1 to be.
+-struct Restore { ~Restore() { vdp1_reg_write(kFBCR, 0, 2); } };
++struct Restore {
++    ~Restore() {
++        vdp1_reg_write(kTVMR, 0, 2);
++        vdp1_reg_write(kFBCR, 0, 2);
++    }
++};
+ 
+ }  // namespace
+ 
+@@ -54,3 +63,46 @@ TEST(a_change_asked_for_during_the_frame_comes_at_the_next_blanking_only) {
+     run_to(at(f + 2, 2));
+     CHECK_EQ(vdp1_frame_changes(), changes + 1);
+ }
++
++// Manual mode (FBCR = 3) with TVMR.VBE (bit 3) asserted during VBlank erases the display framebuffer
++// before swapping it into the draw buffer at VBlank-OUT, without erasing the new display buffer on a
++// subsequent non-swapping VBlank after VBE is cleared.
++TEST(vbe_erases_display_buffer_during_vblank_in_manual_mode) {
++    Restore restore;
++    uint64_t f = fresh_frame();
++    vdp1_reg_write(kEWDR, 0, 2);
++    vdp1_reg_write(kEWLR, 0, 2);
++    vdp1_reg_write(kEWRR, 0x58F0, 2);
++    vdp1_reg_write(kTVMR, 0, 2);
++    vdp1_reg_write(kFBCR, 3, 2);
++    run_to(at(f, 5));
++
++    // Draw 0x1234 in buffer A, swap it to display, and draw 0x5678 in buffer B.
++    vdp1_fb_write(0, 0x1234, 2);
++    vdp1_reg_write(kFBCR, 3, 2);
++    run_to(at(f + 1, 2));
++    vdp1_fb_write(0, 0x5678, 2);
++
++    // Without VBE or FBCR=2, swapping buffer A back into the draw buffer leaves 0x1234 intact.
++    vdp1_reg_write(kFBCR, 3, 2);
++    run_to(at(f + 2, 2));
++    CHECK_EQ(vdp1_fb_read(0, 2), 0x1234);
++
++    // Swap buffer A (0x1234) back to display while buffer B (0x5678) is the draw buffer.
++    vdp1_reg_write(kFBCR, 3, 2);
++    run_to(at(f + 3, 2));
++    CHECK_EQ(vdp1_fb_read(0, 2), 0x5678);
++
++    // Assert TVMR.VBE (bit 3) and FBCR=3 before VBlank-OUT, then clear VBE in the VBlank-OUT handler.
++    vdp1_reg_write(kTVMR, 8, 2);
++    vdp1_reg_write(kFBCR, 3, 2);
++    run_to(at(f + 4, 2));
++    vdp1_reg_write(kTVMR, 0, 2);
++    CHECK_EQ(vdp1_fb_read(0, 2), 0);
++
++    // Across the next non-swapping VBlank (with VBE=0), the display buffer (0x5678) is preserved.
++    run_to(at(f + 5, 2));
++    vdp1_reg_write(kFBCR, 3, 2);
++    run_to(at(f + 6, 2));
++    CHECK_EQ(vdp1_fb_read(0, 2), 0x5678);
++}

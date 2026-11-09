@@ -1,0 +1,292 @@
+--- a/runtime/src/video/vdp2.cpp
++++ b/runtime/src/video/vdp2.cpp
+@@ -26,7 +26,8 @@
+ // as its own priority layer. RBG1 borrows NBG0's cell/pattern/colour registers and always uses
+ // rotation parameter set B; it and NBG0 are mutually exclusive, as on the hardware.
+ // Rotation screen-over (OVRx): repeat (0), transparent-outside (2) and clamp-to-512 (3) are done;
+-// the over-pattern mode (1) falls back to repeat.
++// the over-pattern mode (1) falls back to repeat. RBG0 parameter mode 2 (RPMD=2) switches a dot to
++// parameter B, with B's own plane map, size and screen-over, where parameter A's coefficient MSB is set.
+ // What is not: the rotation over-pattern mode (1), rotation-BG gradation/line-colour and coefficient
+ // line-colour data, line and vertical-cell scroll,
+ // mosaic, the sprite window, special priority and colour calculation by dot
+@@ -308,13 +309,20 @@
+     bool kt_enable, kt_1word; int kt_mode;
+     double KAst, dKAst, dKAx;                   // coefficient address (table-entry units) + deltas
+     uint32_t kt_base;                           // coefficient table VRAM byte base
++    const Rbg* alt;                             // RPMD=2: the parameter-B screen for coefficient-MSB dots
++    double xscale, yscale;                      // display dot -> rotation-screen dot (0.5 in hi-res / DDI)
+ };
+ 
+ // Reads one rotation parameter set into s: the matrix, viewpoint/centre, the screen start and its
+ // deltas, the constant screen offset, and the coefficient-table controls. param_off is 0 for set A
+ // or 0x80 for set B (the table holds both sets back to back); coef_shift is 0 for set A's KTCTL/KTAOF
+-// fields or 4 for set B's. Shared by RBG0 (picks the set via RPMD) and RBG1 (always uses set B).
++// fields or 8 for set B's. Shared by RBG0 (picks the set via RPMD) and RBG1 (always uses set B).
+ static void read_rot_param(Rbg& s, uint32_t param_off, int coef_shift) {
++    // The rotation screen is computed per normal-resolution dot and line: in high resolution
++    // (HRESO bit1, 640/704 dots) a dot steps half a rotation dot, and in double-density interlace
++    // (LSMD 3) a display line half a rotation line, as MAME's saturn.cpp does (hcnt/vcnt_shift).
++    s.xscale = reg(0x00) & 2 ? 0.5 : 1.0;
++    s.yscale = (reg(0x00) >> 6 & 3) == 3 ? 0.5 : 1.0;
+     uint32_t rpt = ((((uint32_t)(reg(0xBC) & 7) << 16) | reg(0xBE)) & ~0x41u) * 2;
+     uint32_t b = (rpt + param_off) & 0x7FFFF;
+     auto raw = [&](uint32_t o) { return (uint32_t)((uint32_t)vw(b + o) << 16 | vw(b + o + 2)); };
+@@ -351,11 +359,12 @@
+     // pointed at the populated plane -- the game's own camera (My) is stale in the not-yet-live round.
+     if (const char* yo = std::getenv("STV_RBG_YOFF")) s.Yp -= std::atof(yo);
+     if (const char* xo = std::getenv("STV_RBG_XOFF")) s.Xp -= std::atof(xo);
+-    // coefficient table: KTCTL bit0 enable, bits1-2 mode, bit3 data size (0:2-word,1:1-word)
++    // coefficient table, KTCTL per parameter (A bits 0-4, B bits 8-12): bit0 KTE enable, bit1 KDBS
++    // data size (0: 2-word, 1: 1-word), bits 2-3 KMD mode, bit4 LCAE (line-colour data, not drawn)
+     uint16_t ktctl = reg(0xB4);
+     s.kt_enable = ktctl >> coef_shift & 1;
+-    s.kt_mode = ktctl >> (coef_shift + 1) & 3;
+-    s.kt_1word = ktctl >> (coef_shift + 3) & 1;
++    s.kt_1word = ktctl >> (coef_shift + 1) & 1;
++    s.kt_mode = ktctl >> (coef_shift + 2) & 3;
+     // KAst 1.15.10, deltas 1.9.10 (address steps). Keep the table-entry units (1 entry = 1 coeff).
+     s.KAst  = (double)(int32_t)(raw(0x54) & 0xFFFFFFC0) / 65536.0;
+     // DIAGNOSTIC/FORCED (STV_RBG_KAST, default off): override the coefficient-table start address.
+@@ -364,13 +373,14 @@
+     if (const char* ka = std::getenv("STV_RBG_KAST")) s.KAst = std::atof(ka);
+     s.dKAst = sfix(0x58, 0x03FFFFC0, 25);
+     s.dKAx  = sfix(0x5C, 0x03FFFFC0, 25);
+-    uint32_t ktaof = reg(0xB6) >> coef_shift & 7;           // coefficient table address offset
++    uint32_t ktaof = reg(0xB6) >> coef_shift & 7;           // KTAOF: A bits 0-2, B bits 8-10
+     // Coefficient-table VRAM base. The cart encodes the table byte address as KTAOF=addr>>18
+     // (attr_dispatch cmd6: ins=(addr>>2)>>16) and KAst=addr<<14, so the decode is KTAOF<<18, not
+     // <<16: Die Hard builds its live 1/z coefficient ramp at VRAM 0x5F200 (KTAOF=1, KAst=0x7C80 ->
+     // 0x40000 + 0x7C80*4 = 0x5F200). The old <<16 read 0x2F200 (unrelated tile data) -> no floor.
+     // FAITHFUL correctness fix, validated against the driver-built ramp (func_02222c08 -> 0x5F200).
+-    s.kt_base = (ktaof << 18) & 0x7FFFF;
++    // A 1-word table steps in 0x20000-byte banks (KTAOF bits 0-2), as MAME's saturn.cpp does.
++    s.kt_base = s.kt_1word ? (ktaof & 7) << 17 : (ktaof & 3) << 18;
+     // DIAGNOSTIC (STV_RBG_DIAG="[intv]", default off): read-only log of the live rotation-param
+     // set the game writes into the VDP2 rot-param table (VRAM base `b`). Used to see whether the
+     // live stage-camera driver feeds a valid floor anchor on a real stage scene. Byte-identical
+@@ -391,7 +401,27 @@
+     if (std::getenv("STV_RBG_FLATK")) s.kt_enable = false;  // diag: force Kx=Ky=1
+ }
+ 
+-static void setup_rbg(Rbg& s) {
++// The plane map, plane size, screen-over and map offset of rotation parameter A (which = 0:
++// MPABRA..MPOPRA, RAPLSZ, RAOVR, RAMPOF) or B (which = 1: MPABRB..MPOPRB, RBPLSZ, RBOVR, RBMPOF).
++// Each plane-number word holds two planes, low byte first. Needs page_bytes set.
++static void setup_rot_planes(Rbg& s, int which) {
++    uint16_t plszr = reg(0x3A) >> (8 + which * 4);
++    s.plane_w = (plszr & 3) == 0 ? 1 : 2;
++    s.plane_h = (plszr & 3) == 3 ? 2 : 1;
++    s.over = plszr >> 2 & 3;
++    uint32_t mpof = reg(0x3E) >> (which * 4) & 7;
++    uint32_t mask = (uint32_t)(s.plane_w * s.plane_h - 1);
++    for (int i = 0; i < 16; ++i) {
++        uint16_t w = reg(0x50 + which * 0x10 + (i / 2) * 2);
++        uint32_t pn = w >> ((i & 1) * 8) & 0xFF;
++        uint32_t m = ((mpof << 6) | pn) & ~mask;
++        s.plane[i] = m * s.page_bytes;
++    }
++    if (s.bitmap) s.bm_addr = mpof * 0x20000;
++}
++
++// b receives RBG0's parameter-B screen when RPMD=2 (s.alt points at it).
++static void setup_rbg(Rbg& s, Rbg& b) {
+     s = Rbg{};
+     uint16_t bgon = reg(0x20);
+     s.on = bgon >> 4 & 1;                        // R0ON
+@@ -408,22 +438,8 @@
+     s.word1 = pncr >> 15 & 1;
+     s.cnsm = pncr >> 14 & 1;
+     s.supp = pncr & 0x3FF;
+-    int plsz = reg(0x3A) >> 8 & 3;              // RAPLSZ
+-    s.plane_w = plsz == 0 ? 1 : 2;
+-    s.plane_h = plsz == 3 ? 2 : 1;
+-    s.over = reg(0x3A) >> 10 & 3;              // RAOVR screen-over process
+     s.page_bytes = (s.cell2x2 ? 0x800u : 0x2000u) * (s.word1 ? 1 : 2);
+-    uint32_t mpofr = reg(0x3E) & 7;            // RAMPOF
+-    uint32_t mask = (uint32_t)(s.plane_w * s.plane_h - 1);
+-    // the 16 plane numbers: MPABRA..MPOPRA (0x50..0x5E), each word = two bytes (low byte first,
+-    // as the scroll-screen map registers), A..P.
+-    for (int i = 0; i < 16; ++i) {
+-        uint16_t w = reg(0x50 + (i / 2) * 2);
+-        uint32_t pn = w >> ((i & 1) * 8) & 0xFF;
+-        uint32_t m = ((mpofr << 6) | pn) & ~mask;
+-        s.plane[i] = m * s.page_bytes;
+-    }
+-    if (s.bitmap) s.bm_addr = mpofr * 0x20000;
++    setup_rot_planes(s, 0);
+     s.caos = (uint32_t)(reg(0xE6) & 7) << 8;    // CRAOFB R0 colour RAM offset
+     s.prio = (uint8_t)(reg(0xFC) & 7);          // PRIR
+     s.ratio = (uint8_t)(reg(0x10C) & 0x1F);     // CCRR
+@@ -439,9 +455,17 @@
+         for (int i = 0; i < 16; ++i) s.plane[i] = pa;
+     }
+ 
+-    // RBG0 uses the rotation parameter set RPMD names (A, B, or A with per-dot/window switching).
+-    int rpmd = reg(0xB0) & 3;                    // 0:A 1:B 2/3:per-coefficient/window (A used; partial)
+-    read_rot_param(s, rpmd == 1 ? 0x80u : 0u, rpmd == 1 ? 4 : 0);
++    // RBG0 uses the rotation parameter set RPMD names: 0 A, 1 B, 2 A with B where A's coefficient
++    // MSB is set, 3 A/B by the rotation-parameter window (not done: A is used).
++    int rpmd = reg(0xB0) & 3;
++    if (rpmd == 1) setup_rot_planes(s, 1);
++    read_rot_param(s, rpmd == 1 ? 0x80u : 0u, rpmd == 1 ? 8 : 0);
++    if (rpmd == 2) {
++        b = s;
++        setup_rot_planes(b, 1);
++        read_rot_param(b, 0x80u, 8);
++        s.alt = &b;
++    }
+ }
+ 
+ // RBG1: the second rotation background. It occupies NBG0's slot -- reusing NBG0's character control
+@@ -469,22 +493,9 @@
+     s.word1 = pncn0 >> 15 & 1;
+     s.cnsm = pncn0 >> 14 & 1;
+     s.supp = pncn0 & 0x3FF;
+-    int plsz = reg(0x3A) >> 12 & 3;             // RBPLSZ (parameter B plane size)
+-    s.plane_w = plsz == 0 ? 1 : 2;
+-    s.plane_h = plsz == 3 ? 2 : 1;
+-    s.over = reg(0x3A) >> 14 & 3;              // RBOVR screen-over process
+     s.page_bytes = (s.cell2x2 ? 0x800u : 0x2000u) * (s.word1 ? 1 : 2);
+-    uint32_t mpofr = reg(0x3E) >> 4 & 7;        // RBMPOF (parameter B map offset)
+-    uint32_t mask = (uint32_t)(s.plane_w * s.plane_h - 1);
+-    // parameter B's 16 plane numbers: MPABRB..MPOPRB (0x60..0x6E), low byte first, A..P
+-    for (int i = 0; i < 16; ++i) {
+-        uint16_t w = reg(0x60 + (i / 2) * 2);
+-        uint32_t pn = w >> ((i & 1) * 8) & 0xFF;
+-        uint32_t m = ((mpofr << 6) | pn) & ~mask;
+-        s.plane[i] = m * s.page_bytes;
+-    }
++    setup_rot_planes(s, 1);                       // parameter B's planes, size, over and offset
+     if (s.bitmap) {
+-        s.bm_addr = mpofr * 0x20000;
+         uint16_t bmpn = reg(0x2C);               // BMPNA (NBG0 fields)
+         s.bm_pal = (uint16_t)((bmpn & 7) << 4);
+         s.bm_spr = bmpn >> 5 & 1;
+@@ -496,11 +507,11 @@
+     s.cc = reg(0xEC) & 1;                         // CCCTL N0CCEN
+     s.offset = reg(0x110) & 1;                    // CLOFEN N0
+     s.offset_b = reg(0x112) & 1;                  // CLOFSL N0
+-    read_rot_param(s, 0x80u, 4);                  // RBG1 always uses parameter set B
++    read_rot_param(s, 0x80u, 8);                  // RBG1 always uses parameter set B
+ }
+ 
+-// the coefficient at table-entry index k: returns false (transparent, line not drawn) when the
+-// entry's top bit is set; otherwise sets kv to the Kx/Ky factor.
++// the coefficient at table-entry index k: returns false when the entry's MSB is set (the dot is
++// transparent, or under RPMD=2 drawn with parameter B); otherwise sets kv to the coefficient.
+ static bool rbg_coef(const Rbg& s, double kaddr, double& kv) {
+     if (!s.kt_enable) { kv = 1.0; return true; }
+     uint32_t idx = (uint32_t)(int32_t)kaddr;
+@@ -520,24 +531,26 @@
+     return true;
+ }
+ 
+-// RBG0's dot at display column x, line y: false if transparent / off the map.
+-static bool rbg_pixel(const Rbg& s, int x, int y, Pix& p) {
++// a rotation screen dot at display column dx, line dy: false if transparent / off the map.
++static bool rbg_pixel(const Rbg& s, int dx, int dy, Pix& p) {
++    double x = dx * s.xscale, y = dy * s.yscale;
+     // the screen-space pre-transform at this line, and the per-dot increments (through the matrix)
+     double Xstv = s.Xst + s.dXst * y, Ystv = s.Yst + s.dYst * y;
+     double Xsp = s.A * (Xstv - s.Px) + s.B * (Ystv - s.Py) + s.C * (s.Zst - s.Pz);
+     double Ysp = s.D * (Xstv - s.Px) + s.E * (Ystv - s.Py) + s.F * (s.Zst - s.Pz);
+     double dXd = s.A * s.dX + s.B * s.dY, dYd = s.D * s.dX + s.E * s.dY;
+-    double kx = 1.0, ky = 1.0;
++    double kx = 1.0, ky = 1.0, xp = s.Xp;
+     if (s.kt_enable) {
+         double kaddr = s.KAst + s.dKAst * y + s.dKAx * x;
+         double kv;
+-        if (!rbg_coef(s, kaddr, kv)) return false;
+-        // mode 0: Kx=Ky; 1: Kx only; 2: Ky only; 3: Kx=Ky (data may carry line colour -- partial)
+-        if (s.kt_mode == 0 || s.kt_mode == 3) kx = ky = kv;
++        if (!rbg_coef(s, kaddr, kv)) return s.alt ? rbg_pixel(*s.alt, dx, dy, p) : false;
++        // mode 0: Kx=Ky; 1: Kx only; 2: Ky only; 3: the coefficient replaces Xp
++        if (s.kt_mode == 0) kx = ky = kv;
+         else if (s.kt_mode == 1) kx = kv;
+-        else ky = kv;
++        else if (s.kt_mode == 2) ky = kv;
++        else xp = kv;
+     }
+-    double X = kx * (Xsp + dXd * x) + s.Xp;
++    double X = kx * (Xsp + dXd * x) + xp;
+     double Y = ky * (Ysp + dYd * x) + s.Yp;
+ 
+     if (s.bitmap) {                              // bitmap-mode rotation BG: partial (repeat-wrap only)
+@@ -751,8 +764,8 @@
+     note_unsupported();
+     Nbg nbg[4];
+     for (int n = 0; n < 4; ++n) setup_nbg(n, nbg[n]);
+-    Rbg rbg;
+-    setup_rbg(rbg);
++    Rbg rbg, rbg_b;
++    setup_rbg(rbg, rbg_b);
+     Rbg rbg1;
+     setup_rbg1(rbg1);
+     // DIAGNOSTIC (STV_LAYERDIAG="[intv]", default off): read-only log of which VDP2 layers are
+--- a/runtime/tests/vdp2_test.cpp
++++ b/runtime/tests/vdp2_test.cpp
+@@ -304,3 +304,63 @@
+         }
+     }
+ }
++
++namespace {
++
++// RBG0 over two planes: rotation x 0..511 is plane slot 0 (red 8), 512..1023 slot 1 (red 16).
++// Both parameter sets get dYst = dX = A = E = 1 and the same plane map; mx_a / mx_b are Mx.
++void two_plane_rbg0(uint32_t mx_a, uint32_t mx_b) {
++    reg(0x20, 0x10);                             // BGON: RBG0
++    reg(0x38, 0x8000);                           // PNCR: one-word, 8x8, 16-colour names
++    reg(0xFC, 1);                                // PRIR: RBG0 priority 1
++    reg(0xBE, 0x4000);                           // rotation table at byte 0x8000
++    for (int set = 0; set < 2; ++set) {
++        uint32_t param = 0x8000 + set * 0x80;
++        auto fixed = [&](uint32_t off, uint32_t value) {
++            vram16(param + off, value >> 16);
++            vram16(param + off + 2, value);
++        };
++        fixed(0x10, 0x10000);                    // dYst
++        fixed(0x14, 0x10000);                    // dX
++        fixed(0x1C, 0x10000);                    // A
++        fixed(0x2C, 0x10000);                    // E
++        fixed(0x44, set ? mx_b : mx_a);          // Mx
++        fixed(0x58, 0x10000);                    // dKAst: one coefficient entry a line
++        for (int pair = 0; pair < 8; ++pair) reg(0x50 + set * 0x10 + pair * 2, 16 | 17 << 8);
++    }
++    for (int slot = 0; slot < 2; ++slot) {
++        uint32_t chr = 0x200 + slot;
++        std::memset(g_vdp2_vram + chr * 32, 0x11, 32);
++        for (uint32_t cell = 0; cell < 64; ++cell)    // the first cell row of the page
++            vram16(0x20000 + slot * 0x2000 + cell * 2, (slot << 12) | chr);
++        cram16(slot * 16 + 1, slot + 1);
++    }
++}
++
++}  // namespace
++
++TEST(rotation_mode_2_draws_parameter_b_where_the_coefficient_msb_is_set) {
++    red_screen();
++    two_plane_rbg0(0, 512u << 16);
++    reg(0xB0, 2);                                // RPMD: A, switching to B by coefficient MSB
++    reg(0xB4, 0x0001);                           // KTCTL: parameter A table, 2-word, mode 0
++    reg(0xB6, 0x0001);                           // KTAOF: table at 0x40000
++    vram16(0x40000, 0x8000);                     // line 0: MSB set -> parameter B
++    vram16(0x40004, 0x0001);                     // line 1: coefficient 1.0 -> parameter A
++    vram16(0x40006, 0x0000);
++    Frame f;
++    vdp2_compose(f);
++    CHECK_EQ(at(f, 0, 0), 16u << 16);
++    CHECK_EQ(at(f, 0, 1), 8u << 16);
++}
++
++TEST(rotation_screen_steps_half_a_dot_in_high_resolution) {
++    red_screen();
++    reg(0x00, 0x8003);                           // TVMD: display on, 704 dots
++    two_plane_rbg0(508u << 16, 0);               // rotation dot 4 is the first of slot 1
++    Frame f;
++    vdp2_compose(f);
++    CHECK_EQ(f.w, 704);
++    CHECK_EQ(at(f, 7, 0), 8u << 16);
++    CHECK_EQ(at(f, 8, 0), 16u << 16);
++}

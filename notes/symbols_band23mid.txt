@@ -1,0 +1,80 @@
+# Band 0x232000-0x237000 (SH2) functional decomp - symbols
+# Worker: band23mid. Function C-symbol = func_<full 8-hex SH2 addr>.
+# fidelity HIGH on all; every computed branch confirmed via braf_resolve.py and
+# every file compiles with gcc -c -fsyntax-only -Wall -Wextra (zero warnings).
+
+# --- functions decompiled this pass ---
+0x022320d4 particle_fall_task       # HIGH  task->unk8=obj. Word life counter unk58 vs unk5A, or
+                                     #       g_06098580 bit 0x20000 -> kill (task->unk0=0). Else drive
+                                     #       unk30=(ashr(unk6C,g+1)&7)+0x188, unkC+=ashr(0x0A00,g),
+                                     #       unk70+=ashr(0x4000,g); tail sprite_submit1(obj,unk70,1).
+                                     #       g=g_06096c90. ashr=func_0224a420. 3 bsrf + tail braf OK.
+0x0223236c homing_follow_task        # HIGH  obj=task->unk8, src=task->unk14->unk8. src bit0 gate.
+                                     #       World pos = src pos + obj local offset. Target by mode
+                                     #       g_06099594+g_06099598 (0 self /1 actorA /2 actorB /3 nearest
+                                     #       of A/B by XZ dist^2 via fixmul_16_16 0x022131c8). Facing
+                                     #       unk4C=obj.x+-0x8000; tail drawlist_prepend(0x0222eea2).
+0x02232526 debris_arc_draw_task      # HIGH  obj=task->unk8. Gravity (unk18-=0x200), integrate; kill
+                                     #       when unkC(Y)<0. Optional drawlist_prepend; lookat angles
+                                     #       (0x022105ca) into unk24/26; matrix push (g_06098878+=0x30)
+                                     #       /load_abc/apply/rotate; if top depth unk2C>0x60000 scale
+                                     #       (0x02213ce4) + submit_model_culled(0x02215a2c); pop. 7 bsrf.
+0x02233250 scene_stage_fade_spawn    # HIGH  task. desc=g_0609866c; idx=desc->unk28*0xC into fade table
+                                     #       g_06088700. Runs scene81 loader 0x02206e2e, BG builder
+                                     #       0x02207360, (g_06098668==0x22 -> 0x022078aa). Spawns two
+                                     #       0x6C objs (templates 0x022371c0/0x02237ea6 via 0x0220fece).
+                                     #       entry.unk4 -> func_02233388; entry.unk0 -> func_022332d4.
+0x022332d4 particle_list_emit        # HIGH  (tail-called by 0x02233250). 8-byte node list; type=unk0&FFFF,
+                                     #       param=unk0>>16. effect_pool_spawn(type,1,{unk4<<12,0x500,
+                                     #       unk6<<12}) (0x0223cbb0). types 0xA/0xB set task entity unk26.
+0x02233388 spawn_record_build        # HIGH  (called by 0x02233250). 20-byte records; unkC=template+gate.
+                                     #       type unk0 0..5 -> spawn 0x0220feec/fece/ff28/ff0a/ff90/ff54
+                                     #       (parent,template). Seeds entity pos unk8/C/10=unk4/6/8<<12,
+                                     #       unk26; obj unkF/12/13=record unk1/2/3.
+0x0223346c actor_task_setup_dispatch # HIGH  entity=task->unk8. First call (task->unk10==0) inits actor:
+                                     #       unk34=4, unk84|=0x80000000, unk5E/4F from task, func_0222ca54,
+                                     #       unk5C from g_0608882e[unk13*8], pose load func_0222db44,
+                                     #       slot reg func_0221707c, unkCE=(unk5E==0x2E). Each call: if
+                                     #       unk54&2 re-pick unk5C via rng_next&3; animation_update
+                                     #       (0x0222dc2c); tail g_0609135c[unkCE](entity).
+0x02235f0c actor_draw_11seg          # HIGH  obj. Draw 11 body parts: pose g_06097d58[unk34*0x100] stride
+                                     #       0x10, depth table g_0607c424[unk5E*0x40]. unk48 arms flash
+                                     #       counter unkA0=15; flashing part (unk49) -> unk30=9 else 1.
+                                     #       Per part swap pos, sprite_submit1(obj,(depth<<9)>>4,1).
+0x02236246 cam_projectile_task       # HIGH  proj=task->unk8, actor=g_0609882c->unk8. 3-state: s0 orient
+                                     #       +Z(0,0,0x1000) by actor unk24 angles (0x0221080a) -> pos/vel
+                                     #       from g_06098b1c, fixed fields (unk64=0x1999,unk58=0xF0 life);
+                                     #       s1 integrate, sprite_submit1(proj,sdiv32(unk64<<9,0x10),1)
+                                     #       (0x0224a06c,0x022153f6), drawlist_prepend, ground bounce,
+                                     #       life unk58; s2 kill.
+
+# --- confirmed callees / globals referenced (not owned here) ---
+0x0224a420 ashr_var(value r0, count r1) -> value>>count (r0/r1 ABI)
+0x0224a06c sdiv32(dividend r1, divisor r0) -> r1/r0 (r0/r1 ABI; div-by-zero guarded)
+0x022131c8 fixmul_16_16(a,b) = ((s64)a*b)>>16
+0x022153f6 sprite_submit1(obj, depth, flag)
+0x0222eea2 drawlist_prepend(entity)
+0x022105ca lookat_angles_xz_delta(dx,dy,dz, out_a, out_b)
+0x022149aa mtx_load_abc() ; 0x02214a50 mtx_apply_vec_at0(vec) ; 0x022149e4 mtx_rotate_zyx(angles)
+0x02213ce4 mtx_scale_cols(x,y,z) ; 0x02215a2c submit_model_culled(obj, flag)
+0x0221080a mtx_push_rotate_apply(vec, angles) -> g_06098b1c
+0x02210020 rng_next() ; 0x0222dc2c animation_update(ctx, entity) ; 0x0222ca54 actor init(entity)
+0x0222db44 actor_load_pose_buffers(entity, variant) ; 0x0221707c actor_slot_record_reg(entity,a,b,c,d)
+0x0223cbb0 effect_pool_spawn(type, flag, pos) -> task
+0x0220feec/fece/ff28/ff0a/ff90/ff54 spawn_variant(parent, template) -> obj  [0x20fxxx cluster, not owned]
+0x02206e2e scene81_stage_setup(task,desc) ; 0x02207360 scene_bg_layer_build(task,desc)
+
+g_06096c90  s32   shift amount fed to ashr_var
+g_06098580  s32   global flag word (bit 0x20000 = kill projectiles)
+g_06099594  s32 / g_06099598 s32   target-mode selector pair
+g_060995b4 / g_060995b8  void*  actor A / actor B pointers
+g_06098878  s32   active matrix-stack pointer (+-0x30 push/pop)
+g_06098b1c  s32[3] oriented-vector / per-frame camera delta output
+g_0609866c  void* active scene descriptor (unk28 indexes tables)
+g_06088700  u8[]  fade-descriptor table, stride 0xC
+g_06098668  s32   scene/fade index
+g_0609882c  void* current source-actor holder (->unk8 = actor)
+g_0608882e  s16[] actor variant table, stride 8 (4 words)
+g_0609135c  void(*[])(entity)  per-type actor handler table
+g_0607c424  s32[] per-unk5E part depth table, stride 0x40
+g_06097d58  u8[]  per-actor pose record array, stride 0x100 (parts at +n*0x10)

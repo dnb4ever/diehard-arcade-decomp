@@ -1,0 +1,2 @@
+PASS: 50000 complete-context direct ABI checks (5 functions x 10000)
+PASS: 256 real C-to-recompiled tail calls, returns, stack and poll budgets

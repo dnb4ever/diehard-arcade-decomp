@@ -1,0 +1,16 @@
+{
+  "original": "work/converge/round2/runs/stock/combat/shot-1560.png",
+  "modified": "work/converge/round2/runs/mod202-clock/combat/shot-1560.png",
+  "original_sha256": "74f3f3ecb1ea9d5733432e96b490703ca5031de42c0c811cbd5e2d85a8a28d9d",
+  "modified_sha256": "0f2852d66b9c64190b1f0e5f5faf19ee0a9082240bdb3d9f00d44fd5f58244a6",
+  "dimensions": [
+    704,
+    240
+  ],
+  "changed_pixels": 89336,
+  "total_pixels": 168960,
+  "trace_identical": true,
+  "mod_binary_sha256": "8c78279dc21eb0c9801b1feebd2f12e0dd25c95f86e969eb39b5055d5fd9d1fa",
+  "scope": "02215000; initial command-list pointer +0x54, two bytes; local X 0x160 to 0x190",
+  "clock_epoch": 1794196800
+}

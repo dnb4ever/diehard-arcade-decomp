@@ -1,0 +1,42 @@
+# Band 0x220000-0x22c000 (actor/combat core) - worker band220 symbols
+# All entries hand-verified vs fn.py / braf_resolve / m2c_fn. NAMING GUESS where noted.
+
+## The 0x0222b0fe anim-selector family (six contiguous funcs, one census row)
+# census merged all six into the single row cart=22b0fe (ninsn~1277). Each has its
+# own prologue + rts and is a distinct real entry (confirmed by find_entry.py).
+# They are siblings of the already-done 0x0222ae40 (actor_facing_anim_select) and
+# 0x0222baf8 (actor_jump_anim_select): per-frame attack-animation selectors that
+# classify motion flags unk84 and pick unk5C from the shared anim table banks.
+
+0x0222b0fe actor_anim_select_grounded   # NAMING GUESS. grounded/low-energy variant; delegates rich-motion to 0222b7e8; table g_06086730. hand-verified, zero-warning.
+0x0222b1e2 actor_anim_select_block      # NAMING GUESS. guard/block variant; delegates to 0222b7e8; table g_06086734; no g_06099780 publish. hand-verified, zero-warning.
+0x0222b2a8 actor_anim_select_launch     # NAMING GUESS. launch/aerial variant; sets unk78/unk80/unkC8 physics; 3-level table g_060866f8. hand-verified, zero-warning.
+0x0222b42c actor_anim_select_hitstun    # NAMING GUESS. default group=2; else-case uses 2-D table g_06086720 col = rng()&1 (func_02210020). hand-verified, zero-warning.
+0x0222b630 actor_anim_select_knockback  # NAMING GUESS. like b42c but else-case is flat table g_06086728, no rng. hand-verified, zero-warning.
+0x0222b7e8 actor_anim_select_main       # NAMING GUESS. full selector; two table banks g_060866f8/g_0608670c; combo gate via unk10C; tail-calls 0x020160a0; b0fe/b1e2 tail into this. hand-verified, zero-warning.
+
+## Callees referenced by the family (existing symbols reused; confirmed in other band notes)
+func_02227704  0x02227704  attack_box_set_A(entity)       # "box set A" (per symbols_pa / symbols_combo)
+func_02223e70  0x02223e70  attack_box_set_B(entity)       # "box set B"
+func_0222acf8  0x0222acf8  anim_velocity_helper(entity)   # shared physics/velocity helper (1-arg; bsr)
+func_0223a9d0  0x0223a9d0  spawn_hit_fx(entity, s32)      # hit-reaction fx (r5=3)
+func_02215f6c  0x02215f6c  sound_queue_push(u32 cmd)      # SFX trigger; combo ids 0xA01224FF / 0xA01318FF / 0xA01200FF
+func_02210020  0x02210020  rng_next(void)->s32            # PRNG (nilary)
+func_020160a0  0x020160a0  anim_followup(entity)          # tail-call target from 0222b7e8 (OUTSIDE band; name is a GUESS)
+
+## Globals used by the family
+0x060866F8 g_anim_table_bank0     # top-level anim table bank "normal" (void***: [group][sub][dir*4+col] s16)
+0x0608670C g_anim_table_bank1     # top-level anim table bank "alt"
+0x06086304 g_anim_tbl_4000        # flat s16 table for the unk84&0x4000 case (idx unk4D&1)
+0x06086720 g_anim_tbl_hitstun2d   # 2-D s16 table (dir, rng&1) for 0222b42c else-case
+0x06086728 g_anim_tbl_knockback   # flat s16 table for 0222b630 else-case
+0x06086730 g_anim_tbl_grounded    # flat s16 table for 0222b0fe
+0x06086734 g_anim_tbl_block       # flat s16 table for 0222b1e2
+0x06096E90 g_actor_gate_tbl       # per-actor s16 gate, indexed by unk34 (gates extra box call)
+0x060987BC g_anim_publish_value   # s32 value published into g_06099780[unk34-1]
+0x06099780 g_actor_anim_pub       # s32[] published per active actor (index unk34-1)
+0x060E0DDC g_combo_enable_flag     # s32 gate for combo SFX (already noted in symbols_banddraw)
+0x060997A4 g_diag_code            # s32 written =5 on 0222b7e8 diagnostic path
+0x060997A8 g_diag_line            # s32 written =14 on 0222b7e8 diagnostic path
+0x060902A0 g_diag_logger_fp       # function-pointer; indirect call on 0222b7e8 diag path (ABI unverified)
+0x06087EE8 g_diag_fmt             # pointer passed to the diag logger (likely fmt string)

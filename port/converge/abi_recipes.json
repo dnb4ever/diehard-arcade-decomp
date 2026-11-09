@@ -1,0 +1,22 @@
+{
+  "02213190": {
+    "body_sha256": "8a3884cc7f56a8d4e7e8194cf15944eea022f29d35ea9aa58060b968bd33df0d",
+    "code": "c.r[4]=args[0]+8; c.r[3]=0x06075718u; c.t=result>>31;"
+  },
+  "022131a8": {
+    "body_sha256": "67e0b23c481b140f8f9112ded73d560546094cfab45408f7cf2307923e014435",
+    "code": "c.r[4]=args[0]+8; c.r[1]=0x800u; c.r[3]=0x06075F18u; c.t=result>>31;"
+  },
+  "022131c8": {
+    "body_sha256": "4503a190251afad801ea927be46b62817223560e6777191a1cf5e1047c5839b3",
+    "code": "uint64_t p=(uint64_t)((int64_t)(int32_t)args[0]*(int32_t)args[1]);\nc.mach=p>>32; c.macl=p; c.r[1]=c.mach;"
+  },
+  "0223e5bc": {
+    "body_sha256": "0db1c9070e2bbe30c8ad3231a135cb54a37f57a850b4f5289c8039ee0add5017",
+    "code": "c.r[4]=(args[0]-args[1])&0x8000u; c.r[3]=0x8000u; c.t=result;"
+  },
+  "0224617a": {
+    "body_sha256": "c9fa87a44b949ff53eeb71422070a173c1e1fd40ecf45ee07309ac5d6d983b4c",
+    "code": ""
+  }
+}

@@ -1,0 +1,51 @@
+# Band 0x02200400-0x02210000 - "big targets" pass (Opus, single serial worker).
+# Functions decompiled this pass (name @ SH-2 addr). All compile clean under
+#   gcc -O1 -c -Wall -Wextra -I project/src_functional  (zero diagnostics).
+
+0x0220d9ec view_bounds_from_actors   # HIGH leaf. Build an XZ bounding region over active actors + a recent-position ring; write min corner -> arg1{x@0,z@8}, max corner -> arg2. Seed depends on slotFlags[1]+slotFlags[2] (0..3). Ring 0x06098838 (8x{idx,ttl} stride8), pos table 0x06052194 (stride12, idx (s8)(v*0xC)). m2c 4x-unrolled ring loop re-rolled.
+0x0220c17c camera_track_single       # HIGH task(task). Single-focus (slot cam->unkAE) camera framing: focus point from objPtr[idx]->unk8 (+Y bias g_06096C58[idx], clamp 0x8000..0x24000) or own home; zoom accumulated from other active slots (dist table g_06099584+0x4C 8x8 stride0x20, flags coord->unk38 0x1E0/0xFE00). Calls lookat_angles_xz(0x21055c,8-arg), camera_smooth_lerp(0x20e0aa), camera_shake_decay(0x20d98e), tail mtx_build_fwd_inv(0x214a7a). NB: 0x20c17c ends at the braf tail (cart 0x20c3dc); 0x20c3e4 is a SEPARATE entry (camera_track_pair, the dual-focus sibling, still undone).
+0x02208b98 scene_layer_loader_spawn_c # HIGH task(task). Twin of framebuffer_bringup(0x207b3e): 2x sh2_dmac_copy (ROM 0x2240a520->CRAM 0x25f00200 cnt8; ROM 0x22406020->VRAM 0x25e38000 cnt0x1000), fill_vec4_array(0x25e78000,0x400,0x07000700), func_0220ade(0x06050cc8), func_022156c(1,vram,vram,vram,vram), tail spawn func_0220ff54(task, func_02208c44). SMALL function - NOT 595 insns (see report: the rest is a mis-disassembled literal pool + func_02208c44).
+0x02207bcc screen_fx_builder_task     # HIGH task(task). 6-state (task->unk10) VDP display-list / palette-animation effect. Emit func_0221632e is FIXED 4-arg (mode,cur,dst,count) - m2c's "variadic" trailing args were really the gradient fill-loop stores to *g_06099510. States: 0->1 (build+ease unkC+ramp unk32 to 31), 2->3 (sin palette anim, unkC-=3), 4->5 (bouncing unkC/unk18 integrator). Calls fill_vec4_array(0x2132ac), tilemap_copy_wrap_w80(0x21675e), func_022213a8(0x2213a8), sin_lookup(0x213190). cart 0x207d66/0x207ea4 are phantom pool shorts, NOT bsrf.
+0x0220a390 hud_stats_screen_build     # HIGH task(task). Per-player stats HUD. func_2093f8 header; 7 glyph rows (table 0x06090640) via *g_0609029C; event bits g_06098794.u16@6 & 0x204 -> state 11 + ent->unk44=1; 5 groups (counts 0x0605121c[0..4]) x N items printing a 0..100% bar = (100*hw_divide(cur,max))>>16 via *g_060902A0(fmt 0x06051434, pct). cur/max from *g_06000644(0, work+table0x06051230[idx]+0x100/+0x104, 0).
+0x0220a4f0 hud_tally_screen_build     # HIGH task(task). Sibling of 0x20a390. 14 glyph rows (table 0x0609065c); event -> state 12. 5 groups x N items: prints one field (*g_06000644 ...+0x108) then a 0 in the adjacent cell, both via *g_060902A0.
+0x0220a648 hud_grid_screen_build      # HIGH task(task). Sibling. 16 glyph rows (table 0x06090694, color 11); event -> state 1 + ent->unk40=5 + ent->unk44=1. 10 groups x 3 columns (cols 17/23/29, row grp+10) reading work+grp*12+0x280+j*4, plus one final field work+0x2f8 at col29/row21. Real entry (0x20a612 pool-contaminated).
+0x0220bc20 camera_init_pose          # HIGH task(task). Scene-start camera pose init. Override (*g_06098670!=0): pose from 0x06051e8c[sel.unk28 stride0xC] + 0x06051f94[sel.unk29 stride6], sel=*g_0609866C; else defaults 0x06051e78/0x06051e84. Add room offset 0x06060814[g_060B3D54 stride0x2C]. Reset g_06098830=10/g_06098834=0/task.unkD/cam.unk68=0x30000/unkA8/unkAA, clear ring 0x06098838 ttls. task->unk0=func_0220bdb4; cam->unk64=*0x06051e74; mtx_build_fwd_inv. If override==1 && g_06098830>=3: reset *g_0609882C entity view indices. Real entry (0x20bbfa pool-contaminated).
+
+# Supporting symbols confirmed/used this pass (names from existing notes/symbols*.txt):
+0x0221632e func_0221632e             # VDP2 coeff/line-scroll DMA open - FIXED 4-arg (mode, cur, dst, count). Called via mova+0xE746 fp in 0x207bcc.
+0x02208c44 func_02208c44             # task handler spawned by scene_layer_loader_spawn_c (0x208b98). Lives right after it; still undone.
+0x0220bdb4 func_0220bdb4             # per-frame camera handler installed by camera_init_pose into task->unk0. Still undone.
+
+# Globals used/named this pass:
+0x06098838 g_06098838   record[8]    # recent-position ring; stride 8 {s32 idx@0, s32 ttl@4}. Consumed by 0x20d9ec, cleared by 0x20bc20.
+0x06052194 g_06052194   record[]     # position record table, stride 12 {s32 X@0, s32 Z@8}; indexed by (s8)(idx*0xC).
+0x06099510 g_06099510   s32*         # VDP display-list write cursor (used by 0x207bcc; appended with 32-bit words, bumped +0x4000 between blocks)
+0x060902a0 g_060902A0   void(*)(s32,...) # variadic ui_printf glyph-text thunk (fmt first, args on stack). Convention per existing func_0220ad58.
+0x0609029c g_0609029C   void(*)(void*)   # ui_glyph thunk (1 arg)
+0x06000644 g_06000644   s32(*)(s32 op,void*addr,s32 z) # resident get-field fp; returns u16 field value (used by HUD builders)
+0x060997a4 g_060997A4   s32          # HUD text cursor column/color
+0x060997a8 g_060997A8   s32          # HUD text cursor row/mode
+0x060997ac g_060997AC   s32          # HUD text cursor flag/gate
+0x06098794 g_06098794   struct       # syspad/status; u16@6 = button/event bits (0x0204 = confirm/advance)
+0x06098804 g_06098804   s32          # HUD work-buffer base pointer (field source for get-field fp)
+0x06098670 g_06098670   s32          # override-camera mode (0 = default pose, 1 = override active)
+0x0609866c g_0609866C   void*        # override-camera selector struct (unk28 pos idx word, unk29 angle idx byte)
+0x0609882c g_0609882C   void*        # secondary camera/object pointer (unk8 = its entity)
+0x06098830 g_06098830   s32          # camera init/transition counter (set 10, clamped to 3)
+0x06098834 g_06098834   s32          # camera flag (cleared at init)
+0x060b3d54 g_060B3D54   s32          # current room/area index
+0x06060814 g_06060814   record[]     # room world-offset table, stride 0x2C (= g_0606080C + 8)
+0x06051e8c g_06051e8c   record[]     # override camera position table, stride 0xC
+0x06051f94 g_06051f94   record[]     # override camera angle table, stride 6 (s16 triples)
+0x06051e78 g_06051e78   record       # default camera position triple
+0x06051e84 g_06051e84   record       # default camera angle triple
+0x06051e74 g_06051e74   s32          # default seed for cam->unk64
+0x0605121c g_0605121c   s32[5]       # HUD group item counts
+0x06051230 g_06051230   s32[]        # HUD field-offset table (indexed by running item index)
+0x06051434 g_06051434   char[]       # HUD numeric format string
+0x06090640 g_06090640   void*[]      # hud_stats glyph record table
+0x0609065c g_0609065c   void*[]      # hud_tally glyph record table
+0x06090694 g_06090694   void*[]      # hud_grid glyph record table
+0x06096c58 g_06096C58   s32[]        # per-slot camera focus Y bias (used by camera_track_single)
+0x0604ebe4 g_0604EBE4   s32[]        # per-slot camera enable-mask table
+0x0609977c g_0609977C   s32          # active-slot mask bits (ANDed with g_0604EBE4[i-1])

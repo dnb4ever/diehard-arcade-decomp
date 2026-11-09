@@ -1,0 +1,99 @@
+# Band 0x233-0x237 video-bootstrap / debug-editor hard cluster.
+# Worker: band234. Serial, single worker, no forks. All .c in project/src_functional/.
+# Every file compiles clean: gcc -O1 -c -Wall -Wextra (zero output).
+# Every computed branch confirmed with braf_resolve.py; entries validated with find_entry.py.
+
+## Functions decompiled (6)
+0x0223358c video_menu_bootstrap_sm   # HIGH 3-state(0,1,2). VDP2 shadow(*0x06098f08) setup;
+                                     #   installs g_curActorObj handler func_0220e2d8; spawns
+                                     #   child tasks func_022348cc + func_02234984; 6 glyph
+                                     #   writes via thunk *0x060902a0 (1 stack arg/site);
+                                     #   s1 clamps + func_0220ad58 + fade; s2 tail func_0220fdc8.
+0x02234984 vdp2_stage_loader         # HIGH actor_task->unk10 state(0->1). func_02220828 cfg;
+                                     #   2x func_022145d0 DMAC copies from out-of-cart descs
+                                     #   0x22695d64/68/6c/70/74; func_0221675e(6 args) tilemap;
+                                     #   func_0222156c(5 args) VDP2 shadow pack; clamp sin arg;
+                                     #   tail func_022213a8. Multi-stack-arg calls hand-verified.
+0x022363e4 debug_obj_inspector       # HIGH 2-state. s0 zeroes editor fields, tail func_02223ac0;
+                                     #   s1 pad-driven field edits (unk24/26/28 +-0x400, 1..0x618
+                                     #   index unk30, unk37 0..14, unk58 0..88); draw seq +
+                                     #   6 glyph writes (2 stack args/site).
+0x0223673a video_menu_bootstrap_sm2  # HIGH sibling of 0223358c. s0: install func_0220e1e2,
+                                     #   spawn func_022363e4, 12 glyph writes (1 arg/site);
+                                     #   s1: 3 glyph writes (2 args/site) of g_curActorObj->unk8
+                                     #   pos; flag advance + fade; s2 tail func_0220fdc8.
+0x02236af0 debug_cursor_editor       # HIGH 2-state cursor/text editor. out-of-cart tables
+                                     #   g_22700000 (stride 0x14, page rows) + g_22700aa0
+                                     #   (stride 8, type code). pad edits index unk30(1..0x18AC)/
+                                     #   unk32(0..0x58)/zoom unk6C/pos; func_022153f6 render;
+                                     #   type switch (1 glyph arg/site) + 6 field read-outs
+                                     #   (2 glyph args/site). 3 bsrf resolved; jsr sites counted.
+0x02236e66 video_menu_bootstrap_sm3  # HIGH sibling. s0: install func_0220e29e, spawn func_02236af0,
+                                     #   9 glyph writes (1 arg/site); s1 flag advance + fade;
+                                     #   s2 spawn func_022101ce + poke ->unk8->unk50=-0x20 +
+                                     #   unk3C|=2; s3 tail func_0220fdc8.
+
+## Globals / data referenced
+g_curActorObj   0x0609882c  void*   current scene/actor object ptr (existing symbol)
+                0x06098f08  void**  VDP2 shadow-register block base ptr (deref -> block)
+g_glyph_param0  0x060997a4  s32     debug-glyph thunk parameter latch A (set per call site)
+g_glyph_param1  0x060997a8  s32     debug-glyph thunk parameter latch B (set per call site)
+                0x060902a0  fnptr   variadic debug-glyph output thunk (args on stack; per-site count)
+                0x06090294  fnptr   sibling debug thunk (0-arg at these sites)
+g_06099578      0x06099578  s32     bootstrap-ready flag
+g_0609861c      0x0609861c  u8      display-ready flag
+g_06096c90      0x06096c90  s32
+g_060e1320      0x060e1320  s32
+g_060e1324      0x060e1324  s16[2]  {index,-1} shadow pair A (func_02223ac0 input)
+g_060e1328      0x060e1328  s16[2]  {value,-1} shadow pair B (func_02215228 input)
+g_06091384      0x06091384  void*[] per-unk30 resource table A (0x609138c = [2])
+g_06091454      0x06091454  void*[] per-unk30 resource table B
+g_06091524      0x06091524  void*[] per-unk30 resource table C
+g_060915f4      0x060915f4  void*[] per-unk37 resource table
+g_06098878      0x06098878  s32     VDP1 command-list write ptr (decremented by 0x30)
+g_060b3d50      0x060b3d50  s8
+                0x25e5fd00  s16     VDP2 colour RAM slot (grey/fade value)
+                0x22695d64..74      out-of-cart VDP2 stage DMA descriptors (func_02234984)
+                0x22700000          out-of-cart editor page table (stride 0x14, +0xC row count)
+                0x22700aa0          out-of-cart editor entry table (stride 8, +4 type code)
+                0x0608be9c          VDP2 register-config block (func_02220828 arg)
+                0x0608bcc8,0x0608bef0..bf34,0x0608c16c..c28c  debug-text glyph/format descriptors
+
+## Handlers installed / tasks spawned (confirmed by mova+delta / braf_resolve)
+0x0220e2d8  handler installed into g_curActorObj by func_0223358c s0
+0x0220e1e2  handler installed into g_curActorObj by func_0223673a s0
+0x0220e29e  handler installed into g_curActorObj by func_02236e66 s0
+0x022348cc  task handler spawned by func_0223358c s0
+0x02234984  task handler spawned by func_0223358c s0 (= vdp2_stage_loader)
+0x022363e4  task handler spawned by func_0223673a s0 (= debug_obj_inspector)
+0x02236af0  task handler spawned by func_02236e66 s0 (= debug_cursor_editor)
+0x022101ce  task handler spawned by func_0223358c s1 and func_02236e66 s2
+0x0220feec / 0x0220fece  task spawn (parent, handler) -> new task  (func_0220fece returns the task)
+0x0220fdc8  scene teardown tail (1 arg)
+
+## Helper call-target ABIs confirmed
+0x02220828 func_02220828(cfg)                         VDP2 register-config block loader
+0x022145d0 func_022145d0(src,dst,count)               SH-2 DMAC ch0 copy (existing)
+0x0221675e func_0221675e(a0,dst,desc,a3,a4,a5)        tilemap_copy_wrap_w80 (6 args; existing)
+0x0222156c func_0222156c(sel,a1,a2,a3,a4)             vdp2_shadow_pack4_sel (5 args; existing)
+0x02213190 func_02213190(angle)                       sin_lookup (existing)
+0x022213a8 func_022213a8(rot,pos)                     transform/plot (existing)
+0x022153f6 func_022153f6(obj,zoom,flag)               sprite renderer (existing)
+0x02215228 func_02215228(ptr)                         VDP2 attribute helper
+0x022150d4 func_022150d4(ptr)                          VDP2 attribute helper
+0x02223ac0 func_02223ac0(ptr)                          VDP2 attribute helper
+0x0220ad58 func_0220ad58(a,b)
+0x02216154 func_02216154(x)   0x02222d3c func_02222d3c(x)   0x02214d26 func_02214d26(void)
+0x02216b14 func_02216b14(ptr) 0x02227a84 func_02227a84(obj) 0x0223c95c func_0223c95c(void)
+0x02227bc4 func_02227bc4(a,ptr)->ptr                   returns value stored into entity->unk64
+0x02216c38 func_02216c38(a,b)
+0x022149aa func_022149aa(void) 0x02214a2e func_02214a2e(void)  matrix-stack push/setup
+0x02214a40 func_02214a40(obj)  0x02214a06 func_02214a06(obj)   0x02215a2c func_02215a2c(obj,n)
+
+## Key finding: the deferred "UNRESOLVED bsrf r6 @0x233740" is a FALSE POSITIVE
+0x233738-0x2337af is func_0223358c's literal pool (the real code at 0x233734 does
+`bra 0x2337b0; nop` and resumes at 0x2337b0). The word at 0x233740 (0x0603/0x0700) is the
+immediate constant stored into VDP2->unkF8/unkFA, which braf_resolve mis-decodes as
+`bsrf r6`. r6 is never loaded with a PC-relative delta before it, so it cannot be a real
+computed branch. All of func_0223358c's 19 genuine computed branches ARE resolved; the
+function ships.

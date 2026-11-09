@@ -1,0 +1,329 @@
+--- a/runtime/src/video/vdp2.cpp
++++ b/runtime/src/video/vdp2.cpp
+@@ -4,7 +4,7 @@
+ // What is done: the four normal scroll screens (NBG0-NBG3) in cell mode
+ // (1x1 or 2x2 cells, 1- or 2-word pattern names with the supplement, plane
+ // sizes, map offsets, 16/256/2048 colours and RGB) and NBG0/NBG1 in bitmap
+-// mode; NBG0/NBG1's fractional scroll and coordinate increments (zoom);
++// mode; NBG0/NBG1's fractional scroll, coordinate increments, line scroll and line zoom;
+ // the sprite layer from VDP1's framebuffer, including rotation parameter A, every sprite type, palette and
+ // RGB mixed (SPCLMD), with its priorities and colour-calculation ratios;
+ // priorities with the chip's order for ties (sprite, NBG0, NBG1, NBG2,
+@@ -29,7 +29,7 @@
+ // the over-pattern mode (1) falls back to repeat. RBG0 parameter mode 2 (RPMD=2) switches a dot to
+ // parameter B, with B's own plane map, size and screen-over, where parameter A's coefficient MSB is set.
+ // What is not: the rotation over-pattern mode (1), rotation-BG gradation/line-colour and coefficient
+-// line-colour data, line and vertical-cell scroll,
++// line-colour data, vertical-cell scroll,
+ // mosaic, the sprite window, special priority and colour calculation by dot
+ // (the special function codes), gradation of RBG0, extended colour
+ // calculation, the exclusive resolutions. A register that asks for one of them is noted once.
+@@ -91,11 +91,14 @@
+     uint32_t a = (i & (cram_mode() == 1 ? 0x7FF : 0x3FF)) * 2;
+     uint16_t v = (uint16_t)(g_vdp2_cram[a] << 8 | g_vdp2_cram[a + 1]);
+     if (msb) *msb = v >> 15;
+-    return (uint32_t)((v & 0x1F) << 3) << 16 | ((v >> 5 & 0x1F) << 3) << 8 | ((v >> 10 & 0x1F) << 3);
++    // Match the reference palette's full-range 5-bit expansion (MAME pal5bit).
++    auto expand = [](unsigned c) { return (c << 3) | (c >> 2); };
++    return expand(v & 31) << 16 | expand(v >> 5 & 31) << 8 | expand(v >> 10 & 31);
+ }
+ 
+ static uint32_t rgb555(uint16_t v) {
+-    return (uint32_t)((v & 0x1F) << 3) << 16 | ((v >> 5 & 0x1F) << 3) << 8 | ((v >> 10 & 0x1F) << 3);
++    auto expand = [](unsigned c) { return (c << 3) | (c >> 2); };
++    return expand(v & 31) << 16 | expand(v >> 5 & 31) << 8 | expand(v >> 10 & 31);
+ }
+ 
+ // One layer's pixel on a line.
+@@ -127,6 +130,8 @@
+     bool bm_spr, bm_scc;
+     uint32_t caos;                              // colour RAM offset, in entries
+     int32_t sx, sy, dx, dy;                     // scroll and increments, 8 fraction bits
++    uint8_t line_flags, line_interval;
++    uint32_t line_table;
+     uint8_t prio, ratio;
+     bool cc, offset, offset_b;
+ };
+@@ -177,6 +182,10 @@
+     int caos_sh = n * 4;
+     s.caos = (uint32_t)(reg(0xE4) >> caos_sh & 7) << 8;
+     if (n < 2) {
++        unsigned ctl = reg(0x9A) >> (n * 8);
++        s.line_flags = ctl & 0x0E;
++        s.line_interval = (uint8_t)((1 << (ctl >> 4 & 3)) * ((reg(0x00) >> 6 & 3) == 2 ? 2 : 1));
++        s.line_table = ((uint32_t)(reg(0xA0 + n * 4) & 7) << 16 | reg(0xA2 + n * 4)) * 2;
+         uint32_t b = 0x70 + n * 0x10;
+         s.sx = (int32_t)((reg(b) & 0x7FF) << 8 | reg(b + 2) >> 8);
+         s.sy = (int32_t)((reg(b + 4) & 0x7FF) << 8 | reg(b + 6) >> 8);
+@@ -228,11 +237,30 @@
+     return true;
+ }
+ 
++// Line records contain only enabled functions, in horizontal/vertical/zoom order.
++// Vertical records replace the first source line of the interval; remaining lines
++// advance normally. Scroll fields are signed 11.8, zoom signed 3.8.
++static Nbg nbg_line(Nbg s, int y) {
++    if (!s.line_flags) return s;
++    unsigned count = !!(s.line_flags & 2) + !!(s.line_flags & 4) + !!(s.line_flags & 8);
++    int line0 = y - y % s.line_interval;
++    uint32_t addr = s.line_table + (uint32_t)(y / s.line_interval) * count * 4;
++    auto read = [&](int bits) {
++        uint32_t value = (uint32_t)vw(addr) << 16 | vw(addr + 2);
++        addr += 4;
++        return signed_bits(value >> 8, bits);
++    };
++    if (s.line_flags & 2) s.sx += read(19);
++    if (s.line_flags & 4) s.sy += read(19) - line0 * s.dy;
++    if (s.line_flags & 8) s.dx = read(11);
++    return s;
++}
++
+ static bool nbg_pixel(const Nbg& s, int x, int y, Pix& p) {
+     uint32_t sx = (uint32_t)(s.sx + x * s.dx) >> 8, sy = (uint32_t)(s.sy + y * s.dy) >> 8;
+     if (s.bitmap) {
+-        sx &= (uint32_t)s.bm_w - 1;
+-        sy &= (uint32_t)s.bm_h - 1;
++        sx &= (uint32_t)(s.line_flags & 2 ? 1024 : s.bm_w) - 1;
++        sy &= (uint32_t)(s.line_flags & 4 ? 512 : s.bm_h) - 1;
+         p.spr = s.bm_spr;
+         p.scc = s.bm_scc;
+         return dot(s, s.bm_addr, (int)sx, (int)sy, s.bm_w, s.bm_pal, p);
+@@ -717,7 +745,7 @@
+         if (cond && !noted[i]) { noted[i] = fresh = true; sat_note("VDP2: %s (%04X) is not done", what, v); }
+     };
+     // RBG0 (BGON bit4) and RBG1 (bit5) are both done now.
+-    once(1, reg(0x9A) & 0x3F3F, "line or vertical cell scroll (SCRCTL)", reg(0x9A));
++    once(1, reg(0x9A) & 0x0101, "vertical cell scroll (SCRCTL)", reg(0x9A));
+     once(2, reg(0x22) & 0xF, "mosaic (MZCTL)", reg(0x22));
+     once(3, (reg(0xD0) | reg(0xD2) | reg(0xD4) | reg(0xD6)) & 0x2020, "the sprite window (WCTL)", reg(0xD0));
+     once(4, (reg(0xEC) & 0x8400) == 0x0400 && reg(0xEC) & 0x5F, "extended colour calculation (CCCTL)", reg(0xEC));
+@@ -815,6 +843,8 @@
+         std::vector<uint32_t> blur(grad >= 0 ? f.w : 0);
+         for (int y = y0; y < y1; ++y) {
+             int line = dd ? y >> 1 : y;
++            Nbg row_nbg[4];
++            for (int n = 0; n < 4; ++n) row_nbg[n] = nbg_line(nbg[n], y);
+             Win win[2] = {window_line(0, y, dd), window_line(1, y, dd)};
+             back.rgb = rgb555(vw(bk + (bk_lines ? (uint32_t)line * 2 : 0)));
+             // a table word a line, a line of either field in double-density interlace
+@@ -826,7 +856,7 @@
+                 for (int x = 0; x < f.w; ++x) {
+                     Pix p{};
+                     bool drawn = grad == L_SPRITE ? sprite_pixel(sprite_dot(x, y, dd), p) == S_DOT
+-                                                  : nbg[grad - L_NBG0].on && nbg_pixel(nbg[grad - L_NBG0], x, y, p);
++                                                  : row_nbg[grad - L_NBG0].on && nbg_pixel(row_nbg[grad - L_NBG0], x, y, p);
+                     uint32_t here = drawn ? p.rgb : 0;
+                     if (x == 0) prev[0] = prev[1] = here;
+                     blur[x] = avg(avg(prev[0], prev[1]), here);
+@@ -879,7 +909,7 @@
+                 for (int n = 0; n < 4; ++n) {
+                     Pix& p = l[L_NBG0 + n];
+                     p = {};
+-                    const Nbg& s = nbg[n];
++                    const Nbg& s = row_nbg[n];
+                     if (!s.on || !s.prio || windowed(wctl[L_NBG0 + n], win, x)) continue;
+                     if (!nbg_pixel(s, x, y, p)) continue;
+                     p.prio = s.prio;
+--- a/runtime/tests/vdp2_test.cpp
++++ b/runtime/tests/vdp2_test.cpp
+@@ -5,7 +5,7 @@
+ 
+ namespace {
+ 
+-const uint32_t kRed = 0xF80000, kGreen = 0x00F800, kBlue = 0x0000F8;   // RGB555 0x001F, 0x03E0, 0x7C00
++const uint32_t kRed = 0xFF0000, kGreen = 0x00FF00, kBlue = 0x0000FF;   // RGB555 0x001F, 0x03E0, 0x7C00
+ 
+ // VDP1 shows dot d in columns x0 to x1 of every line, and nothing elsewhere.
+ void show_sprites(uint16_t d = 0, int x0 = 0, int x1 = -1) {
+@@ -107,7 +107,7 @@
+     reg(0x108, 16);                              // CCRNA: NBG0 ratio 16, 15:17
+     Frame f;
+     vdp2_compose(f);
+-    CHECK_EQ(at(f, 0, 0), 0x837400);
++    CHECK_EQ(at(f, 0, 0), 0x877700);
+ }
+ 
+ TEST(colour_calculation_at_ratio_0_still_shows_the_second_image) {
+@@ -116,7 +116,7 @@
+     reg(0xEC, 0x0001);                           // CCCTL: NBG0, ratio 0
+     Frame f;
+     vdp2_compose(f);
+-    CHECK_EQ(at(f, 0, 0), 0x07F000);
++    CHECK_EQ(at(f, 0, 0), 0x07F700);
+ }
+ 
+ TEST(higher_priority_wins_and_nbg0_wins_ties) {
+@@ -157,12 +157,12 @@
+     CHECK_EQ(at(f, 10, 0), kGreen);              // SDCTL enables no screen
+     reg(0xE2, 0x0001);                           // SDCTL: NBG0
+     vdp2_compose(f);
+-    CHECK_EQ(at(f, 10, 0), 0x007C00);
++    CHECK_EQ(at(f, 10, 0), 0x007F00);
+     CHECK_EQ(at(f, 20, 0), kGreen);
+     reg(0x20, 0x0000);                           // BGON: nothing, so the back screen is on top
+     reg(0xE2, 0x0020);                           // SDCTL: the back screen
+     vdp2_compose(f);
+-    CHECK_EQ(at(f, 10, 0), 0x7C0000);
++    CHECK_EQ(at(f, 10, 0), 0x7F0000);
+ }
+ 
+ TEST(shadow_needs_a_priority_over_the_screen) {
+@@ -181,7 +181,7 @@
+     show_sprites(0x8002, 10, 19);
+     Frame f;
+     vdp2_compose(f);
+-    CHECK_EQ(at(f, 10, 0), 0x00007C);
++    CHECK_EQ(at(f, 10, 0), 0x00007F);
+     reg(0xE0, 0x0012);                           // SPCTL: SPWINEN, so the MSB is the sprite window's
+     vdp2_compose(f);
+     CHECK_EQ(at(f, 10, 0), kBlue);
+@@ -196,7 +196,7 @@
+     CHECK_EQ(at(f, 10, 0), kGreen);
+     reg(0xE2, 0x0101);                           // SDCTL: TPSDSL and NBG0
+     vdp2_compose(f);
+-    CHECK_EQ(at(f, 10, 0), 0x007C00);
++    CHECK_EQ(at(f, 10, 0), 0x007F00);
+ }
+ 
+ // Green NBG0 mixed half and half, over a line colour table at VRAM 0x50000.
+@@ -215,10 +215,10 @@
+     line_colour_over_green();
+     Frame f;
+     vdp2_compose(f);
+-    CHECK_EQ(at(f, 0, 0), 0x837400);             // LNCLEN off: green with the red back screen
++    CHECK_EQ(at(f, 0, 0), 0x877700);             // LNCLEN off: green with the red back screen
+     reg(0xE8, 0x0001);                           // LNCLEN: NBG0
+     vdp2_compose(f);
+-    CHECK_EQ(at(f, 0, 0), 0x007483);             // green with the blue line colour
++    CHECK_EQ(at(f, 0, 0), 0x007787);             // green with the blue line colour
+ }
+ 
+ TEST(line_colour_a_line) {
+@@ -229,8 +229,8 @@
+     cram16(4, 0x001F);
+     Frame f;
+     vdp2_compose(f);
+-    CHECK_EQ(at(f, 0, 0), 0x007483);
+-    CHECK_EQ(at(f, 0, 1), 0x837400);             // line 1: red
++    CHECK_EQ(at(f, 0, 0), 0x007787);
++    CHECK_EQ(at(f, 0, 1), 0x877700);             // line 1: red
+ }
+ 
+ // Green NBG1 mixed half and half over NBG0, whose bitmap is blue for x 0-9 and black from x 10.
+@@ -256,13 +256,13 @@
+     reg(0xEC, 0x0002);                           // CCCTL: NBG1
+     Frame f;
+     vdp2_compose(f);
+-    CHECK_EQ(at(f, 10, 0), 0x007400);            // no gradation: half green, half black
++    CHECK_EQ(at(f, 10, 0), 0x007700);            // no gradation: half green, half black
+     reg(0xEC, 0xA002);                           // CCCTL: BOKEN, BOKN NBG0, and NBG1
+     vdp2_compose(f);
+-    CHECK_EQ(at(f, 5, 0), 0x007483);             // all blue around it
+-    CHECK_EQ(at(f, 10, 0), 0x007441);            // blue, blue, black: half blue
+-    CHECK_EQ(at(f, 11, 0), 0x007420);            // blue, black, black: a quarter
+-    CHECK_EQ(at(f, 12, 0), 0x007400);
++    CHECK_EQ(at(f, 5, 0), 0x007787);             // all blue around it
++    CHECK_EQ(at(f, 10, 0), 0x007743);            // blue, blue, black: half blue
++    CHECK_EQ(at(f, 11, 0), 0x007721);            // blue, black, black: a quarter
++    CHECK_EQ(at(f, 12, 0), 0x007700);
+ }
+ 
+ // Sample each of A..P independently for both rotation parameter sets. The normal
+@@ -300,7 +300,7 @@
+             fixed(0x48, (slot / 4) * 512u * 65536u); // My
+             Frame f;
+             vdp2_compose(f);
+-            CHECK_EQ(at(f, 0, 0), (slot + 1) * 8u << 16);
++            CHECK_EQ(at(f, 0, 0), (((slot + 1) << 3) | ((slot + 1) >> 2)) << 16);
+         }
+     }
+ }
+@@ -364,3 +364,88 @@
+     CHECK_EQ(at(f, 7, 0), 8u << 16);
+     CHECK_EQ(at(f, 8, 0), 16u << 16);
+ }
++
++// MAME 0.285 fixtures: full-range RGB555 and compact horizontal/vertical/zoom records.
++TEST(rgb555_back_screen_expands_all_32_levels) {
++    red_screen();
++    reg(0xAC, 0x8002);
++    for (unsigned y = 0; y < 32; ++y) vram16(0x40000 + y * 2, y | y << 5 | y << 10);
++    Frame f;
++    vdp2_compose(f);
++    for (unsigned y = 0; y < 32; ++y) {
++        unsigned c = (y << 3) | (y >> 2);
++        CHECK_EQ(at(f, 0, y), c * 0x010101);
++    }
++}
++
++TEST(rgb555_palette_and_direct_bitmap_use_the_same_full_range) {
++    red_screen();
++    green_bitmap_nbg0();
++    reg(0x20, 0x0101);
++    for (unsigned x = 0; x < 32; ++x) {
++        g_vdp2_vram[x] = x;
++        cram16(x, x | x << 5 | x << 10);
++    }
++    Frame f;
++    vdp2_compose(f);
++    for (unsigned x = 0; x < 32; ++x) {
++        unsigned c = (x << 3) | (x >> 2);
++        CHECK_EQ(at(f, x, 0), c * 0x010101);
++    }
++    reg(0x28, 0x0032);
++    for (unsigned x = 0; x < 32; ++x) vram16(x * 2, 0x8000 | x | x << 5 | x << 10);
++    vdp2_compose(f);
++    for (unsigned x = 0; x < 32; ++x) {
++        unsigned c = (x << 3) | (x >> 2);
++        CHECK_EQ(at(f, x, 0), c * 0x010101);
++    }
++}
++
++namespace {
++void line_bitmap(int n) {
++    red_screen();
++    reg(0x20, (1 << n) | (0x100 << n));
++    reg(0x28, 0x12 << (n * 8));
++    reg(0xF8, 1 << (n * 8));
++    reg(0x78 + n * 0x10, 1);
++    reg(0x7C + n * 0x10, 1);
++    for (unsigned y = 0; y < 256; ++y) for (unsigned x = 0; x < 512; ++x)
++        g_vdp2_vram[y * 512 + x] = ((x / 8 + y / 8) % 31) + 1;
++    for (unsigned i = 0; i < 32; ++i) cram16(i, i | i << 5 | i << 10);
++    reg(0xA0 + n * 4, 2);                       // LSTA0/1, not the vertical-cell address at 0x9C
++}
++void longword(uint32_t a, uint32_t v) { vram16(a, v >> 16); vram16(a + 2, v); }
++}
++
++TEST(nbg0_and_nbg1_read_compact_line_scroll_and_zoom_records) {
++    for (int n = 0; n < 2; ++n) {
++        line_bitmap(n);
++        reg(0x9A, 0x0E << (n * 8));
++        reg(0x70 + n * 0x10, 5);
++        reg(0x74 + n * 0x10, 3);
++        for (unsigned y = 0; y < 240; ++y) {
++            longword(0x40000 + y * 12, (y % 3) * 8 << 16);
++            longword(0x40004 + y * 12, ((y * 8) % 248) << 16);
++            longword(0x40008 + y * 12, y % 2 ? 0x8000 : 0x10000);
++        }
++        Frame f;
++        vdp2_compose(f);
++        CHECK_EQ(at(f, 0, 0), 0x080808);
++        CHECK_EQ(at(f, 8, 1), 0x212121);
++        CHECK_EQ(at(f, 0, 2), 0x292929);
++    }
++}
++
++TEST(line_scroll_interval_advances_within_the_vertical_interval) {
++    line_bitmap(0);
++    reg(0x9A, 0x16);                            // horizontal + vertical, one record per two lines
++    for (unsigned i = 0; i < 120; ++i) {
++        longword(0x40000 + i * 8, 0);
++        longword(0x40004 + i * 8, (i ? 0 : 7) << 16);
++    }
++    Frame f;
++    vdp2_compose(f);
++    CHECK_EQ(at(f, 0, 0), 0x080808);             // source row 7
++    CHECK_EQ(at(f, 0, 1), 0x101010);             // source row 8, not row 7 again
++    CHECK_EQ(at(f, 0, 2), 0x080808);             // next record replaces the source row with 0
++}

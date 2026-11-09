@@ -1,0 +1,411 @@
+{
+  "nocoin": {
+    "command": [
+      "port/run/P48/build-headless/saturn_stv",
+      "--cart",
+      "port/diehard_main.bin",
+      "--cartrom",
+      "cart.bin",
+      "--vblanks",
+      "9000",
+      "--stvinput",
+      "99999:COIN",
+      "--shots",
+      "300,600,900,1200,1500,1800,2100,2400,2700,3000,3300,3600,3900,4200,4500,4800,5100,5400,5700,6000,6300,6600,6900,7200,7500,7800,8100,8400,8700,9000",
+      "--out",
+      "port/run/P48/headless/nocoin"
+    ],
+    "overrides": {},
+    "exit_code": 0,
+    "seconds": 100.203,
+    "vblanks_per_second": 89.82,
+    "expected_shots": 30,
+    "png": {
+      "shot-300.png": {
+        "md5": "6c9a79530a32671a6795236090053b3e",
+        "sha256": "d56fa97113cb199c7cb37e1b1466db559b929943ffb8e6edf5f3942e2d209c58"
+      },
+      "shot-600.png": {
+        "md5": "0f052098cec0918e31572c4e94abfa2f",
+        "sha256": "bc8b979126a4a9fae6cda04323aaeab2ed4140cd19b7498ed9400976da790667"
+      },
+      "shot-900.png": {
+        "md5": "48c8e9ccba4129f8b18759be29e218b3",
+        "sha256": "c741f69c96dd671b6e7c4fd899fc83607a519d4750f330494c7d3893e100c86b"
+      },
+      "shot-1200.png": {
+        "md5": "3cb774ac62b506a641a813830bbe2b02",
+        "sha256": "22027a5fc1ab17c6c19ac96abf4ae02a76a532f3936160f44407fa6b20c69a2e"
+      },
+      "shot-1500.png": {
+        "md5": "5a21b068ab6f172564d08d9b8339b8c7",
+        "sha256": "9f33bd9c6ea99bbcadcc7225d3ca1bbadadcaf2c2687b71c04b6964bff096a08"
+      },
+      "shot-1800.png": {
+        "md5": "7d76b942cd4a15099f5b302f11b0188e",
+        "sha256": "c121e380c3bede9a8e522081dd4232e5d3a4b70205955ffa81859307e7dbcd9a"
+      },
+      "shot-2100.png": {
+        "md5": "ce8367c6953ce43df7d817329345745d",
+        "sha256": "c3360c6a4d8f30341882d10e9b555c605aa50abb370ab8e082788f7cb8428d45"
+      },
+      "shot-2400.png": {
+        "md5": "d3cb25855ed50517b99cef24e837596b",
+        "sha256": "492f0d4142bdc7f54d209365c683918282ace4c03f7e023939dcf73d2df7b36f"
+      },
+      "shot-2700.png": {
+        "md5": "1f873ec40ad8d826018de16d46012ed3",
+        "sha256": "5da80def075428fac9f274a73243e1fc6d32853644e9dc6d2daa4e5aa1b936f8"
+      },
+      "shot-3000.png": {
+        "md5": "691f814cab156669fcc526a3eaa4e261",
+        "sha256": "4bddee1bbe7e5170e864585af82674d3ba55a7f5d90dfdda4f455ae477713c49"
+      },
+      "shot-3300.png": {
+        "md5": "dcc2e2bad3d0716c708d60c12c873693",
+        "sha256": "7da3f33144ac7585e81e1cd7c09e7207c70f96255434f50a8a97d0ac65be71c8"
+      },
+      "shot-3600.png": {
+        "md5": "95a0ef11a168922a93ff22af93909196",
+        "sha256": "e477cbbf4f139ba139c4fe735ce8729ad0f8d1c40741d2f8db3c19c8c59d3c76"
+      },
+      "shot-3900.png": {
+        "md5": "4ed67aeabfc716ec3125925fe16d1a93",
+        "sha256": "b7d9ceb0db179b1fb3f26cc6e59cb7ab9424033c46dbd431556786820db773cf"
+      },
+      "shot-4200.png": {
+        "md5": "055e858873c41d19444012e100ba3ebc",
+        "sha256": "74df0676cac7a1f82129f39293e28e757072e51926730651fc34c3e5e8818067"
+      },
+      "shot-4500.png": {
+        "md5": "2135264eca4631aa84e0d584cb8d01c9",
+        "sha256": "14adea9cc638baa698a3ad66516e830c4f8d632b703cbfb0f2171f1868d4fa4f"
+      },
+      "shot-4800.png": {
+        "md5": "5c9cd9a2289026e2cb908b508b1a0b1d",
+        "sha256": "ea0ce3cb296b8091ad5029e94ae0e1260525d6099ce7fb8ed4f6dad1b1b42128"
+      },
+      "shot-5100.png": {
+        "md5": "6d5b6dfb71e94e9bfbccb5b938d84fde",
+        "sha256": "5b423d300aca3b1f9d792432e98646e28bbd0aded7575151b1a7e51f00946b73"
+      },
+      "shot-5400.png": {
+        "md5": "0eeb6adc91b7095138de117b039c3491",
+        "sha256": "a4855e67039fe1dc3e26b92a7359b8c85b47129aa8c8ae0f1056cf36c3a81f18"
+      },
+      "shot-5700.png": {
+        "md5": "52aa588069f2d6cfa506acde730d6d8d",
+        "sha256": "0236e90a267a00ef44e2a93f1c5733c0e09c7473b1eb38e5e33ee1ac805f1664"
+      },
+      "shot-6000.png": {
+        "md5": "3bf1635bf077cdf48b8d7fcaf5cde20f",
+        "sha256": "f7c09aebb82ec23370d4916ad34b3d33638ce7973540b6fe07a3262ba3a8330d"
+      },
+      "shot-6300.png": {
+        "md5": "ee94909625dfe0a4a11a27e57eea689b",
+        "sha256": "f251b2bcb4ed5d3c35f66851dc7301d7cd0ae93d7b05c806dbae5944eb1eaf5c"
+      },
+      "shot-6600.png": {
+        "md5": "60bc594d2ccae23079dcc0e6d04c3076",
+        "sha256": "b642f32655f452c0803387dbe8948d9ee59106d5039e098c5131f3be66f30254"
+      },
+      "shot-6900.png": {
+        "md5": "178d421bf390757b4a0ed13137ea8722",
+        "sha256": "50a893a482854a9f9f276b8bcbfdc8b5971a266122b126a757153ed58d559c88"
+      },
+      "shot-7200.png": {
+        "md5": "a7b06fcbceaf0232cdf3176b4cd5642f",
+        "sha256": "b34f388494137231c05b13c03f3ad006db0d53ea68680006ab8ec199f6506c7d"
+      },
+      "shot-7500.png": {
+        "md5": "daeab49d8d4b271ff608a7e9ad598c93",
+        "sha256": "cffae5288fae9ad39789d45c98218b1aafa595becd317d55b2f57b85c9097228"
+      },
+      "shot-7800.png": {
+        "md5": "8a033d6e9d4a4cc41be14be313b660a6",
+        "sha256": "beb08cfeab09195c335a968fefd488ca9a5836589d813b7f34e8ab3e5ea33e52"
+      },
+      "shot-8100.png": {
+        "md5": "e0fbc95207b4aefa4a3a86a47baf0812",
+        "sha256": "664d840f567394867358a6d30020b76f3fa2d8749354b500e4362ecc38cbd67e"
+      },
+      "shot-8400.png": {
+        "md5": "b108111c09f44591b45410cf750bfa43",
+        "sha256": "c30715a71bd77965a61944d403ae172f0ff57ff456027cdf69d420bd2f029f54"
+      },
+      "shot-8700.png": {
+        "md5": "287a8fa4ca30d0cae494abe823d7ce16",
+        "sha256": "7e034cc2959123bdf7c58b999f7ec1800ee1192cb23716e570e1e514d1440846"
+      },
+      "shot-9000.png": {
+        "md5": "6c9a79530a32671a6795236090053b3e",
+        "sha256": "d56fa97113cb199c7cb37e1b1466db559b929943ffb8e6edf5f3942e2d209c58"
+      }
+    },
+    "trace_sha256": "4fc560361654932a4e9f896ff5021dc2d92d0e7ea442063a4a4d2a4b9d5b6c0b"
+  },
+  "gameover": {
+    "command": [
+      "port/run/P48/build-headless/saturn_stv",
+      "--cart",
+      "port/diehard_main.bin",
+      "--cartrom",
+      "cart.bin",
+      "--vblanks",
+      "9000",
+      "--stvinput",
+      "600:COIN,700:START1,6000:COIN,6100:START1",
+      "--shots",
+      "600,700,1000,1500,2000,3000,4000,4500,4893,5000,5195,5300,6000,6050,6100,6926",
+      "--out",
+      "port/run/P48/headless/gameover"
+    ],
+    "overrides": {},
+    "exit_code": 0,
+    "seconds": 97.651,
+    "vblanks_per_second": 92.17,
+    "expected_shots": 16,
+    "png": {
+      "shot-600.png": {
+        "md5": "0f052098cec0918e31572c4e94abfa2f",
+        "sha256": "bc8b979126a4a9fae6cda04323aaeab2ed4140cd19b7498ed9400976da790667"
+      },
+      "shot-700.png": {
+        "md5": "dccb89368bb6dbdea26dee1c6e228477",
+        "sha256": "7e993ccd9315ffe0261d124adb11643050fb96e28fe5d133f038a1214a9d7e1a"
+      },
+      "shot-1000.png": {
+        "md5": "af50cccba1cb22ec53581e24714af565",
+        "sha256": "984f33d70eff5acb8cfe360c58069830a137202f28a0d2df3bda702a085e277f"
+      },
+      "shot-1500.png": {
+        "md5": "caec838609e7217796641c5ccad8a156",
+        "sha256": "a3b1f8af48e3a894dee44d4a9f44afab53edae28dac12c1c604ba7891ecdaded"
+      },
+      "shot-2000.png": {
+        "md5": "190bfaf85c9166a96d376a04e7f98e8e",
+        "sha256": "f19e02bd6ceb6fd34faf316229a21c81557629ae99ef61011a11d2b1e5f9b0c7"
+      },
+      "shot-3000.png": {
+        "md5": "715710a0d1283906307f18700af8164a",
+        "sha256": "17c2cbbbc4b9f6f73db88f630905f0943b87b68223352ad43e3ff2a5bbadb5f9"
+      },
+      "shot-4000.png": {
+        "md5": "2279aef2fc1a8e9cc399b17b2f94b229",
+        "sha256": "482132b5907abf0278f6737d8f34f8e77d749ade02ebd08d408d0bd3bd4f62d0"
+      },
+      "shot-4500.png": {
+        "md5": "96c9b59fcf70af1e170152a221b92edb",
+        "sha256": "06f3cbd3cf656d7068aa4603c69f084f46da1add7cc93baf146a0ac15769f0a3"
+      },
+      "shot-4893.png": {
+        "md5": "f70b1213cff9dbb8c912ab714a8faa43",
+        "sha256": "9877e64d7e3b06cd1fb4bc56869e15c6c2053e43cc8c0ceac5e164215d836006"
+      },
+      "shot-5000.png": {
+        "md5": "f4a5128877bb7d776767d689823c2b83",
+        "sha256": "c3df6595185a2133ef3eec01626098f28211b5607b0e03069b52637b3a48a280"
+      },
+      "shot-5195.png": {
+        "md5": "a409590e0edc7967132a69c70bf4cff6",
+        "sha256": "fae2627257163a9499a190d68050f2cb54a8c0258ddbe8143adedd4a577be57f"
+      },
+      "shot-5300.png": {
+        "md5": "008d4443d47c504c09bc29b3a5abba34",
+        "sha256": "abc85878dfe63cade7c46b2d593035067a17ecb2fcb10e1add0779a38d312df0"
+      },
+      "shot-6000.png": {
+        "md5": "d10cfb8c5074931c67377c6b91c4c3a9",
+        "sha256": "dc61b112f2701938f8dc4ce5d7a0ff826c69900ed8c6ba43a2e569c2ff5a1fd4"
+      },
+      "shot-6050.png": {
+        "md5": "f24292ddd15fbb06ef7c4aeec5e1e8a7",
+        "sha256": "cdfc89d9daa26f4f1b9a3765eb50a651f7dcccadb3473d17a34095a0c01c46e9"
+      },
+      "shot-6100.png": {
+        "md5": "290237a92c435d065adb5c8af3a6a8de",
+        "sha256": "e43a07034654482445961ea87e189f2364dfaf1d25f8943713061a6f21b94465"
+      },
+      "shot-6926.png": {
+        "md5": "20d81bf75c55b49f41bf8e0b1b3be336",
+        "sha256": "b52114ce1d594553b02b81e5b523946601b5bcb90e634836eeb1721942f26231"
+      }
+    },
+    "trace_sha256": "88c4818f81f464a584941b82350fb33806928c5caa5669a56dcb8ad427a4af29"
+  },
+  "combat": {
+    "command": [
+      "port/run/P48/build-headless/saturn_stv",
+      "--cart",
+      "port/diehard_main.bin",
+      "--cartrom",
+      "cart.bin",
+      "--vblanks",
+      "2100",
+      "--stvinput",
+      "200:COIN,340:START1,1350:P1RIGHT:100,1450:P1A:2,1500:P1A:2,1550:P1A:2,1600:P1A:2,1650:P1A:2,1700:P1A:2,1750:P1A:2,1800:P1A:2,1850:P1A:2",
+      "--shots",
+      "1320,1440,1560,1800,2000",
+      "--out",
+      "port/run/P48/headless/combat"
+    ],
+    "overrides": {},
+    "exit_code": 0,
+    "seconds": 23.297,
+    "vblanks_per_second": 90.14,
+    "expected_shots": 5,
+    "png": {
+      "shot-1320.png": {
+        "md5": "a8404d790236fc06eff42c5066ae4d3c",
+        "sha256": "b9a1df70a90f2b6c1ca3c4e7268bd99a8b2a366f333a5e5e680468ec0ef2759a"
+      },
+      "shot-1440.png": {
+        "md5": "5350252c6b9eaac107b6f5a19db9d0c8",
+        "sha256": "093f1e7e3d9dd2669dd5196a2b0f48eb59b19dbfee77729e8dab197e66df6573"
+      },
+      "shot-1560.png": {
+        "md5": "311b921fe8c4d669222c22263ac78488",
+        "sha256": "b54cfc8e027c7c75b69acb6d6056e1f08948568b36249fc227b0ed89f9dd6409"
+      },
+      "shot-1800.png": {
+        "md5": "8d879a919a10f1674b6d25ac2bd316c1",
+        "sha256": "b6f021d34204dfe74ce78c29bdac1248abf988dabd71ef7bc40d52349d0a78cd"
+      },
+      "shot-2000.png": {
+        "md5": "bb580e5416d5ee70c49899d377fd3503",
+        "sha256": "1fa1f0cf73984c3500b1b20aed09d276efd03f15f23e86bcce840f5a9b5aa452"
+      }
+    },
+    "trace_sha256": "d6c5303fe722aa52d35f6ab4a27691b09f2ca41b40f9a7391328b29e124cdf76"
+  },
+  "legacy-combat": {
+    "command": [
+      "port/run/P48/build-headless/saturn_stv",
+      "--cart",
+      "port/diehard_main.bin",
+      "--cartrom",
+      "cart.bin",
+      "--vblanks",
+      "2100",
+      "--stvinput",
+      "200:COIN,340:START1,1350:P1RIGHT:100,1450:P1A:2,1500:P1A:2,1550:P1A:2,1600:P1A:2,1650:P1A:2,1700:P1A:2,1750:P1A:2,1800:P1A:2,1850:P1A:2",
+      "--shots",
+      "1320,1440,1560,1800,2000",
+      "--out",
+      "port/run/P48/headless/legacy-combat"
+    ],
+    "overrides": {
+      "STV_BOOTMODE": "0",
+      "STV_CFG798": "40"
+    },
+    "exit_code": 0,
+    "seconds": 22.759,
+    "vblanks_per_second": 92.27,
+    "expected_shots": 5,
+    "png": {
+      "shot-1320.png": {
+        "md5": "b284bb72ca79502c48735ba36d898829",
+        "sha256": "dbd2b0989c64e9d68189fc5d67e0631c7ab79d53c4a64f70c4cd1eb6f14034e7"
+      },
+      "shot-1440.png": {
+        "md5": "e9f936d311205841629cf542e6b965b7",
+        "sha256": "6fd7c14cf8cc1f31708ad7191cf7baba64bbc586e01e5758029c10a849ae395d"
+      },
+      "shot-1560.png": {
+        "md5": "08c0b98744bcb65668af7b0d7665718e",
+        "sha256": "5aa9eb4427adc5913af6d3ea922fe24a104a1e528886e604a065137705a017a4"
+      },
+      "shot-1800.png": {
+        "md5": "6094a1e8d5d8bc59340af06b3946bc06",
+        "sha256": "e29b7871a4be77e8a6ffd7c87f9b86130a98937a2601e01bf7473b0346cdb11b"
+      },
+      "shot-2000.png": {
+        "md5": "d0a261ae2f9486506068bd4af84c3203",
+        "sha256": "78f059ff726121fe825a9540ac1143d831f4bbc5b22cca14fdf28547ff6382bb"
+      }
+    },
+    "trace_sha256": "a613f7c3cceead28a5edf68e6af0f9a35ac0a8e8f196bf2a47a3546fa56cc291"
+  },
+  "fc1c": {
+    "command": [
+      "port/run/P48/build-headless/saturn_stv",
+      "--cart",
+      "port/diehard_main.bin",
+      "--cartrom",
+      "cart.bin",
+      "--vblanks",
+      "7600",
+      "--stvinput",
+      "99999:COIN,7104:P1UP:400",
+      "--shots",
+      "7104,7350,7600",
+      "--out",
+      "port/run/P48/headless/fc1c"
+    ],
+    "overrides": {
+      "STV_AUTOPLAY": "100",
+      "STV_COVDUMP": "1"
+    },
+    "exit_code": 0,
+    "seconds": 88.719,
+    "vblanks_per_second": 85.66,
+    "expected_shots": 3,
+    "png": {
+      "shot-7104.png": {
+        "md5": "73e814ad223315691bff863de87ec807",
+        "sha256": "ad076142103edb52e6ddfc458e5d3b8e8a9089571ac01157f27eaf433e2e702e"
+      },
+      "shot-7350.png": {
+        "md5": "7cfbfb63c1f1a8ca5cc22d087d434257",
+        "sha256": "de427dad8bd845c2cc920bba1e126f49b08a2aa3f32a92b22f33c8cfe624fd71"
+      },
+      "shot-7600.png": {
+        "md5": "23b1dbb24b39f25e270ce59f072b98a0",
+        "sha256": "7c99b10e726aab5e1c2c900ec1700607b14aeff8327ae112e135008b33ad1925"
+      }
+    },
+    "trace_sha256": "a642f439a379b3779a068bccebe3a457f2144d3796cd9eb5956ba58503029b1d"
+  },
+  "fc1c-retimed": {
+    "command": [
+      "port/run/P48/build-headless/saturn_stv",
+      "--cart",
+      "port/diehard_main.bin",
+      "--cartrom",
+      "cart.bin",
+      "--vblanks",
+      "8500",
+      "--stvinput",
+      "99999:COIN,7104:P1UP:400,7850:P1UP:500",
+      "--shots",
+      "7850,8100,8500",
+      "--out",
+      "port/run/P48/fc1c-retimed"
+    ],
+    "overrides": {
+      "STV_AUTOPLAY": "100",
+      "STV_COVDUMP": "1"
+    },
+    "exit_code": 0,
+    "expected_shots": 3,
+    "png": {
+      "shot-7850.png": {
+        "md5": "5ee9dbf4bc260ae3963de9600560d38d",
+        "sha256": "bf8d6a4934e1a598c2e66139da8d25e167caa2ce71d80504ec220b40f0535656"
+      },
+      "shot-8100.png": {
+        "md5": "2471f4a6694d11b97063a105b1e846c7",
+        "sha256": "7ebf1c767f59688790ee5fe2b08a65fc606186e4117ece67459de1e577f02896"
+      },
+      "shot-8500.png": {
+        "md5": "d3fd072cd0a196858652b4e665fc0ff6",
+        "sha256": "0c51b8566a032180da8089d8f98a62e930e586a9c3ca45c40f1bee42c95c2457"
+      }
+    },
+    "trace_sha256": "024886d2e5ed99f19c046c1464aa56821312663b1a0156977bd836bed01c0726",
+    "coverage": [
+      "0601FB40",
+      "0601FC1C"
+    ]
+  }
+}

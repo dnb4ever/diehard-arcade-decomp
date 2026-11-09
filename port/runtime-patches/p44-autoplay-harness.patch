@@ -1,0 +1,83 @@
+--- a/runtime/src/machine/bios.cpp
++++ b/runtime/src/machine/bios.cpp
+@@ -21,6 +21,8 @@
+ #include "saturn.h"
+ #include "state.h"
+ #include <cctype>
++#include <climits>
++#include <cstdint>
+ #include <cstdio>
+ #include <cstdlib>
+ #include <cstring>
+@@ -396,6 +398,63 @@
+     }
+ }
+ 
++// STV_AUTOPLAY=VB (test harness, default off): from VBlank VB a scripted "player" drives the P1
++// panel whenever the --stvinput timeline holds no P1 control. It only READS game memory (the actor
++// slots the P41 trace prints) to choose physical inputs, exactly as a person watching the screen
++// would: walk toward the nearest live enemy, face it, alternate A/B; with no enemy, keep tapping
++// A/B (QTE prompts, cut-scene skips). When the CONTINUE? countdown is up (P1 credit state byte
++// 0x06098674 == 3) it inserts a coin and presses START (the continue a player would buy). Nothing is written except BIOS input words and the
++// same COIN/START events the timeline uses.
++static void stv_autoplay(uint64_t vb, uint16_t& p1raw) {
++    static const char* env = std::getenv("STV_AUTOPLAY");
++    if (!env || vb < std::strtoull(env, nullptr, 10)) return;
++    static uint64_t last_continue = 0;
++    uint32_t task = ld32(0x060995B4u), me = task ? ld32(task + 8) : 0;
++    uint16_t hp = me ? ld16(me + 0x56) : 0;
++    if (ld8(0x06098674u) == 3 && vb - last_continue > 600) {   // P1 state 3: the CONTINUE? countdown
++        last_continue = vb;
++        g_stv_events.push_back({vb + 1, 3, false});      // COIN
++        g_stv_events.push_back({vb + 30, 1, false});     // START1
++        sat_note("AUTOPLAY VB %llu: CONTINUE? shown, coin + START", (unsigned long long)vb);
++    }
++    if (p1raw) return;                                   // the timeline has P1 this frame
++    if (!me || hp == 0) {                                // no live player: A to advance prompts
++        if (vb % 12 < 2) p1raw = 0x001;
++        return;
++    }
++    int32_t mx = (int32_t)ld32(me + 8), mz = (int32_t)ld32(me + 0x10);
++    int32_t bx = 0, bz = 0;
++    int64_t best = INT64_MAX;
++    for (unsigned slot = 3; slot <= 6; ++slot) {
++        uint32_t t = ld32(0x060995B0u + slot * 4), e = t ? ld32(t + 8) : 0;
++        if (!e || !ld16(e + 0x56)) continue;
++        int32_t dx = (int32_t)ld32(e + 8) - mx, dz = (int32_t)ld32(e + 0x10) - mz;
++        int64_t d = std::llabs((int64_t)dx) + std::llabs((int64_t)dz) * 2;
++        if (d < best) { best = d; bx = dx; bz = dz; }
++    }
++    unsigned phase = (unsigned)(vb % 24);
++    if (vb % 30 == 0)
++        sat_note("AUTOPLAY VB %llu: P1 %d,%d hp %u target %+d,%+d", (unsigned long long)vb,
++                 mx >> 12, mz >> 12, hp, best == INT64_MAX ? 0 : bx >> 12, best == INT64_MAX ? 0 : bz >> 12);
++    if (best == INT64_MAX) {                             // nothing to fight: tap A / B
++        p1raw = phase < 2 ? 0x001 : (phase >= 12 && phase < 14) ? 0x002 : 0;
++        return;
++    }
++    const int32_t px = 1 << 12;                           // world units: pixels << 12 (spawn X 160 = 0xA0000)
++    uint16_t toward_x = bx < 0 ? 0x200 : 0x100;          // RIGHT walks -X, LEFT walks +X
++    uint16_t toward_z = bz < 0 ? 0x040 : 0x080;          // UP walks -Z, DOWN walks +Z
++    bool far_x = std::abs(bx) > 34 * px, near_x = std::abs(bx) < 10 * px, off_z = std::abs(bz) > 6 * px;
++    if (far_x || off_z || near_x) {
++        if (far_x) p1raw |= toward_x;
++        else if (near_x) p1raw |= toward_x ^ 0x300;      // step back to striking distance
++        if (off_z) p1raw |= toward_z;
++        return;
++    }
++    if (phase < 2 || (phase >= 12 && phase < 14)) p1raw = toward_x;          // face it
++    else if (phase >= 4 && phase < 6) p1raw = 0x001;                          // A
++    else if (phase >= 16 && phase < 18) p1raw = 0x002;                        // B
++}
++
+ // Fill the panel report at `buf` with the current control-panel state. Called from the
+ // 0x06000660 service every frame. Writes a full zeroed report (so a one-frame press
+ // pulse releases on the next frame -> a clean rising edge), then stamps any scripted
+@@ -423,6 +482,7 @@
+         if ((event.kind == 6 || event.kind == 7) && vb >= event.vb &&
+             vb - event.vb < event.duration)
+             raw_controls[event.kind - 6] |= event.raw;
++    stv_autoplay(vb, raw_controls[0]);
+     st16(0x06000708u, raw_controls[0]);
+     st16(0x06000710u, raw_controls[1]);
+ 

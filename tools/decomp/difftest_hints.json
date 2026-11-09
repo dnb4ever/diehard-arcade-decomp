@@ -1,0 +1,42 @@
+{
+  "version": "1.05",
+  "doc": "Per-function vector hints for tools/decomp/difftest_v105.py. Keys: SH-2 cart addresses. Fields: why (required text), pointer_returns (callee entries whose stub result is an object pointer), sr_s (pin SR.S on both reference runs), max_steps (reference step cap), retry_pointers (enable --retry-pointers for this function), args {index: {range:[lo,hi]} | {fields:[{offset,size,range|value|pointer}], size}}. Hint values come from a separate per-vector rng; see notes/difftest_v105.md.",
+  "functions": {
+    "0221b5a0": {
+      "why": "scene_value_select (0602e878) returns a descriptor pointer that is stored to entity +30 and reloaded before mov.l @(4,r3); v1.04 provenance does not follow the store/reload (notes/codex_hardfails_20261107.md)",
+      "pointer_returns": ["0602e878"]
+    },
+    "0221cad4": {
+      "why": "same descriptor-pointer return from scene_value_select (0602e878) via entity +30 (notes/codex_hardfails_20261107.md)",
+      "pointer_returns": ["0602e878"]
+    },
+    "0221dc04": {
+      "why": "sibling FSM of 0221b5a0/0221cad4: same scene_value_select (0602e878) descriptor pointer via entity +30; found by --retry-pointers diagnostics",
+      "pointer_returns": ["0602e878"]
+    },
+    "02213ca4": {
+      "why": "clrmac + mac.l: result depends on SR.S; no program code sets S (all ldc ..,SR sites mask with 0xff0f, no reachable sets), so the game runs with S=0 (64-bit MAC), as the C models",
+      "sr_s": 0
+    },
+    "02223862": {
+      "why": "printf %d/%u backend: ctx +4 pad mode, +8 field width, +0xC cursor, +0x10 count; random width (~1e9) makes the pad loop unbounded",
+      "max_steps": 200000,
+      "args": {"2": {"size": 20, "fields": [
+        {"offset": 4, "size": 4, "range": [0, 1]},
+        {"offset": 8, "size": 4, "range": [-1, 12]},
+        {"offset": 12, "size": 4, "pointer": true},
+        {"offset": 16, "size": 4, "range": [0, 255]}
+      ]}}
+    },
+    "02223968": {
+      "why": "printf %x backend, same output context as 02223862",
+      "max_steps": 200000,
+      "args": {"2": {"size": 20, "fields": [
+        {"offset": 4, "size": 4, "range": [0, 1]},
+        {"offset": 8, "size": 4, "range": [-1, 12]},
+        {"offset": 12, "size": 4, "pointer": true},
+        {"offset": 16, "size": 4, "range": [0, 255]}
+      ]}}
+    }
+  }
+}

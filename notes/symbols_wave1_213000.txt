@@ -1,0 +1,24 @@
+# Wave-1 band 0x213000-0x220000 functional-decomp symbols.
+# addr(SH2)  name  confidence  # note
+0x022130b4  atan2_fixed            high   # fixed-point atan2 via DIVU 64/32 + arctan table @0x06078f28
+0x02213d90  func_02213d90          med    # dispatch through fn-ptr table @0x06017db4 (sel in r9, obj in r8)
+0x02213e0c  func_02213e0c          med    # quad clip/visibility test -> 0/1 (backface + depth/screen box)
+0x0221400c  func_0221400c          med    # 4-tap weighted vertex blend (vec3 s32 + 2x s16), weights @0x06053570
+0x022143b8  func_022143b8          high   # empty leaf stub (rts;nop)
+0x022145d0  dma_ch0_transfer       high   # SH-2 on-chip DMAC ch0 block transfer, 0x5A11 arm
+0x022150d4  func_022150d4          high   # upload_texture_groups: build char table + DMA textures to VDP1 VRAM
+0x022153f6  func_022153f6          high   # draw_child_sprite: push matrix, transform, cull, emit VDP1 command
+0x022156da  func_022156da          high   # build_vdp1_sprites from deferred list @0x060dc648 -> *0x060cf0c4
+0x0221582a  func_0221582a          high   # build_vdp1_sprites_rev: list @0x060da0c8 -> *0x060cf0c8 (backward)
+0x02216154  func_02216154          high   # video_state_init: double-buffer reset + conditional VRAM clears
+0x022161c8  func_022161c8          high   # PIC thunk -> clear VDP2 VRAM (func_02213290 0x25e00000,0x8000)
+0x022161dc  func_022161dc          high   # init 3 identity transform records @0x06098ba8 (sub-entry, bonus)
+0x0221660c  func_0221660c          high   # flush 4 draw-lists via DMA (double-buffered)
+0x02216530  func_02216530          high   # run 3 init subs, toggle flag @0x06099574
+0x0221707c  func_0221707c          high   # register input handler into slot table @0x060b6d9c (stride 0x48)
+0x022199da  func_022199da          high   # obj_sweep_update: 2-state sprite-angle driver (sin_lookup)
+0x0221a5f6  func_0221a5f6          high   # menu_set_text_ptrs by selector @0x06098568
+0x0221a6a8  func_0221a6a8          med    # anim_recoil_state: 3-state limb animation (calls func_022153f6)
+0x0221ad58  func_0221ad58          med    # spawn_matched_entities from {id,value} table (calls func_0220fece)
+0x0221e7d6  func_0221e7d6          high   # obj_orbit_update: two phase angles -> sprite (sin_lookup)
+0x0221e844  func_0221e844          high   # periodic_spawner: 3-state timer (func_02210020/func_0220ff54)

@@ -1,0 +1,19 @@
+--- a/runtime/src/host/host.cpp
++++ b/runtime/src/host/host.cpp
+@@ -170,7 +170,15 @@
+     SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
+     full = true;
+ #endif
+-    if (!SDL_CreateWindowAndRenderer(cfg.title.empty() ? "saturn-recomp" : cfg.title.c_str(), 320 * s, 240 * s, SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY |
++    int width = 320 * s, height = 240 * s;
++#if defined(__linux__) && defined(SATURN_P417_RELEASE)
++    if (cfg.arcade) {
++        if (cfg.scale <= 0) { width = 1280; height = 800; }
++        const char* deck = SDL_getenv("SteamDeck"); const char* steam = SDL_getenv("SteamAppId");
++        if ((deck && !std::strcmp(deck, "1")) || (steam && *steam)) full = true;
++    }
++#endif
++    if (!SDL_CreateWindowAndRenderer(cfg.title.empty() ? "saturn-recomp" : cfg.title.c_str(), width, height, SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY |
+                                      (full ? SDL_WINDOW_FULLSCREEN : 0), &g_win, &g_ren)) {
+         sat_note("SDL: %s", SDL_GetError());
+         return false;

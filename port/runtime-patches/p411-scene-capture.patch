@@ -1,0 +1,36 @@
+--- a/runtime/src/video/video.cpp
++++ b/runtime/src/video/video.cpp
+@@ -149,8 +149,31 @@
+     extern void stv_scene_probe_tick(uint64_t vb);  // scene-director probe (diagnostic, default off)
+     stv_scene_probe_tick(g_vblanks);
+     std::string n = std::to_string(g_vblanks);
+-    if (listed(g_cfg.dump, n)) dump("", g_vblanks);
+-    bool shot = listed(g_cfg.shots, n);
++    // Read-only fidelity capture: retain every field of a selected director scene range.
++    // The ordinary --dump layout is followed by the displayed VDP1 dots in a separate file.
++    static const char* capture_scenes = std::getenv("STV_CAPTURE_SCENES");
++    static const char* capture_fields = std::getenv("STV_CAPTURE_FIELDS");
++    unsigned first = 0, last = 0;
++    unsigned long long field_first = 0, field_last = 0;
++    bool capture = (capture_scenes || capture_fields) &&
++        (!capture_scenes || (std::sscanf(capture_scenes, "%u:%u", &first, &last) == 2 &&
++            ld32(0x06098668u) >= first && ld32(0x06098668u) <= last)) &&
++        (!capture_fields || (std::strchr(capture_fields, ':') ?
++            (std::sscanf(capture_fields, "%llu:%llu", &field_first, &field_last) == 2 &&
++                g_vblanks >= field_first && g_vblanks <= field_last) : listed(capture_fields, n)));
++    if (listed(g_cfg.dump, n) || capture) dump("", g_vblanks);
++    if (capture) {
++        std::string path = g_cfg.out + "/shown-" + n + ".bin";
++        if (FILE* fp = std::fopen(path.c_str(), "wb")) {
++            for (int y = 0; y < 512; ++y) for (int x = 0; x < 1024; ++x) {
++                uint16_t dot = vdp1_dot(x, y, true);
++                uint8_t bytes[2] = {(uint8_t)(dot >> 8), (uint8_t)dot};
++                std::fwrite(bytes, 1, 2, fp);
++            }
++            std::fclose(fp);
++        }
++    }
++    bool shot = listed(g_cfg.shots, n) || capture;
+     bool compose = shot || host_wants_frame() || movie_on() || scenario_video();
+     if (vdp1_interp_field(compose) && compose) {
+         uint8_t saved[0x30];

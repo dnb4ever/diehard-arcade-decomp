@@ -1,0 +1,9 @@
+# Wave-2 band 0x213000-0x220000 functional-decomp symbols (re-sweep).
+# addr(SH2)  name  confidence  # note
+0x022170ea  entity_move_dispatch    high   # per-entity move/collide step; swaps g_060B889C mover by rec flags, runs sweep core, resolve hook
+0x0221746c  collide_resolve_sweep   med    # swept-AABB collision resolver; probes g_060B889C mover on X then Z, resolves least-penetration axis, dir bits -> g_060B88A4
+0x022182c6  shutter_update          high   # 7-state opening/closing panel; trigger mask g_06098580, draws 2-3 matrix-pushed VDP1 layers
+0x02217888  grid_overlap_find_any   high   # spatial-hash 5x5 neighbour search @g_060B659C; test all nodes != g_060B88A0 via aabb_overlap_3
+0x022179b0  grid_overlap_find_skiptypes high # as 217888 but also skips node types 1..7
+0x02217ae4  grid_overlap_find_type0 high   # as 217888 but only type-0 nodes
+0x0221ffb0  waypoint_mover_update    high   # 3-state path walker; s16[4] waypoints, sh2_hw_divide per-frame interp, sprite pos @+0xB8

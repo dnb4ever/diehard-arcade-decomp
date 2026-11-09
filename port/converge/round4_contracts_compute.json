@@ -1,0 +1,50 @@
+{
+  "02214e2c": {
+    "callable_pc": "06018e2c",
+    "algorithm": "display_radix_sort_records, three stable digit passes",
+    "spills": "entry SP-28..SP-1, r14 through r8, reverse restore",
+    "checkpoints": {"3448":"primary cursor checked, before node insertion", "3449":"secondary node published and cursor advanced", "3450":"middle-pass source next loaded", "3451":"middle bucket advanced and count decremented", "3452":"final-pass source next loaded", "3453":"final bucket advanced and count decremented"},
+    "resume": "after the spent poll; complete state recovered from existing SH2Context fields",
+    "mac": "unchanged",
+    "alias_order": "arena advance, previous-head load, next/entity/key writes, head publication; final pass omits key write"
+  },
+  "02214e2e": {
+    "callable_pc": "06018e2e",
+    "shared_algorithm": "02214e2c",
+    "spills": "entry SP-24..SP-1, r13 through r8; original final r14 load consumes entry SP",
+    "checkpoints": [3455,3456,3457,3458,3459,3460],
+    "evidence_limit": "distinct machine entry/prologue, same sorting algorithm; no reference-schedule calls"
+  },
+  "02213ca4": {
+    "callable_pc":"06017ca4",
+    "algorithm":"matrix_translate_current",
+    "sr_s":0,
+    "spills":"entry SP-12..SP-1 stores z,y,x; scratch at 06098b9c stores z,y,x descending",
+    "checkpoints":{"3302":"after each of first two row stores, count decrement and output-pointer delay-slot advance"},
+    "mac":"sum signed 32x32 products modulo 2^64, preserve full MACH:MACL after each row; result extracts bits16..47 plus offset modulo 2^32",
+    "live_inputs":"reread original guest input spills every row, including after a poll",
+    "resume":"r0 matrix, r2 output, r4 rows remaining, r15 input spill; original cont_k=1"
+  },
+  "02213b5c": {
+    "callable_pc":"06017b5c",
+    "algorithm":"matrix_transform_translation",
+    "sr_s":0,
+    "spills":"source column z,y,x, original interleaved load/spill order",
+    "checkpoints":{"3288":"after each of first two result stores, count decrement and four-byte output advance"},
+    "mac":"same modulo-64 contract as 02213ca4, r4=MACH and r7=remaining rows",
+    "resume":"r0 matrix, r2 output, r7 remaining rows, r15 vector; reread spills"
+  },
+  "0221326c": {
+    "callable_pc":"0601726c",
+    "algorithm":"copy_longs; forward word-by-word copy, including overlap propagation",
+    "checkpoints":{"3237":"after store, source/destination increments and decrement; only nonzero remaining count polls"},
+    "resume":"r4 source, r5 destination, r6 count; r0 last word, T/continuation exact",
+    "mac":"unchanged"
+  },
+  "bus": {
+    "reads":"complete 32-bit words in normalized high/low work RAM or immutable cartridge 02000000..033fffff, identical existing bridge bounds",
+    "writes":"complete 32-bit words in normalized high/low work RAM only",
+    "excluded":"MMIO, VRAM, cache-purge space, arbitrary BIOS, crossing reads/writes, cartridge writes",
+    "oracle":"unchanged frozen v1.09; no generic bus model added"
+  }
+}

@@ -1,0 +1,47 @@
+# symbols_lasthandlers.txt - names & globals introduced/confirmed by the last-handlers pass
+# Die Hard Arcade (ST-V, SH-2). All addresses are SH2 (cart offset + 0x02000000).
+
+## New shipped functions
+func_0222c39c   0x0222c39c   actor_combat_cmd_handler (grab/throw main handler)
+func_022083a0   0x022083a0   scene_math_task_2083a0 (perspective road/floor table task)
+
+## Call targets referenced (confirmed vs their defining TU)
+func_0222adaa   0x0222adaa   1 arg  (void*)                         [0222adaa.c]
+actor_state_select 0x02239ce8 3 args (void*, s32, s32) -> s32       [0239ce8.c]
+func_0222c220   0x0222c220   1 arg  -> s32                          [0222c220.c]
+func_02223ee0   0x02223ee0   1 arg  (void*)                         [02223ee0.c]
+func_0222bfc2   0x0222bfc2   1 arg  (void*)   EXTERN (not in tree)
+func_02223e70   0x02223e70   1 arg  (void*)                         [02223e70.c]
+func_0223a9d0   0x0223a9d0   2 args (void*, void*)                  [0223a9d0.c]
+store_angle_between 0x022107dc 5 args (s32,s32,s32,s32,s16*)        [022107dc.c]
+func_022131c8   0x022131c8   16.16 multiply (s32,s32)->s32          [022131c8.c]
+sh2_hw_divide   0x02213234   16.16 divide (s32,s32)->s32            [02213234.c]
+func_02210020   0x02210020   rng, no args -> u32                    [02210020.c]
+func_0221632e   0x0221632e   4 args (s32,s32,s32,s32)  EXTERN (PIC fn-ptr)
+func_022213a8   0x022213a8   2 args (s32,s32)                       [022213a8.c] (PIC fn-ptr)
+func_0222142c   0x0222142c   2 args (s32,s32)                       [0222142c.c]
+func_02213290   0x02213290   2 args (s32 base, s32 count)           [02213290.c]
+func_0221675e   0x0221675e   6 args (s32,void*,void*,s32,s32,s32)   [0221675e.c]
+func_022214d2   0x022214d2   6 args (s16,s16,s32,s32,s32,s32)       [022214d2.c]
+func_02220ade   0x02220ade   1 arg (s32)   EXTERN (not in tree)
+sound_queue_push 0x02215f6c  1 arg (s32)                            [02215f6c.c]
+
+## Globals used (absolute HWRAM addresses; accessed via dh.h M*/MP macros)
+# 0x0222c39c (actor_combat_cmd_handler)
+0x06098734   per-actor combat record base; rec5 = base + (s8)((unk34-1)*0x18); ->unk4
+0x06096E90   s16[], indexed by unk34*2 (angidx)
+0x060E0F0C   command-queue slot pointers (void*[], stride 4)
+0x060E0F2C   command-queue marked flags (s32[], stride 4)
+0x060E0F4C   command-queue entry pointers (void*[], stride 4); ->unk8, ->unk10
+0x060E0F6C   command-queue threshold table (s32[], index = (unk34<<5) + i*4)
+0x06099590   per-slot active flag (s32[], stride 4)
+0x060995B0   per-slot anchor pointers (void*[], stride 4); ->unk8 = other actor
+0x060995D0   per-slot depth table (s32[], index = (unk34<<5) + slot*4)
+0x0609979A   s16 global gate flag
+# 0x022083a0 (scene_math_task_2083a0)
+0x06099510   ring-buffer write cursor (s32 holding a dst address; post-inc by 4)
+0x06098F08   active display-panel pointer (void*); ->unkF8 (s16)
+0x06098580   scene flags word (s32); bits 0x20000 / 0x10000
+0x060B3D50   scene-dirty byte flag (s8)
+0x060E0DDC   s32 flag checked != 0 (gates sound_queue_push 0xA01402FF)
+0x06050C2C / 0x06050C48   func_02220ade request descriptors

@@ -1,0 +1,34 @@
+--- a/runtime/src/machine/bios.cpp
++++ b/runtime/src/machine/bios.cpp
+@@ -425,6 +425,31 @@
+             raw_controls[event.kind - 6] |= event.raw;
+     st16(0x06000708u, raw_controls[0]);
+     st16(0x06000710u, raw_controls[1]);
++
++    // Read-only P4.1 diagnostics; print each VBlank, including empty player slots.
++    static const bool p41trace = std::getenv("STV_P41TRACE") != nullptr;
++    if (p41trace) {
++        sat_note("P41 VB=%llu scene=%u mode=%u arm=%u progress=%u join=%u/%u cw=%04X",
++                 (unsigned long long)vb, ld32(0x06098668u), ld16(0x0609979Au),
++                 ld32(0x06098670u), ld32(0x06098830u), ld8(0x06098674u),
++                 ld8(0x06098675u), ld16(0x06098798u));
++        uint32_t exec = ld32(0x06098678u), node = ld32(0x0609882Cu);
++        uint32_t ent = node ? ld32(node + 8) : 0;
++        sat_note("P41G VB=%llu gate=%u channels=%u exec=%08X node=%08X handler=%08X state=%u flags=%08X ae=%u timeline=%08X col=%u width=%u limit=%u",
++                 (unsigned long long)vb, ld8(0x0609868Eu), ld32(0x06098564u),
++                 exec ? ld32(exec) : 0, node, node ? ld32(node) : 0,
++                 node ? ld8(node + 0x10) : 0, ent ? ld32(ent + 0x3C) : 0,
++                 ent ? ld16(ent + 0xAE) : 0, ld32(0x060973F0u),
++                 ld32(0x060973E0u), ld32(0x060973E4u), ld32(0x060973E8u));
++        for (unsigned slot = 1; slot <= 6; ++slot) {
++            uint32_t task = ld32(0x060995B0u + slot * 4);
++            uint32_t ent = task ? ld32(task + 8) : 0;
++            sat_note("P41S VB=%llu slot=%u task=%08X ent=%08X id=%u hp=%u xyz=%08X/%08X/%08X",
++                     (unsigned long long)vb, slot, task, ent, ent ? ld8(ent + 0x34) : 0,
++                     ent ? ld16(ent + 0x56) : 0, ent ? ld32(ent + 8) : 0,
++                     ent ? ld32(ent + 0xC) : 0, ent ? ld32(ent + 0x10) : 0);
++        }
++    }
+ 
+     stv_system_bios_tick();            // FAITHFUL: re-publish the BIOS system control word every frame
+     // STV_DESCDUMP="vb" (diagnostic, default off; byte-identical when unset): one-shot dump of the

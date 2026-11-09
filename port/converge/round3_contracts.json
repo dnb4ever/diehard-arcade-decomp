@@ -1,0 +1,92 @@
+{
+  "stack_outputs": {
+    "022414ee": [
+      [
+        5,
+        4
+      ]
+    ],
+    "02214194": [
+      [
+        6,
+        12
+      ]
+    ],
+    "02214284": [
+      [
+        6,
+        8
+      ]
+    ],
+    "0221400c": [
+      [
+        6,
+        12
+      ],
+      [
+        7,
+        4
+      ]
+    ]
+  },
+  "bios_readonly": {
+    "physical_start": "00000208",
+    "length": 12,
+    "widths": [
+      1,
+      2,
+      4
+    ],
+    "runtime_model": "bios_rom_read; HLE zero-filled data, not an external BIOS dump",
+    "rom_readers": [
+      "06018a40..06018a4e",
+      "06018a50..06018a5e"
+    ],
+    "evidence": "live rejection first load 20000210 at vector+8, then 2000020c at vector+4; ROM vector base is 20000208"
+  },
+  "register_abis": {
+    "02213f90": {
+      "args": [
+        4,
+        null,
+        null
+      ],
+      "return": null,
+      "out": [
+        [
+          1,
+          4
+        ],
+        [
+          2,
+          5
+        ]
+      ],
+      "live_outputs": [
+        4,
+        5
+      ]
+    },
+    "02213d90": {
+      "args": [
+        9,
+        8
+      ],
+      "return": 1
+    },
+    "02245e58": {
+      "args": [
+        4
+      ],
+      "live_outputs": [
+        5
+      ],
+      "return": null,
+      "memory_output": {
+        "base_arg": 0,
+        "offset": 77,
+        "size": 1
+      }
+    }
+  }
+}

@@ -1,0 +1,670 @@
+--- a/runtime/include/saturn/sh2.h
++++ b/runtime/include/saturn/sh2.h
+@@ -46,6 +46,7 @@
+ extern uint8_t g_wram_l[];              // 0x00200000, 1 MiB
+ extern uint8_t g_wram_h[];              // 0x06000000, 1 MiB
+ void     sh2_call(SH2Context& c, uint32_t addr);        // jsr/jmp through a register, calls between programs
++void     sh2_stv_idle_batch(SH2Context& c); // fingerprinted ST-V empty slave loop only
+ void     sh2_poll(SH2Context& c);                       // the budget is spent: time, interrupts
+ void     sh2_sleep(SH2Context& c, uint32_t pc);
+ void     sh2_trapa(SH2Context& c, uint32_t imm, uint32_t pc);
+--- a/runtime/src/host/host.cpp
++++ b/runtime/src/host/host.cpp
+@@ -31,6 +31,7 @@
+ // host-only resampling correction keeps the device and raster clocks together;
+ // a discontinuity discards stale sound instead of preserving a long delay.
+ #include "saturn.h"
++#include "perf.h"
+ #include "sound.h"
+ #include "video.h"
+ #include "host.h"
+@@ -1385,6 +1386,7 @@
+ }
+ 
+ void host_present(const Frame& f) {
++    sat_perf::Scope profile(sat_perf::Present);
+     if (!g_win) return;
+     tasks_on_thread_stack([](void* f) { present(*static_cast<const Frame*>(f)); }, const_cast<Frame*>(&f));
+ }
+--- a/runtime/src/machine/machine.cpp
++++ b/runtime/src/machine/machine.cpp
+@@ -14,7 +14,8 @@
+ // installed, called like a function (the BIOS saves the registers and does
+ // the rte); any other is the game's own handler and ends with its rte.
+ //
+-// The slave SH-2 is a second context on a host thread used as a coroutine:
++// The slave SH-2 is a second context, on a same-thread coroutine for ST-V
++// or a host thread used as a coroutine for Saturn:
+ // exactly one CPU runs at a time, and control changes hands at fixed points,
+ // so a run stays deterministic. SSHON boots it (from the address the BIOS
+ // reads at 0x06000250, vector 0x94, which SYS_SETSINT sets); it runs until it
+@@ -29,6 +30,8 @@
+ // entry on a fresh host stack: the old program's C++ frames do not pile up
+ // under the new one.
+ #include "saturn.h"
++#include "perf.h"
++#include "minicoro.h"
+ #include "modem.h"
+ #include "host.h"
+ #include "video.h"
+@@ -339,6 +342,9 @@
+ static bool g_slave_on, g_slave_idle = true, g_slave_reset, g_slave_thread;
+ static int g_slave_polls;
+ static bool g_slave_resume;
++// ST-V already executes one SH-2 at a time. A host coroutine preserves the
++// same suspended native frames and exact handoff points without a spinning CPU.
++static mco_coro* g_slave_co;
+ static bool (*g_continue)(SH2Context&, uint32_t);
+ void machine_continue_with(bool (*fn)(SH2Context&, uint32_t)) { g_continue = fn; }
+ 
+@@ -358,13 +364,22 @@
+     g_cv.wait(lk, [&] { return g_turn.load(std::memory_order_acquire) == me; });
+ }
+ 
+-static void give(int to) {          // hand the CPU over and wait until it comes back
++static void give(int to) {
++    sat_perf::change(to ? sat_perf::SyncMaster : sat_perf::SyncSlave);          // hand the CPU over and wait until it comes back
++    if (g_slave_co) {
++        g_turn.store(to, std::memory_order_relaxed);
++        mco_result result = to ? mco_resume(g_slave_co) : mco_yield(g_slave_co);
++        if (result != MCO_SUCCESS) sat_fatal("slave coroutine: %s", mco_result_description(result));
++        sat_perf::change(to ? sat_perf::Master : sat_perf::Slave);
++        return;
++    }
+     {
+         std::lock_guard<std::mutex> lk(g_mu);
+         g_turn.store(to, std::memory_order_release);
+     }
+     g_cv.notify_all();
+     wait_turn(1 - to);
++    sat_perf::change(to ? sat_perf::Master : sat_perf::Slave);
+ }
+ 
+ static void to_slave() {
+@@ -380,7 +395,8 @@
+ }
+ 
+ static void slave_main() {
+-    wait_turn(1);
++    sat_perf::change(sat_perf::Slave);
++    if (!g_slave_co) wait_turn(1);
+     g_cpu = &g_slave;
+     for (;;) {
+         try {
+@@ -451,11 +467,20 @@
+ 
+ bool state_slave_busy() { return g_slave_on; }
+ 
++static void slave_start_host() {
++    if (g_slave_thread) return;
++    g_slave_thread = true;
++    if (g_cfg.arcade) {
++        mco_desc desc = mco_desc_init([](mco_coro*) { slave_main(); }, 4u << 20);
++        if (mco_result result = mco_create(&g_slave_co, &desc); result != MCO_SUCCESS)
++            sat_fatal("slave coroutine creation: %s", mco_result_description(result));
++    } else {
++        std::thread(slave_main).detach();
++    }
++}
++
+ void slave_on() {
+-    if (!g_slave_thread) {
+-        g_slave_thread = true;
+-        std::thread(slave_main).detach();
+-    }
++    slave_start_host();
+     if (g_slave_on) return;
+     g_slave_on = true;
+     onchip_reset(1);
+@@ -557,7 +582,28 @@
+     if (g_cfg.stop_vblanks && sat_vblanks() >= g_cfg.stop_vblanks) sat_stop("VBlank limit");
+ }
+ 
++// The generated P4.15 pass calls this only at the fingerprinted 060051EE
++// empty-command loop. One full iteration has four inner delay backedges and
++// one outer backedge. No CPU/device can run between them until SH2_POLL fires.
++void sh2_stv_idle_batch(SH2Context& c) {
++    if (c.cpu != 1 || c.budget <= 5 || g_sh2_watch_len || g_cfg.trace ||
++        c.r[8] != 0x060E0DD8u || c.r[9] != 10 || c.r[10] != 0xFFFFFF80u ||
++        c.r[11] != 0x060987C4u || c.r[12] != 0x060E0DD0u || c.r[14] != 0x20000000u) return;
++    uint32_t consumer = ld32(0x060E0DD0u);
++    if ((consumer < 0x060E0BD0u || consumer >= 0x060E0DD0u) || (consumer & 3) ||
++        consumer != ld32(0x060E0DD4u) || ld32(consumer) != 0) return;
++    // Leave at least one safe point for the original code: it materializes
++    // the exact registers, continuation and locals at the next real poll.
++    uint32_t iterations = (uint32_t)(c.budget - 1) / 5;
++    st32(0x060987C4u, ld32(0x060987C4u) + iterations);
++    st8(0x060E0DD8u, 0x80);
++    c.r[0] = 0x060E0DD4u;
++    c.r[3] = consumer;
++    c.budget -= int32_t(iterations * 5);
++}
++
+ void sh2_poll(SH2Context& c) {
++    if (sat_perf::enabled && !sat_perf::last_cpu) sat_perf::change(c.cpu ? sat_perf::Slave : sat_perf::Master);
+     c.budget = kBudget;
+     if (c.cpu == 1) {
+         if (++g_slave_polls >= kSlaveSlice) to_master();
+@@ -760,8 +806,7 @@
+ 
+ void machine_prepare_restore() {
+     if (g_slave_thread) return;
+-    g_slave_thread = true;
++    slave_start_host();
+     g_slave_on = false;
+-    std::thread(slave_main).detach();
+     to_slave(); // starts and parks without executing guest code
+ }
+--- /dev/null
++++ b/runtime/src/machine/perf.h
+@@ -0,0 +1,51 @@
++// Opt-in host profiling. No counters or clocks enter serialized guest state.
++#pragma once
++#include <array>
++#include <atomic>
++#include <chrono>
++#include <cstdio>
++#include <cstdlib>
++#include <cstdint>
++#ifdef _WIN32
++#ifndef NOMINMAX
++#define NOMINMAX
++#endif
++#include <windows.h>
++#else
++#include <time.h>
++#endif
++namespace sat_perf {
++enum Part { Master, Slave, SyncMaster, SyncSlave, Vdp1, Vdp1Worker, Vdp2, Vdp2Worker, Audio, Present, Other, Count };
++inline const bool enabled = std::getenv("SATURN_PROFILE") != nullptr;
++inline std::array<std::atomic<uint64_t>, Count> cpu{}, elapsed{}, calls{};
++inline uint64_t cpu_now() {
++#ifdef _WIN32
++    FILETIME a,b,k,u; GetThreadTimes(GetCurrentThread(), &a,&b,&k,&u);
++    ULARGE_INTEGER x{},y{}; x.LowPart=k.dwLowDateTime; x.HighPart=k.dwHighDateTime;
++    y.LowPart=u.dwLowDateTime; y.HighPart=u.dwHighDateTime; return (x.QuadPart+y.QuadPart)*100;
++#else
++    timespec t{}; clock_gettime(CLOCK_THREAD_CPUTIME_ID,&t); return uint64_t(t.tv_sec)*1000000000+t.tv_nsec;
++#endif
++}
++inline uint64_t wall_now() { return std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
++inline thread_local Part current=Other;
++inline thread_local uint64_t last_cpu=0, last_wall=0;
++inline void change(Part next) {
++    if (!enabled) return;
++    auto c=cpu_now(),w=wall_now();
++    if(last_cpu) { cpu[current].fetch_add(c-last_cpu,std::memory_order_relaxed); elapsed[current].fetch_add(w-last_wall,std::memory_order_relaxed); }
++    last_cpu=c; last_wall=w; current=next;
++    calls[next].fetch_add(1,std::memory_order_relaxed);
++}
++struct Scope {
++    Part previous;
++    explicit Scope(Part next):previous(current) { change(next); }
++    ~Scope() { change(previous); }
++};
++inline void report(uint64_t fields) {
++    if (!enabled) return;
++    change(current);
++    static const char* names[]={"master","slave","sync-master","sync-slave","vdp1","vdp1-workers","vdp2","vdp2-workers","audio","present","other"};
++    for(int i=0;i<Count;++i) std::fprintf(stderr,"PERF fields=%llu part=%s cpu_ns=%llu elapsed_ns=%llu calls=%llu\n",(unsigned long long)fields,names[i],(unsigned long long)cpu[i].load(),(unsigned long long)elapsed[i].load(),(unsigned long long)calls[i].load());
++}
++}
+--- a/runtime/src/sound/sound.cpp
++++ b/runtime/src/sound/sound.cpp
+@@ -21,6 +21,7 @@
+ // The samples go to the window's audio stream (host.cpp) and, with --wav,
+ // to a 16-bit stereo WAV file of the whole run (--wav, or --video's).
+ #include "saturn.h"
++#include "perf.h"
+ #include "state.h"
+ #include "sound.h"
+ #include "host.h"
+@@ -129,6 +130,7 @@
+ }
+ 
+ void sound_tick() {
++    sat_perf::Scope profile(sat_perf::Audio);
+     // ST-V SNDON bridge (see g_stv_autostart): release the 68000 once sound_init has copied the
+     // driver into sound RAM. The Sega driver's build string "Ver..." lands at sound RAM 0x100,
+     // after the reset SP (offset 0) and PC (offset 4); its presence means the driver image is in.
+@@ -175,6 +177,7 @@
+ }
+ 
+ void sound_close() {
++    sat_perf::report(sat_vblanks());
+     std::fprintf(stderr, "  sound: %llu samples, %llu not silent; 68000 %s, pc %06X\n", (unsigned long long)g_samples,
+                  (unsigned long long)g_peak_frames, g_on ? "on" : "off", m68k_get_reg(nullptr, M68K_REG_PC));
+     host_audio_report();
+--- a/runtime/src/stub/services_stub.cpp
++++ b/runtime/src/stub/services_stub.cpp
+@@ -13,6 +13,9 @@
+ 
+ // Without hardware nothing can end a wait: a call that spends its whole
+ // budget of safe points (loop back-edges, calls) is stuck.
++// Hardware-free self-tests retain the unbatched guest loop.
++void sh2_stv_idle_batch(SH2Context&) {}
++
+ void sh2_poll(SH2Context& c) { fail(c, "safe-point budget spent; pr", c.pr); }
+ 
+ void sh2_sleep(SH2Context& c, uint32_t pc) { fail(c, "sleep at", pc); }
+--- /dev/null
++++ b/runtime/src/video/band_pool.h
+@@ -0,0 +1,62 @@
++// A synchronous band job: video memories and the caller's lambda stay alive
++// until every worker completes. Workers sleep between fields; no guest work
++// overlaps composition. Reuse their native stacks instead of creating seven
++// threads for each picture.
++#pragma once
++#include <algorithm>
++#include <condition_variable>
++#include <exception>
++#include <functional>
++#include <mutex>
++#include <thread>
++#include <vector>
++#include <utility>
++
++class VideoBandPool {
++    std::mutex mutex_;
++    std::condition_variable start_, done_;
++    std::vector<std::thread> workers_;
++    std::function<void(int,int)> job_;
++    std::exception_ptr error_;
++    unsigned generation_ = 0;
++    int height_ = 0, pending_ = 0;
++    bool stopping_ = false;
++    void work(int band, int bands) {
++        unsigned seen = 0;
++        std::unique_lock lock(mutex_);
++        for (;;) {
++            start_.wait(lock,[&] { return stopping_ || generation_ != seen; });
++            if(stopping_) return;
++            seen=generation_;int height=height_;
++            auto job=job_; // each band owns the mutable line/back-colour state
++            lock.unlock();
++            std::exception_ptr error;
++            try { job(height*band/bands,height*(band+1)/bands); } catch(...) { error=std::current_exception(); }
++            lock.lock();
++            if(error) error_=error;
++            if(--pending_==0) done_.notify_one();
++        }
++    }
++public:
++    VideoBandPool() {
++        int bands=std::clamp((int)std::thread::hardware_concurrency(),1,8);
++        for(int band=1;band<bands;++band) workers_.emplace_back([this,band,bands] { work(band,bands); });
++    }
++    ~VideoBandPool() {
++        { std::lock_guard lock(mutex_);stopping_=true; }
++        start_.notify_all();for(auto& t:workers_) t.join();
++    }
++    template<class Fn> void run(int height, Fn&& job) {
++        int bands=(int)workers_.size()+1;
++        {
++            std::lock_guard lock(mutex_);
++            job_=std::forward<Fn>(job);height_=height;pending_=bands-1;error_=nullptr;++generation_;
++        }
++        start_.notify_all();
++        std::exception_ptr error;
++        auto caller_job=job;
++        try { caller_job(0,height/bands); } catch(...) { error=std::current_exception(); }
++        std::unique_lock lock(mutex_);done_.wait(lock,[&] { return pending_==0; });
++        job_={};if(!error) error=error_;lock.unlock();if(error) std::rethrow_exception(error);
++    }
++};
+--- a/runtime/src/video/vdp1.cpp
++++ b/runtime/src/video/vdp1.cpp
+@@ -32,6 +32,7 @@
+ // TVMR.VBE (bit 3) is 1. The erase writes EWDR over EWLR-EWRR. The CPU sees
+ // the framebuffer being drawn.
+ #include "saturn.h"
++#include "perf.h"
+ #include "state.h"
+ #include "video.h"
+ #include <algorithm>
+@@ -409,6 +410,7 @@
+ }
+ 
+ static void draw() {
++    sat_perf::Scope profile(sat_perf::Vdp1);
+     vdp1_present_sync();
+     g_reg[EDSR] = (uint16_t)(g_reg[EDSR] >> 1 & 1);   // BEF <- CEF, CEF <- 0
+     if ((g_reg[TVMR] & 3) == 3) sat_fatal("VDP1: TVMR %04X (8-bit rotation) is not done", g_reg[TVMR]);
+@@ -437,6 +439,7 @@
+         int height = initial.hi_target ? 512 : 256;
+         int bands = std::clamp((int)std::thread::hardware_concurrency(), 1, 4);
+         for (int band=0;band<bands;++band) painters.emplace_back([&, initial, height, bands, band] {
++            sat_perf::Scope profile(sat_perf::Vdp1Worker);
+             RasterState private_raster = initial;
+             g_raster = &private_raster;
+             g_tex=texture.data(); g_present_pass=true; g_draw_steps=0;
+@@ -495,7 +498,7 @@
+     published.store(-queued-1,std::memory_order_release);
+     published.notify_all();
+     for (auto& painter : painters) painter.join();
+-    if (g_present_scale > 1) g_present_revision[g_draw_fb] = ++g_present_serial;
++    g_present_revision[g_draw_fb] = ++g_present_serial;
+     g_next_keys.clear();
+     g_reg[LOPR] = (uint16_t)(last >> 3);
+     g_reg[COPR] = (uint16_t)(last >> 3);
+@@ -746,7 +749,7 @@
+ 
+ // ---- frames -------------------------------------------------------------------------------
+ static void erase(int which) {
+-    if (g_present_scale > 1) g_present_revision[which] = ++g_present_serial;
++    g_present_revision[which] = ++g_present_serial;
+     int x0 = (g_reg[EWLR] >> 9 & 0x7F) * 8, y0 = g_reg[EWLR] & 0x1FF;
+     int x1 = (g_reg[EWRR] >> 9 & 0x7F) * 8, y1 = g_reg[EWRR] & 0x1FF;
+     for (int y = y0; y <= y1 && y < 256; ++y)
+@@ -802,6 +805,7 @@
+     sat_trace("VDP1 reg %02X <- %04X (pr %08X)", off, v, g_cpu->pr);
+     if (r >= EDSR) return;                       // read-only
+     if ((r == TVMR && ((g_reg[r] ^ v) & 3)) || (r == FBCR && ((g_reg[r] ^ v) & 8))) {
++        for (auto& revision : g_present_revision) revision = ++g_present_serial;
+         g_present_scale = 1;
+         for (auto& b : g_present) b.clear();
+     }
+@@ -837,7 +841,7 @@
+     uint16_t& w = fb[(off >> 1) & 0x1FFFF];
+     if (size == 2) w = (uint16_t)v;
+     else w = off & 1 ? (uint16_t)((w & 0xFF00) | (v & 0xFF)) : (uint16_t)((w & 0x00FF) | (v & 0xFF) << 8);
+-    if (g_present_scale > 1) g_present_revision[g_draw_fb] = ++g_present_serial;
++    g_present_revision[g_draw_fb] = ++g_present_serial;
+     if (g_present_scale > 1 && !g_hi_on[g_draw_fb]) {
+         int word = (off >> 1) & 0x1FFFF, y = word / 512, x = word % 512;
+         bool fb8 = g_reg[TVMR] & 1;
+--- a/runtime/src/video/vdp2.cpp
++++ b/runtime/src/video/vdp2.cpp
+@@ -34,6 +34,8 @@
+ // (the special function codes), gradation of RBG0, extended colour
+ // calculation, the exclusive resolutions. A register that asks for one of them is noted once.
+ #include "saturn.h"
++#include "perf.h"
++#include "band_pool.h"
+ #include "state.h"
+ #include "video.h"
+ #include <algorithm>
+@@ -295,10 +297,10 @@
+     sx &= pw * 2 - 1;                            // the map: 2x2 planes
+     sy &= ph * 2 - 1;
+     int pl = (sy >= ph ? 2 : 0) + (sx >= pw ? 1 : 0);
+-    uint32_t ix = sx % pw, iy = sy % ph;
++    uint32_t ix = sx & (pw - 1), iy = sy & (ph - 1);
+     uint32_t page = (iy / 512) * (uint32_t)s.plane_w + ix / 512;
+     int cs = s.cell2x2 ? 16 : 8;
+-    uint32_t cx = (ix % 512) / (uint32_t)cs, cy = (iy % 512) / (uint32_t)cs;
++    uint32_t cx = (ix & 511) >> (s.cell2x2 ? 4 : 3), cy = (iy & 511) >> (s.cell2x2 ? 4 : 3);
+     uint32_t cpr = 512 / (uint32_t)cs;
+     uint32_t pnd_addr = s.plane[pl] + page * s.page_bytes + (cy * cpr + cx) * (s.word1 ? 2 : 4);
+     uint32_t chr, pal;
+@@ -615,9 +617,8 @@
+         int fbx = (int)std::floor(X), fby = (int)std::floor(Y);
+         if (s.over == 2) { if (fbx < 0 || fbx >= s.bm_w || fby < 0 || fby >= s.bm_h) return false; }
+         else if (s.over == 3) { if ((unsigned)fbx >= 512u || (unsigned)fby >= 512u) return false; }
+-        int bx = fbx % s.bm_w, by = fby % s.bm_h;
+-        if (bx < 0) bx += s.bm_w;
+-        if (by < 0) by += s.bm_h;
++        // Bitmap dimensions are powers of two; this is the same signed wrap.
++        int bx = (uint32_t)fbx & (s.bm_w - 1), by = (uint32_t)fby & (s.bm_h - 1);
+         p.spr = s.bm_spr; p.scc = s.bm_scc;
+         return dot(s, s.bm_addr, bx, by, s.bm_w, s.bm_pal, p);
+     }
+@@ -628,16 +629,16 @@
+     // a rotation BG whose coordinates leave the map wraps and samples unrelated VRAM as garbage.
+     if (s.over == 2) { if (fX < 0 || fX >= map_w || fY < 0 || fY >= map_h) return false; }
+     else if (s.over == 3) { if ((unsigned)fX >= 512u || (unsigned)fY >= 512u) return false; }
+-    int ix = fX % map_w, iy = fY % map_h;
+-    if (ix < 0) ix += map_w;
+-    if (iy < 0) iy += map_h;
++    // Plane dimensions are 1 or 2 pages, so wrapping is an exact mask,
++    // including negative floor coordinates. Avoid signed division per dot.
++    int ix = (uint32_t)fX & (map_w - 1), iy = (uint32_t)fY & (map_h - 1);
+     uint32_t plane_px = (uint32_t)s.plane_w * 512, plane_py = (uint32_t)s.plane_h * 512;
+-    int slot = (iy / (int)plane_py) * 4 + ix / (int)plane_px;
++    int slot = (iy >> (9 + (s.plane_h == 2))) * 4 + (ix >> (9 + (s.plane_w == 2)));
+     uint32_t planebase = s.plane[slot];
+-    uint32_t lx = (uint32_t)ix % plane_px, ly = (uint32_t)iy % plane_py;
++    uint32_t lx = (uint32_t)ix & (plane_px - 1), ly = (uint32_t)iy & (plane_py - 1);
+     uint32_t page = (ly / 512) * (uint32_t)s.plane_w + lx / 512;
+     int cs = s.cell2x2 ? 16 : 8;
+-    uint32_t cx = (lx % 512) / (uint32_t)cs, cy = (ly % 512) / (uint32_t)cs;
++    uint32_t cx = (lx & 511) >> (s.cell2x2 ? 4 : 3), cy = (ly & 511) >> (s.cell2x2 ? 4 : 3);
+     uint32_t cpr = 512 / (uint32_t)cs;
+     uint32_t pnd_addr = planebase + page * s.page_bytes + (cy * cpr + cx) * (s.word1 ? 2 : 4);
+     uint32_t chr, pal;
+@@ -805,10 +806,10 @@
+     return (uint32_t)out;
+ }
+ 
+-// Only the enhanced path caches fields. The comparison is exact (no hash), and
++// Unchanged fields can reuse their exact RGB result at every resolution. The comparison is exact (no hash), and
+ // the displayed VDP1 token changes on draw/erase/CPU writes, swaps and restore.
+ // TVSTAT/HCNT/VCNT are raster counters not read by this compositor.
+-struct EnhancedFrameCache {
++struct ExactFrameCache {
+     bool valid = false;
+     int scale = 0;
+     uint64_t vdp1 = 0;
+@@ -817,12 +818,13 @@
+     std::array<uint8_t,0x200> regs;
+     Frame frame;
+ };
+-static EnhancedFrameCache g_frame_cache;
++static ExactFrameCache g_frame_cache;
+ static uint64_t g_cache_hits, g_cache_misses;
+ uint64_t vdp2_cache_hits() { return g_cache_hits; }
+ uint64_t vdp2_cache_misses() { return g_cache_misses; }
+ 
+ void vdp2_compose(Frame& f) {
++    sat_perf::Scope profile(sat_perf::Vdp2);
+     uint16_t tvmd = reg(0x00);
+     static const int kWidths[4] = {320, 352, 640, 704};
+     int hreso = tvmd & 7;
+@@ -893,7 +895,7 @@
+     // Each line is composed from the setup above, which nothing changes from here on, and the video
+     // memories, which nothing writes while the machine waits for the picture; so bands of lines go to a
+     // few threads at once. Each band has its own back and line colour screens (the lambda's copies).
+-    bool cacheable = scale > 1 && !g_cfg.interp;
++    bool cacheable = !g_cfg.interp;
+     std::array<uint8_t,0x200> render_regs;
+     uint64_t sprite_revision = vdp1_present_revision();
+     if (cacheable) {
+@@ -910,7 +912,7 @@
+         ++g_cache_misses;
+     }
+     OffsetTable offset_table;
+-    if (scale>1) for(int b=0;b<2;++b) for(int channel=0;channel<3;++channel) {
++    for(int b=0;b<2;++b) for(int channel=0;channel<3;++channel) {
+         int o=signed_bits(reg((b ? 0x11a : 0x114)+channel*2),9);
+         for(int c=0;c<256;++c) offset_table[b][channel][c]=(uint8_t)std::clamp(c+o,0,255);
+     }
+@@ -918,7 +920,7 @@
+     // needs no samples from the screens under it. Colour calculation falls back
+     // to the general path, including its second-image and line-colour rules.
+     std::vector<std::pair<int,int>> opaque_order;
+-    if (scale>1 && grad<0 && !sfprmd) {
++    if (grad<0 && !sfprmd) {
+         if(rbg.on && rbg.prio) opaque_order.emplace_back(L_RBG0,rbg.prio);
+         if(rbg1.on && rbg1.prio) opaque_order.emplace_back(L_RBG1,rbg1.prio);
+         for(int n=0;n<4;++n) if(nbg[n].on && nbg[n].prio) opaque_order.emplace_back(L_NBG0+n,nbg[n].prio);
+@@ -926,10 +928,10 @@
+     }
+     std::array<Colour,2048> palette;
+     g_palette=nullptr;
+-    if (scale > 1) for (unsigned i=0;i<palette.size();++i) palette[i].rgb=cram(i,&palette[i].msb);
++    for (unsigned i=0;i<palette.size();++i) palette[i].rgb=cram(i,&palette[i].msb);
+     std::array<Pix,256> sprite_pixels{};
+     std::array<SpriteDot,256> sprite_kinds{};
+-    bool cached_sprites=scale>1 && (vdp1_reg_read(0,2)&1);
++    bool cached_sprites= (vdp1_reg_read(0,2)&1);
+     if (cached_sprites) for (unsigned i=0;i<256;++i) sprite_kinds[i]=sprite_pixel(i,sprite_pixels[i]);
+     auto sample_sprite = [&](int x,int y,Pix& p) {
+         uint16_t d=sprite_dot(x,y,dd,scale);
+@@ -937,8 +939,9 @@
+         return sprite_pixel(d,p);
+     };
+     auto lines = [&, back, line_colour](int y0, int y1) mutable {
+-        g_palette=scale>1 ? palette.data() : nullptr;
+-        g_offset_table=scale>1 ? &offset_table : nullptr;
++        sat_perf::Scope profile(y0 ? sat_perf::Vdp2Worker : sat_perf::Vdp2);
++        g_palette=palette.data();
++        g_offset_table=&offset_table;
+         std::vector<uint32_t> blur(grad >= 0 ? f.w : 0);
+         struct Sample { Pix p; bool drawn; };
+         std::vector<Sample> normal[4];
+@@ -971,9 +974,9 @@
+                     }
+                 }
+             }
+-            Rbg row_b=scale>1 ? row_rotation(rbg_b,(double)y/scale) : rbg_b;
+-            Rbg row_rbg=scale>1 ? row_rotation(rbg,(double)y/scale) : rbg;
+-            Rbg row_rbg1=scale>1 ? row_rotation(rbg1,(double)y/scale) : rbg1;
++            Rbg row_b=row_rotation(rbg_b,(double)y/scale);
++            Rbg row_rbg=row_rotation(rbg,(double)y/scale);
++            Rbg row_rbg1=row_rotation(rbg1,(double)y/scale);
+             if (row_rbg.alt) row_rbg.alt=&row_b;
+             Win win[2] = {window_line(0, hardware_y, dd), window_line(1, hardware_y, dd)};
+             back.rgb = rgb555(vw(bk + (bk_lines ? (uint32_t)line * 2 : 0)));
+@@ -996,7 +999,7 @@
+                 }
+             }
+             for (int x = 0; x < f.w; ++x) {
+-                if (scale>1 && grad<0 && !sfprmd) {
++                if (grad<0 && !sfprmd) {
+                     Pix sprite{};
+                     SpriteDot kind=windowed(wctl[L_SPRITE],win,x/scale) ? S_NONE : sample_sprite(x,y,sprite);
+                     Pix top=back;
+@@ -1121,11 +1124,8 @@
+             }
+         }
+     };
+-    int bands = (int)std::clamp(std::thread::hardware_concurrency(), 1u, 8u);
+-    std::vector<std::thread> others;
+-    for (int k = 1; k < bands; ++k) others.emplace_back(lines, f.h * k / bands, f.h * (k + 1) / bands);
+-    lines(0, f.h / bands);
+-    for (auto& t : others) t.join();
++    static VideoBandPool pool;
++    pool.run(f.h, lines);
+     g_palette=nullptr;
+     g_offset_table=nullptr;
+     if (cacheable) {
+--- a/runtime/src/video/video.cpp
++++ b/runtime/src/video/video.cpp
+@@ -12,6 +12,7 @@
+ // VDP1 is vdp1.cpp, VDP2's picture vdp2.cpp; VDP2's registers, VRAM and
+ // colour RAM keep what is written.
+ #include "saturn.h"
++#include "perf.h"
+ #include "state.h"
+ #include "video.h"
+ #include "host.h"
+@@ -146,6 +147,7 @@
+ 
+ static void vblank_in(uint64_t now) {
+     ++g_vblanks;
++    if (sat_perf::enabled && g_vblanks % 600 == 0) sat_perf::report(g_vblanks);
+     extern void stv_scene_probe_tick(uint64_t vb);  // scene-director probe (diagnostic, default off)
+     stv_scene_probe_tick(g_vblanks);
+     std::string n = std::to_string(g_vblanks);
+--- a/runtime/tests/CMakeLists.txt
++++ b/runtime/tests/CMakeLists.txt
+@@ -8,5 +8,5 @@
+   set(CMAKE_BUILD_TYPE Release)
+ endif()
+ include(${CMAKE_CURRENT_LIST_DIR}/../runtime.cmake)
+-add_executable(runtime_tests main.cpp no_modules.cpp hires_test.cpp player_test.cpp player_training_test.cpp stv_bios_test.cpp vdp2_test.cpp onchip_test.cpp bup_test.cpp pads_test.cpp settings_test.cpp touch_test.cpp pace_test.cpp frame_change_test.cpp modem_test.cpp scu_test.cpp cdrom_test.cpp cdblock_test.cpp clock_test.cpp tasks_test.cpp scsp_test.cpp)
++add_executable(runtime_tests main.cpp no_modules.cpp perf_test.cpp hires_test.cpp player_test.cpp player_training_test.cpp stv_bios_test.cpp vdp2_test.cpp onchip_test.cpp bup_test.cpp pads_test.cpp settings_test.cpp touch_test.cpp pace_test.cpp frame_change_test.cpp modem_test.cpp scu_test.cpp cdrom_test.cpp cdblock_test.cpp clock_test.cpp tasks_test.cpp scsp_test.cpp)
+ target_link_libraries(runtime_tests saturn_core saturn_machine saturn_host Threads::Threads)
+--- /dev/null
++++ b/runtime/tests/perf_test.cpp
+@@ -0,0 +1,61 @@
++// Compare batching against the guest loop's actual instruction order, up to
++// the next poll, for every possible poll phase and a wrapping guest counter.
++#include "test.h"
++#include "saturn.h"
++#include <cstring>
++
++static int empty_until_poll(SH2Context& c, bool batch) {
++    for (;;) {
++        if (batch) sh2_stv_idle_batch(c);
++        c.r[13]=ld32(c.r[12]); c.r[13]+=c.r[14]; c.r[13]=ld32(c.r[13]);
++        c.t=(c.r[13]==0);
++        if (!c.t) return -1; // not an empty command
++        c.r[4]=c.r[9];c.r[2]=ld32(c.r[11]);++c.r[2];st32(c.r[11],c.r[2]);
++        for (;;) {
++            c.r[4]-=2;c.t=(c.r[4]==0);
++            if(c.t) break;
++            if(--c.budget<0) return 71;
++        }
++        c.r[0]=0x060E0DD4u;c.r[3]=ld32(c.r[0]+c.r[14]);c.r[2]=ld32(c.r[12]);c.t=c.r[2]==c.r[3];
++        if(!c.t) { if(--c.budget<0) return 72; continue; }
++        st8(c.r[8],c.r[10]);if(--c.budget<0) return 73;
++    }
++}
++TEST(empty_slave_batch_preserves_every_poll_phase_and_guest_counter) {
++    g_cfg.trace=false;g_sh2_watch_len=0;
++    for(int budget=0;budget<=257;++budget) {
++        SH2Context seed{};seed.cpu=1;seed.budget=budget;
++        for(int i=0;i<16;++i) seed.r[i]=0x12340000u+i;
++        seed.r[8]=0x060E0DD8u;seed.r[9]=10;seed.r[10]=0xFFFFFF80u;
++        seed.r[11]=0x060987C4u;seed.r[12]=0x060E0DD0u;seed.r[14]=0x20000000u;
++        auto init=[] { st32(0x060E0DD0u,0x060E0BD0u);st32(0x060E0DD4u,0x060E0BD0u);st32(0x060E0BD0u,0);st32(0x060987C4u,0xfffffff0u);st8(0x060E0DD8u,0x12); };
++        init();auto ref=seed;int phase=empty_until_poll(ref,false);
++        uint32_t counter=ld32(0x060987C4u);uint8_t flag=ld8(0x060E0DD8u);
++        init();auto fast=seed;CHECK_EQ(empty_until_poll(fast,true),phase);
++        CHECK_EQ(std::memcmp(&ref,&fast,sizeof ref),0);
++        CHECK_EQ(ld32(0x060987C4u),counter);CHECK_EQ(ld8(0x060E0DD8u),flag);
++    }
++}
++TEST(empty_slave_batch_rejects_work_and_observable_stores) {
++    SH2Context c{};c.cpu=1;c.budget=256;c.r[8]=0x060E0DD8u;c.r[9]=10;c.r[10]=0xFFFFFF80u;c.r[11]=0x060987C4u;c.r[12]=0x060E0DD0u;c.r[14]=0x20000000u;
++    st32(0x060E0DD0u,0x060E0BD0u);st32(0x060E0DD4u,0x060E0BD0u);st32(0x060E0BD0u,1);
++    auto original=c;sh2_stv_idle_batch(c);CHECK_EQ(std::memcmp(&original,&c,sizeof c),0);
++    st32(0x060E0BD0u,0);g_sh2_watch_len=4;sh2_stv_idle_batch(c);CHECK_EQ(c.budget,256);g_sh2_watch_len=0;
++    g_cfg.trace=true;sh2_stv_idle_batch(c);CHECK_EQ(c.budget,256);g_cfg.trace=false;
++    st32(0x060E0DD4u,0x060E0BD4u);sh2_stv_idle_batch(c);CHECK_EQ(c.budget,256);
++}
++
++#include "band_pool.h"
++#include <array>
++TEST(video_worker_bands_keep_private_mutable_line_state) {
++    VideoBandPool pool;
++    std::array<int,64> values{};
++    auto job=[&, back=0](int y0,int y1) mutable {
++        ++back;
++        for(int y=y0;y<y1;++y) values[y]=back;
++    };
++    for(int field=0;field<20;++field) {
++        pool.run((int)values.size(),job);
++        for(int value:values) CHECK_EQ(value,1);
++    }
++}
+--- a/runtime/tests/vdp2_test.cpp
++++ b/runtime/tests/vdp2_test.cpp
+@@ -532,5 +532,24 @@
+     CHECK_EQ(at(second,60,0),kBlue);
+     g_cfg.internal_resolution=1;
+     hits=vdp2_cache_hits();vdp2_compose(first);vdp2_compose(second);
+-    CHECK_EQ(vdp2_cache_hits(),hits); // original path bypasses the enhanced cache
+-}
++    CHECK_EQ(vdp2_cache_hits(),hits+1); // exact reuse also applies at original resolution
++}
++
++TEST(original_frame_cache_invalidates_cpu_writes_mode_and_restore) {
++    g_cfg.internal_resolution=1;
++    vdp1_reg_write(0,0,2);vdp1_reg_write(2,0,2);vdp1_reg_write(4,0,2);
++    red_screen();show_sprites();
++    reg(0xe0,0x20);reg(0xf0,7);
++    Frame f;vdp2_compose(f);
++    auto misses=vdp2_cache_misses();
++    vdp1_fb_write(0,0x83e0,2);vdp1_vblank_out();vdp2_compose(f);
++    CHECK_EQ(at(f,0,0),kGreen);CHECK_EQ(vdp2_cache_misses(),misses+1);
++    State saved;vdp1_state(saved);
++    vdp1_reg_write(0,1,2);vdp2_compose(f);
++    CHECK_EQ(vdp2_cache_misses(),misses+2);
++    saved.loading=true;vdp1_state(saved);vdp2_compose(f);
++    CHECK_EQ(at(f,0,0),kGreen);CHECK_EQ(vdp2_cache_misses(),misses+3);
++    // Disable interpolation caching even when the same hardware state is retained.
++    g_cfg.interp=true;auto hits=vdp2_cache_hits();vdp2_compose(f);vdp2_compose(f);
++    CHECK_EQ(vdp2_cache_hits(),hits);g_cfg.interp=false;
++}

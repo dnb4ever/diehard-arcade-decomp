@@ -1,0 +1,10 @@
+# Functional decomp gen5 - ranges [0x02248000,0x0224a000) and [0x02200400,0x02201400)
+# Single serial worker (no forks). Every .c compiles clean with
+# gcc -c -fsyntax-only -Wall -Wextra (ZERO warnings) and was hand-traced vs
+# m2c_fn.py --asm; every computed branch resolved with braf_resolve.py.
+# Names below are my additions (gen5).
+
+0x02248104 actor_combat_think     # HIGH  3-state FSM on entity[0xd8]. hit-interrupt entity[0x4c]!=0 -> func_022489d0; state0 countdown entity[0xc4]; state1 range/aggro checks (g_0608DDD4 range tbl, g_060E0F4C actor tbl, entity[0x8c] flags); state2 target-list checks (0x06099590 / 0x060995b0 tables, entity[0x11c]/0x120); common sub-dispatch func_022449b2/func_02245eb8/func_022469f2/func_022499a6; tail animation_update (0x0222dc2c). 10 computed branches resolved. Sibling of actor_turn_flip_fsm (0x02248436).
+0x0224852c actor_probe_handler    # HIGH  per-tick FSM. hit-interrupt entity[0x4c]!=0 -> func_022489d0; else probe func_022453de -> if non-null tail hand-off func_0224910e(entity, ptr); else (entity[0x54]&2) -> func_022469f2; tail animation_update. First function of a 21-function MISSEG extent spanning 0x24852c..0x249e68 (fn.units merged them into one member).
+0x0224910e actor_spawn_sub_init   # HIGH  init a handed-off sub-actor from a per-variant parameter record (record = entity[0x178][func_0210020()&3]). Seeds state 9, flags (0x84=0x20000, 0xe0=0x6000, 0x108=2), facing-signed velocity/position (record[8/12/16] -> entity[0xc4/0xc8/0x104]), hitbox (entity[0x5c]); links back to parent src (src[0x4c/0x84/0x88]). func_024a360 is an r1-ABI helper (return discarded).
+0x022499a6 actor_enter_state14    # HIGH  enter state 0xE. val = ((s16*)entity[0x188])[func_0210020()&1]; if (u16)val==0xffff -> bail func_022469f2 (tail); else entity[0xd4]=14, 0xd8=0, 0x84=1, 0xe0&=0x20300, 0x108=0, 0x41=1, 0x5c=val. Sibling of actor_enter_state12 (0x02249ea0). Called by all three handlers above + 0x02248436.

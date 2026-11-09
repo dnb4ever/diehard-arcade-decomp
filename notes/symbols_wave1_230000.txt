@@ -1,0 +1,27 @@
+# Wave1 band 0x230000-0x23ffff - functions decompiled this pass (addr = SH2 = cart+0x02000000)
+# conf: HIGH = logic+fields+branches hand-verified vs m2c_fn --asm; MED = logic verified, one modelled detail noted.
+
+0x02230434 projectile_seed_task       # HIGH task init: seed projectile from source actor (slot/flags/launch vec g_06087F84); next -> func_022304b4
+0x0223026a projectile_arc_task        # HIGH thrown-object arc: func_0222fe14, lifetime unk58, floor/collision(func_02217ae4) kill, drawlist + physics func_060194fc
+0x02230f74 effect_scatter_task        # HIGH rising/scatter: ++unk58 cap 0x18, spin anim unk30, drawlist (<4), unkC/unk70 motion, tail func_060193f6
+0x0223144a projectile_track_task      # HIGH tracked projectile toward partner (src rec g_06097D58); kill on expiry/target-blocked(unk84&0x4B800); drawlist tail
+0x02231a1c attach_follow_task         # HIGH follow/attach: copies partner-entity pos; kill on flags&1 disarm or flags&2 counter; drawlist tail
+0x022317c0 projectile_launch_task     # HIGH launch init: reserves ammo func_0223c74a(oent); seeds pos/vel; next -> func_02231864
+0x02232294 trail_spark_task           # HIGH camera-locked trail: slot func_02228106, orient template g_06088088 via func_0221080a, world = cam g_06098B1C + oent
+0x02234aae gfx_submit_box8            # MED  builds a 4-corner 8x8 box record on stack, emits via func_0221566e (emit_sprite_cmd); guard g_060987BC&6
+0x0223a740 actor_state_gen_hitreact   # MED  actor action-state generator: unk6D=1, swaps saved anim g_060E11E8/g_06096248, loads hit-anim g_0608CE74; calls func_0223b254/func_0223e104; tail func_022260c8
+0x0223c650 pickup_slot_task           # HIGH pickup/grenade: alloc HUD slot func_02228106 -> unk34; on consume free g_060996D4[unk34-8] & next -> func_0220fe98; else func_0222eee4
+0x0223d1b6 effect_fall_task           # HIGH state machine (fall/bounce, states 0/1/2); MED matrix/draw helpers func_022149aa/02214a40/02214a06/02215a2c around g_06098878
+0x0223e530 arbitrate_min_cost         # MED  per priority level 3..6 scans g_06096EC4[] records, writes min-cost winner to g_06097058[level]; fully static, no PIC
+0x0223eef0 effect_spin_rise_task      # HIGH spinning rise: ++unk6C vs unk70, anim unk30, base pos g_06097E08, nudge unk10, tail func_060193f6
+
+# globals newly referenced (not added to shared symbols.txt):
+#   g_0604EBE4 per-slot flag words (s32, idx unk34)   g_06087F84 launch-vector table (s32)
+#   g_06088064 collision arg (func_02217ae4)          g_06088088 velocity templates (12B stride, idx task->unkF)
+#   g_06096248 actor saved-anim recs (32B, +14 word)  g_060E11E8 actor anim slot recs (4B, +2 word)
+#   g_060E10B0 facing-anim table (s16, idx unk68)     g_060E0E58 per-zone recs (16B)
+#   g_0608CE74 hit-anim table (s16, idx unk6D)        g_06096C74 per-slot anim id (s32, idx unk34)
+#   g_06096EC4 request records (44B stride)           g_06097050 record count  g_06097058 per-level results (8B)
+#   g_06097D58 per-slot anim/pos recs (256B/row)      g_06097E08 base-pos table (256B/row)
+#   g_060996D4 HUD/ammo slot flags (u8)               g_06097410 global kill flag
+#   g_06098B1C active-matrix output vector (s32[3])   g_06098878 matrix-stack pointer  g_060987BC render-guard  g_060E0DDC sound-enable gate

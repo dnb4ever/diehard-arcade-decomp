@@ -1,0 +1,44 @@
+/* effect_spark_fall_forward_task [0x02238c4e]: Integrates a launched growing spark with positive Z drift until it falls below the floor. */
+#include "dh_work.h"
+#include "dh.h"
+/* 0x02238c4e - ballistic sub-object task handler (3-state machine), sibling of
+ * 0x02238ba4. task->unk8 = entity; task->unk10 = state byte.
+ *   state 0: seed (unk30=0x17B, unk32=0, unk58=0x30000, unk18=0xC00); -> state 1.
+ *   state 1: unk18 -= 0x400 (gravity); unk58 += 0x2000; pos unk8 += vel unk14;
+ *            pos unkC += vel unk18; unk10 += 0x200; when unkC < 0x500 advance state;
+ *            draw_child_sprite(entity, unk58, 1).
+ *   state 2: deactivate task (task->unk0 = 0).
+ * fidelity: HIGH - verified vs m2c_fn.py --asm; case-1 tail braf -> 0x022153f6
+ *   (draw_child_sprite), r6 (flags) always 1 (set in a branch delay slot). */
+extern void sprite_draw_child(void *entity, s32 scale, s32 flags);  /* 0x022153f6 draw_child_sprite */
+
+void effect_spark_fall_forward_task(void *task)
+{
+    void *ent = TASK_PTR(task, work);
+    s8 state = TASK_S8(task, state);
+
+    switch (state) {
+    case 0:
+        M16(ent, 0x30) = 0x17B;
+        M16(ent, 0x32) = 0;
+        M32(ent, 0x58) = 0x30000;
+        M32(ent, 0x18) = 0xC00;
+        TASK_S8(task, state)++;
+        /* fallthrough */
+    case 1:
+        M32(ent, 0x18) -= 0x400;
+        M32(ent, 0x58) += 0x2000;
+        M32(ent, 0x8) += M32(ent, 0x14);
+        M32(ent, 0xC) += M32(ent, 0x18);
+        M32(ent, 0x10) += 0x200;
+        if (M32(ent, 0xC) < 0x500)
+            TASK_S8(task, state)++;
+        sprite_draw_child(ent, M32(ent, 0x58), 1);
+        return;
+    case 2:
+        TASK_PTR(task, handler) = (void *)0;
+        return;
+    default:
+        return;
+    }
+}

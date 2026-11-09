@@ -1,0 +1,31 @@
+# Band 0x02200400-0x02210000 - new symbols (functional decomp, Opus pass)
+# Functions decompiled this pass (name @ SH-2 addr):
+0x0220e7c4 entity_slew_lookat_update   # HIGH  eased slew of position+target triples over a cosine angle sweep (unk70 += 0x8000/unkAE via sdiv32), then lookat_angles -> unk24/unk26. Calls sdiv32 0x24a06c, trig_lookup 0x213190, fixmul_16_16 0x2131c8, lookat_angles 0x21055c
+0x02203ed4 fx_sprite_ring_task         # HIGH  task: plots a rotating ring of point sprites with per-0x20-frame PRNG wobble; sin/cos/fixmul 0x213190/0x2131a8/0x2131c8, rng 0x210020, emitter draw_point_sprite 0x2153a0. unk84=32b phase, unk86=its low halfword
+0x0220c964 actor_pick_spawn_near_object # HIGH  scan 8 object slots (rotating cursor self->unkB0) for an active object inside the room-record XZ bounds with a clear surround (count_objects_in_rect 0x20e000); seat self next to it, return 1/0
+0x0220376c hud_status_service_2p       # HIGH  rebuild both players' status HUD (col 0 / col 0x16) via ui_glyph *g_0609029C each frame; periodic (unk40 parity) + event (g_06098794 u16@6 bits). Record builders func_203de8/203e0a/203e5e, refresh *g_06000660, warn nibble shared @g_060987E9
+0x0220a7dc continue_prompt_handler     # HIGH  "continue?" prompt task: header func_2093f8, menu glyphs, countdown (ent->unk4C), yes/no cursor (ent->unk48 toggled by pad 0x204/0x408); resident-cmd fill *g_06000644
+
+# Supporting symbol identified this pass:
+0x022153a0 draw_point_sprite           # sprite display-list emitter: writes a sprite command record to *0x060CF0C8 and advances the pointer; obj pos from arg->unk8/unkC
+
+# Globals used/named this pass:
+0x0609029c g_0609029C   void(*)(void*)            # UI glyph dispatch thunk (cursor color g_060997A4 / mode g_060997A8)
+0x06000644 g_06000644   void(*)(s32,void*,s32)     # resident command fp (op, addr, 0)
+0x06000660 g_06000660   void(*)(void*)            # HUD working-copy refresh thunk
+0x060997a4 g_060997A4   s32                        # HUD cursor column / color
+0x060997a8 g_060997A8   s32                        # HUD cursor row / mode
+0x060997ac g_060997AC   s32                        # HUD cursor flag
+0x060987bc g_060987BC   s32                        # per-player HUD disable mask (ANDed with ent->unk50)
+0x06098794 g_06098794   struct                     # syspad/status; u16@6 = buttons / HUD event bits
+0x060987d8 g_060987D8   record                     # P1 working status record (warn nibble byte at +0x11 = 0x060987E9)
+0x060987dc g_060987DC   record                     # P2 working status record
+0x060987d4 g_060987D4   s8                         # P1 ready flag (P2 = +1 @0x060987D5)
+0x060987e9 g_060987E9   u8                         # shared continue/warn count (low nibble P1-path, high nibble P2-path)
+0x060902cc g_060902CC   void*[]                    # player glyph-record table
+0x060902f0 g_060902F0   void*                      # idle/blank glyph record
+0x060906d4 g_060906D4   void*[]                    # continue-prompt menu glyph table
+0x06098804 g_06098804   void*                      # work-buffer base pointer
+0x06099584 g_06099584   struct                     # object table base: +0xC slot-flag ptr array[8], +0x2C object ptr array[8]
+0x060b3d54 g_060B3D54   s32                        # current room/area index
+0x0606080c g_0606080C   record[]                   # room-record table, stride 44 (0x2C); fields unk14/unk20 (X bounds), unk28 (Z)

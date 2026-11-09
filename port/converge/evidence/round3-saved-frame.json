@@ -1,0 +1,14 @@
+{
+  "path": "work/converge/round3/saved-frames/stack-0.bin",
+  "sha256": "f763abed1dbfea35a9acbbf9fb4905492b348fcf6cfaea48c670f1bf4594f70c",
+  "bytes": 2097288,
+  "function": "02214194",
+  "kind": 0,
+  "context_bytes": 132,
+  "ram_bytes": 2097152,
+  "fixture_origin": "real STV_AUTOPLAY call, saved at entry when declared output points within entry SP..SP+0x100",
+  "replay": "PASS real saved-frame stack-output fixture: complete context and both RAM banks\n",
+  "capture_path": "work/converge/round3/fixtures/stack-0.bin",
+  "probe_binary_sha256": "356f7d6d28a6e5a54581abcbc54cfaee289237bae6d1ff57320f9bd4eaa95feb",
+  "replayed_utc": "2026-11-09T07:54:14.902482+00:00"
+}

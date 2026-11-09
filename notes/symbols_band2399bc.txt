@@ -1,0 +1,30 @@
+0x022399bc func_022399bc  actor_aim_transform_draw  # HIGH per-frame aim/skeletal
+# transform + model submit. dispatch (s8)actor->unk10 {0 full aim setup,1/2
+# countdown obj->unk32,default draw}. 1st cmd loop rotate x/y/z neg angles;
+# lookat/angle_from_vec2 -> obj->unk24/26/28; shared tail: mtx_load_abc,
+# apply_vec_at0(e+8), rotate_zyx(e+0x24), 2nd two-cursor cmd loop (apply lags
+# rotate 1 byte), rotate_zyx_at24(obj), submit_model_culled(obj,0). 20 bsrf +
+# 1 mova+add jsr (-> 0x022149e4 mtx_rotate_zyx, NOT 0x022179e4) resolved.
+# helpers (existing):
+0x022149e4 mtx_rotate_zyx           # (u16* angles) jsr @r9 target; prior note mis-wrote 0x022179e4
+0x02214a06 mtx_rotate_zyx_at24      # (void* obj)
+0x02214a50 mtx_apply_vec_at0        # (void* vec)
+0x022149aa mtx_load_abc             # (void)
+0x02213fb4 load_matrix_default      # (void)
+0x02213ba0 mtx_rotate_x             # (angle)
+0x02213bf4 mtx_rotate_y             # (angle)
+0x02213c4c mtx_rotate_z             # (angle)
+0x02213538 mtx_apply_vec            # (x,y,z) -> g_06098b1c
+0x02213ca4 vec3_array_matmul        # (x,y,z)
+0x022130b4 angle_from_vec2          # (a,b) -> s32
+0x02210622 lookat_angles_xy         # (0,0,0,*b1c,*b20,*b24,&obj+0x28,&obj+0x26)
+0x02215a2c submit_model_culled      # (void* obj, s32 flag)
+# globals:
+0x060995b0 g_060995b0   # void*[] RAM record-pointer table, idx (s8)obj->unk34; +8 deref -> e
+0x06096328 g_06096328   # per-command Euler-angle records; base + (s16)(idx*108) + cmd*6; u16[3]
+0x06096c58 g_06096c58   # s32[] per-actor matmul scalar, idx unk34
+0x06098878 g_06098878   # matrix-stack top pointer (+/-0x30 push/pop)
+0x06098b1c g_06098b1c   # s32[3] mtx_apply_vec output vector [b1c/b20/b24]
+0x0607976c vec_table    # 0x0607976c + (s16)e->unk5E*180 + b*12 (2nd-loop lagging apply)
+0x0608c622 cmd_base_1   # 0x0608c622 + obj->unk38*8 (1st loop, case 0)
+0x0608c5d2 cmd_base_2   # 0x0608c5d2 + obj->unk38*8 (2nd loop, shared tail)

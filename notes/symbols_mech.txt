@@ -1,0 +1,36 @@
+# symbols_mech.txt - scene content/completion mechanism functions (this session)
+# Format: cart_addr  runtime_addr  name  (one line each). cart+0x03E04000 = runtime.
+
+# --- CORRECTED ---
+0x0220fece  0x06013ece  f_220fece                 # install_content_task(task, off14): forwards BOTH args to the allocator (was wrongly "ignores off14")
+
+# --- NEW mechanism functions decompiled ---
+0x00232610  0x06036610  f_232610                  # fade-scene content-task state machine (off14 handler for all 21 fade scenes); states 4/5 set director entity unk3C bit0 (scene complete)
+0x002463c8  0x0604a3c8  f_2463c8                  # transition-timeline interpreter (true prologue entry 0x2463b8); walks script cursor g_060973E0/F0; on end rebinds task->unk0 = func_022465fc
+0x00233250  0x06037250  func_02233250             # fade-scene state-1 content builder; loads BG, installs 2 content tasks, runs the spawn list
+0x002332d4  0x060372d4  func_022332d4             # spawn-list walker (tail-called by func_02233250); spawns each record via func_0223cbb0
+
+# --- key globals touched by the mechanism ---
+0x06098564  g_06098564    # player-channel gate word (written each frame by func_0222a8d8); ==0 => f_2463c8 timeline frozen (the scene-3 stall)
+0x06098670  g_06098670    # "2 players armed" flag; f_232610 state2 clears it, state4 sets it, state5 clears it
+0x060973E0  g_060973E0    # timeline column cursor
+0x060973E4  g_060973E4    # timeline step width
+0x060973E8  g_060973E8    # timeline row limit
+0x060973EC  g_060973EC    # timeline frame budget
+0x060973F0  g_060973F0    # -> current timeline script record (cursor)
+0x0609866C  g_0609866C    # -> current fade/palette descriptor (PB); PB->unk28 indexes g_06072660 / g_06088700
+0x06098678  g_06098678    # -> scene plane descriptor; unk0 = resident scene handler
+0x06098F08  g_06098F08    # -> VDP2 register shadow block
+0x06088700  g_06088700    # fade descriptor table, stride 0xC (timeline head / delay / frame data)
+0x06072660  g_06072660    # fade register table, stride 0x50
+0x0609196C  g_0609196C    # object-class table, stride 4 (class->unk18 = timeline step width)
+
+# --- resident scene handlers compared by f_232610 state 2/3 ---
+0x00205232  0x06009232  round_controller_dual     # resident == this => play-enter / abort fade
+0x00205812  0x06009812  scene_run_handler         # resident == this => f_232610 -> state 5 (play-enter completion)
+
+# --- already-present (verified, not re-written) ---
+0x0220fc3c  0x06013c3c  f_220fc3c                 # func_06013c3c: object-pool allocator f_220fece forwards to
+0x0222a8d8  0x0602e8d8  func_0222a8d8             # player-ready status; writes g_06098564 from g_06098670/join bytes
+0x00201c9c  0x06005c9c  func_0201c9c              # fade sequencer; contains the "f_201cae" arm-flag write (g_06098670=1) gated by DIP 0x06000798 bit5 + g_0609880C
+0x002465fc  0x0604a5fc  func_022465fc             # timeline-complete handler; sets content-entity unk3C bit3 @0x246658

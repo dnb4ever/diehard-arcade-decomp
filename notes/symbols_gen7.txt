@@ -1,0 +1,60 @@
+# gen7 functional decomp - projectile/spark firing + swept hit-detection cluster
+# (0x22d-0x230 band). Addresses are SH2 cart (lower 24 bits shown by census).
+# All functions hand-verified vs m2c_fn.py --asm, compile clean (gcc -c
+# -fsyntax-only -Wall -Wextra, zero warnings). Computed branches confirmed with
+# braf_resolve.py. find_entry.py run on every candidate.
+
+# ---- functions added (11) ----
+0x0222db44 actor_load_pose_buffers      # init actor pose state from variant record: latch hit-anim g_0608CE74[unk6D]->g_06096C74[unk34]/unk5C; copy pos longs to g_06096328[unk34]+0x60; scale unk40=(1<<pose.shift)+0xFF via ashl_var(0x24a360); block-copy (0x24a280) two 108B halves to g_0609661C/g_06096910[unk34*108]; zero g_060996EC slot
+0x0222f1d0 hit_check_swept              # swept point-to-segment hit test atk(arg0,radius unkA8) vs tgt(arg1,radius unk64). motion=tgt.prev-cur; rel=atk-tgt.cur; proj=dot; 3-branch closest dist2 (vec3_dot_fixed 0x2132c4, fixmul 0x2131c8, hw_divide 0x213234); hit if dist2<(radii)^2 -> record tgt into atk unk48/4A/B8/B4/BA/49/64/74, knockback angles atk.unk60/62 (special 0x2000 when tgt.unk38==0x40000 via 0x2107dc, else lookat 0x21055c), mark tgt unk5D/5E/68. returns 1 hit / 0 miss
+0x0222f4e8 actor_anim_step_task         # per-frame path/anim actor task: record g_06097D58[unk34,unk5F]; partner-slot(unk5D) gated spawn of trail obj (spawn_obj_variant 0x220feec, handler 0x238d5e) seeded w/ sin/cos(partner angles) velocities; actor_pair_propagate(0x22f3c0); dispatch g_06091344[unk62&3](ent,other) kill-on-nonzero; save/load pos; tail drawlist_prepend(0x22eea2)
+0x0222f640 projectile_track_init_task   # init/seed muzzle-track projectile: load pos from record g_06097D58[owner.unk34,unk5F]; copy owner unk34/unk38; unk68|=g_0604EBE4[anim]; unk62|=0x80; unk58--; install next -> func_0222f6a8. real entry (census 0x22f628/0x22f8b6 are pool-contam aliases)
+0x0222f6a8 projectile_phase_track_task  # phase-driven sibling of actor_anim_step_task: same partner-spawn block (handler 0x238d5e); record offset by owner phase other.unk58 (<8:+0x90, ==8:set unk68 pickup +0x70, >8:+0x70); dispatch g_06091344[0]; drawlist only when phase outside [4,8]
+0x0222fa20 slide_projectile_fire_task   # state-0 fire (table-vel sibling of 0x22fc02): copy owner anim/flags; unk68|=g_0604EBE4[anim]; reserve ammo (0x23c74a) kill-on-fail; load pos; x2 unk64 if anim<3; post-clone init (0x238dde); SFX 0xA01303FF; unk58--; install -> 0x22fb90; vel from g_06087F84[((unk62&63)-11)*4+owner.unk44*2]; draw push/pop (mtx_load_abc/mtx_apply_vec_at0 x2 w/ facing g_06087F24/renderer 0x2154fc). real entry (census 0x22fa08 pool-contam)
+0x0222fb90 spark_projectile_slide_task  # per-frame horiz slide spark: actor_emit_sparks; kill on grid_overlap_find_type0(&ent.unk8,g_06088064) hit or unk58 expiry; x-only integrate unk8+=unk14; drawlist_prepend; tail renderer 0x2154fc(ent,0x20000,0x10000,1). real entry (census 0x22fb4a pool-contam)
+0x0222fc02 spark_projectile_fire_task   # state-0 fire (fixed-vel): copy owner anim/flags; unk68|=g_0604EBE4[anim]; unk62|=0x40; reserve ammo kill-on-fail; load pos; x2 unk64 if anim<3; post-clone init; SFX; unk58--; install -> 0x22fd54; vel(unk14=0x12000,unk28=0x1000,unk18=-0x8000) facing-flipped by owner.unk44; draw push/pop w/ mtx_rotate_z(unk28)/renderer(ent,0x40000,0x20000,2)
+0x0222fd54 projectile_spark_arc_task    # per-frame arc spark: actor_emit_sparks; kill if unkC<=0x500 or unk58 expiry; integrate unk8+=unk14,unkC+=unk18; drawlist_prepend; tail renderer 0x2154fc(ent,0x20000,0x10000,1)
+0x0222fe14 actor_emit_sparks            # spawn up to 3 trail sub-objects off actor (gated by partner slot unk5D<7, partner alive, config bit): 3x spawn_obj_variant(task, handler 0x238ba4/0x238c4e/0x238cd2) seeded w/ pos + randomised vel (rng 0x210020 & 0x1FFF, shifts >>5/>>6); balanced 2 rng draws when config off; clears unk5D
+0x0222ff40 projectile_seed_table_task   # init/seed (table-vel sibling of func_02230006): copy owner anim/flags; unk68|=g_0604EBE4[anim]; reserve ammo kill-on-fail; x2 unk64 if anim<3; unk62|=0x40; vel from g_06087F84[((unk62&63)-11)*4+owner.unk44*2]; func_022301c4(task,ent,rec,(unk74+1)&1); unk5A=0xB; install -> func_022300e8. real entry (census 0x22ff28 pool-contam)
+
+# ---- globals confirmed / used (already partly named in prior gens) ----
+0x06096328 g_06096328            # per-actor record array, stride 108 (0x6c)
+0x06096C74 g_06096C74            # g_slot_anim_id: per-slot anim id (s32, idx unk34)
+0x0608CE74 g_0608CE74            # hit-anim id table (s16, idx unk6D)
+0x0607D124 g_0607D124            # pose source record, stride 28
+0x0609661C g_0609661C            # working pose buffer A (stride 108, idx unk34*108)
+0x06096910 g_06096910            # working pose buffer B (stride 108, idx unk34*108)
+0x060996EC g_060996EC            # 12-byte per-actor slot (zeroed on init)
+0x0604EBE4 g_0604EBE4            # per-anim/slot flag word (s32, idx anim id unk34)
+0x06097D58 g_06097D58            # per-actor animation record array (idx unk34*0x100 + unk5F*0x10)
+0x06087F84 g_06087F84            # launch-vector table (s32)
+0x06087F24 g_06087F24            # facing vector table, stride 12
+0x06087F3C g_06087F3C            # owner-facing vectors, stride 12
+0x06088064 g_06088064            # collision query arg for grid_overlap_find_type0
+0x06091344 g_06091344            # 4-entry motion sub-handler table (fn ptr; idx unk62&3, or [0])
+0x0609979A g_0609979A            # s16 flag gating anim-id pickup (phase==8 path)
+0x060987EC g_060987EC            # config byte table (idx g_06098808+1)
+0x06098808 g_06098808            # config read cursor
+0x060E0DDC g_060E0DDC            # sound-enable flag
+0x06098878 g_06098878            # active matrix-stack pointer (+/-0x30 push/pop)
+0x06097550 g_06097550            # shared draw/grid node count (cap 32)
+0x0609742C g_0609742C            # spatial-grid origin (x@0, y@8)
+
+# ---- callees referenced (named in prior gens, pinned here) ----
+0x0220feec spawn_obj_variant     # (parent, handler) -> obj
+0x0222f3c0 actor_pair_propagate
+0x0222eea2 drawlist_prepend
+0x0222eee4 spatial_grid_insert   # (already in src_functional; my independent decode matched)
+0x02213190 sin_lookup   0x022131a8 cos_lookup
+0x022132c4 vec3_dot_fixed   0x022131c8 fixmul_16_16   0x02213234 sh2_hw_divide
+0x02210020 rng
+0x0223c74a reserve_ammo (nonzero=fail)   0x02238dde post_clone_init
+0x0215f6c sound_queue_push
+0x022149aa mtx_load_abc   0x02214a50 mtx_apply_vec_at0   0x02213c4c mtx_rotate_z
+0x022154fc sprite_renderer (ent, sx, sy, flag)
+0x0217ae4 grid_overlap_find_type0   0x02107dc angle_from_2d (writes -angle)
+0x021055c lookat_angles_xz (8-arg)
+0x022301c4 spawn_clone_from / projectile position setup (task,ent,rec,flag)
+0x022300e8 projectile_sustain_fire_task   0x0222fd54/0x0222fb90 next-state handlers
+0x0224a360 ashl_var (value<<count, r0/r1 ABI)   0x0224a280 block-copy (count>64, r0/r1/r2 ABI)
+0x0238d5e / 0x0238ba4 / 0x0238c4e / 0x0238cd2  spawned spark/trail handlers

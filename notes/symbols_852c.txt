@@ -1,0 +1,36 @@
+# Die Hard Arcade (ST-V, SH-2 BE) - symbols for the 0x24852c merged extent
+# Format: 0x<SH2addr> <name>   # <confidence> <evidence>
+# NEW file for the 0x24852c sub-function wave (do NOT merge into symbols.txt
+# without review). Cart offset = SH2 addr - 0x02000000.
+#
+# Context: census member 0x24852c is a merged extent 0x24852c..0x249e68 holding
+# ~19 genuine functions. Entry 0x24852c (actor_probe_handler) + callees 0x24910e
+# (actor_spawn_sub_init) + 0x2499a6 (actor_enter_state14) were done by the prior
+# wave. This wave adds 14 more (below). The 2 largest (jump-table dispatchers,
+# 0x2492f8 + 0x248bb8) are deferred - see functional_852c.md.
+#
+# Shared ABI family: handlers take (r4=task, r5=entity), push r14, keep entity in
+# r14, keep task in r13, and tail-call animation_update (func_0222dc2c 0x0222dc2c).
+# Some are single-arg (r4=entity) leaf/setup routines, noted below.
+
+# ---- per-tick actor combat handlers (task, entity) ----
+0x022485b8 actor_grapple_handler   # HIGH  5-state FSM (unkD8 0..4) grapple/tie-up. ease partner toward entity (g_060995B0[unk4b]->8); state1 spawns tie-up task func_02226148 via func_0220ff72; state2 0x88-command dispatch; states3/4 flip/hold w/ func_022461d8 side check. All brafs + 2 PIC ptrs resolved. NAMING GUESS. hand-verified vs --asm.
+0x0224886e actor_carry_handler     # HIGH  3-state FSM. state0 eases partner X by +-0x1000 per partner facing(unk26==0x4000); state1->func_2490a0; state2 0x88-command dispatch (0x45 func_249240 / 0x47 pickup / 0x48 func_022499a6 / 0x49 func_0223ffcc / default kick). NAMING GUESS. hand-verified.
+0x02248f88 actor_command_handler   # HIGH  2-state. state0 sets unk5C=0xdd/unkD8=1 when engaged; state1: wait if hit(unk4C), despawn via func_249cda when unk56<=0, else 0x88-command dispatch (0x47->func_2490a0, 0x48->func_249240, 0x49->func_0223ffcc, 0x45/46->func_02227704, default kick). NAMING GUESS. hand-verified.
+0x02249898 actor_grab_lock_handler # HIGH  grab/throw lock. hit interrupt sets g_060E0F2C[unk94]=1; state0 engages via tableA/B(0x060E0F0C/0x060E0F2C)[unk12C] -> func_02239ce8(entity,&task,i); state1 release via func_02239fc6/func_02245c88. NAMING GUESS. hand-verified.
+0x02249a04 actor_hit_or_hazard_handler # HIGH  minimal: hit(unk4C)->func_022489d0, else hazard(unk54&2)->func_022469f2, then animation_update. NAMING GUESS. hand-verified.
+0x02249bba actor_clash_resolve_handler # HIGH  global-cancel(0x06098564) kick; else state 0/1/2 on unkD8 driven by func_022444b6 clash outcome; flip + func_249b80 anim pick. tail animation_update. NAMING GUESS. hand-verified.
+
+# ---- single-arg (r4=entity) setup / leaf helpers ----
+0x022489d0 actor_hit_react         # HIGH  the hit/stun interrupt handler (called by every handler when entity[0x4c]!=0). resets actor, snaps to attacker g_060995B0[unk4c]->8, picks reaction anim from unk88 cmd (0x2b/0x2c/0x2d), spawns hit fx func_0223a9d0 + func_02245c88. 2 brafs resolved. matches prior-wave reference 'func_022489d0 hit-interrupt'. hand-verified.
+0x022490a0 actor_spawn_clash_task  # HIGH  spawn actor_clash_state(0x02226eb8) task via func_0220ff72(*0x06099580,...); wire task->8->{10,14}; func_02244988(entity,0x060900fc); unkD4=0xa unkD8=2. PIC handler ptr resolved w/ ptr_resolve. NAMING GUESS. hand-verified.
+0x022490e4 actor_try_grab          # HIGH  predicate: p=func_022453de(entity); p?func_0224910e(entity,p),ret 1 : func_022469f2(entity),ret 0. returns s32. NAMING GUESS. hand-verified.
+0x02249240 actor_enter_state4      # HIGH  enter state4: unkD4=0x11 unkD8=4 unk84=0x1000 unk108=3; func_02245e58(entity); countdown unkC4 from either entity[0x4d]-4 (if unkE0&0x400000) or table 0x06090138; unkE0=(..&0x01400000)|0x200400; tail func_022170ea. NAMING GUESS. hand-verified.
+0x02249a82 actor_enter_clash       # HIGH  enter clash pose (unkD4=0xf). pick 12-byte descriptor from 0x06099764 via selector *0x0609977c&3; record quadrant flag in 0x06097128[unk34*0x24]; func_022444b6(entity). NAMING GUESS. hand-verified.
+0x02249b80 actor_pick_anim_variant # HIGH  unk5C = (func_02210020()&3 < 2) ? unk148 : variant-table[sel] (entity[0x188]), fallback unk148 if 0xffff. NAMING GUESS. hand-verified.
+0x02249cda actor_enter_despawn     # HIGH  (task,entity) installs despawn task: task->fn = func_0223e9d2 (if unkE4==9) else actor_retract_task(0x02249da8); prime unkD4/unkC4/unkBC/unkE0/unk84; opt func_0223ab5c(entity, task[0xf]>>6&3); tail func_022170b4. ptr_resolve on both handler ptrs. NAMING GUESS. hand-verified.
+0x02249da8 actor_retract_task      # HIGH  (r4=task) 4-state despawn/retract task (entity=task->8). states0/1 anim+func_022449b2; state2 countdown unkC4; state3 drain global 0x060973e0 by entity[0xf8], func_022170b4/func_02227c22, self-clear task->0. NAMING GUESS. hand-verified.
+
+# ---- cross-referenced callees used as externs (NOT shipped this wave) ----
+0x02226148 <tieup_task_handler>    # spawned by actor_grapple_handler state1 (ptr_resolve). task handler.
+0x0223e9d2 <despawn_handler_alt>   # alt despawn task fn installed by actor_enter_despawn when unkE4==9.

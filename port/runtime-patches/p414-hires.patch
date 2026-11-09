@@ -1,0 +1,1193 @@
+--- a/runtime/src/host/host.cpp
++++ b/runtime/src/host/host.cpp
+@@ -101,6 +101,7 @@
+         }
+     }
+     player_settings(g_settings);
++    g_cfg.internal_resolution = g_settings.number("display", "internal_resolution");
+     bind_keyboard();
+ }
+ 
+@@ -1304,6 +1305,9 @@
+     sat_note("host: %.2f VBlanks/s over %.1f s (VB %llu), %d pictures left out; audio queued %d..%d ms, %d times empty, %d chunks dropped, %d resyncs",
+              (double)(sat_vblanks() - from) / s, s, (unsigned long long)sat_vblanks(), g_skipped - skipped_from,
+              g_audio ? least * 1000 / 44100 : 0, g_audio ? most * 1000 / 44100 : 0, g_underruns, g_dropped, g_resyncs);
++    if (g_cfg.internal_resolution > 1)
++        sat_note("video: %llu exact enhanced fields reused, %llu composed",
++            (unsigned long long)vdp2_cache_hits(),(unsigned long long)vdp2_cache_misses());
+     since = Clock::now();
+     from = sat_vblanks();
+     skipped_from = g_skipped;
+@@ -1316,22 +1320,23 @@
+ // The original composed frame remains untouched (headless/reference shots, F12).
+ static std::vector<uint32_t> g_crt_pixels;
+ static void crt_pixels(const Frame& f) {
++    int resolution = std::clamp(g_cfg.internal_resolution, 1, 3);
+     g_crt_pixels.resize((size_t)f.w * f.h * 2);
+     for (int y = 0; y < f.h; ++y) for (int x = 0; x < f.w; ++x) {
+-        uint32_t left = f.px[(size_t)y*f.w + std::max(0, x-1)];
++        uint32_t left = f.px[(size_t)y*f.w + std::max(0, x-resolution)];
+         uint32_t centre = f.px[(size_t)y*f.w + x];
+-        uint32_t right = f.px[(size_t)y*f.w + std::min(f.w-1, x+1)];
++        uint32_t right = f.px[(size_t)y*f.w + std::min(f.w-1, x+resolution)];
+         uint32_t bright = 0, dark = 0;
+         for (int channel = 0; channel < 3; ++channel) {
+             int shift = channel * 8;
+             unsigned value = (((left >> shift) & 255) + 6*((centre >> shift) & 255) + ((right >> shift) & 255)) / 8;
+             // 12% attenuation of the other two phosphors, RGB repeating.
+-            if (2-channel != x%3) value = value * 225 / 256;
++            if (2-channel != (x/resolution)%3) value = value * 225 / 256;
+             bright |= value << shift;
+             dark |= (value * 184 / 256) << shift;
+         }
+-        g_crt_pixels[(size_t)(2*y)*f.w + x] = bright;
+-        g_crt_pixels[(size_t)(2*y+1)*f.w + x] = dark;
++        g_crt_pixels[(size_t)(2*y)*f.w + x] = ((2*y/resolution)&1) ? dark : bright;
++        g_crt_pixels[(size_t)(2*y+1)*f.w + x] = (((2*y+1)/resolution)&1) ? dark : bright;
+     }
+ }
+ 
+@@ -1365,13 +1370,14 @@
+     // shows 256 lines, and a 224-line picture has a border above and below
+     int sw = ww, sh = ww * 3 / 4;
+     if (sh > wh) { sh = wh; sw = wh * 4 / 3; }
+-    int tv_lines = bios_pal() ? std::max(256, f.h) : f.h;
++    int original_h = f.h / std::clamp(g_cfg.internal_resolution, 1, 3);
++    int tv_lines = bios_pal() ? std::max(256, original_h) : original_h;
+     if (integer) {                              // each line the same whole number of pixels tall, the width 4:3 of that
+         int n = std::max(1, std::min(wh / tv_lines, ww * 3 / (4 * tv_lines)));
+         sh = tv_lines * n;
+         sw = sh * 4 / 3;
+     }
+-    int ph = sh * f.h / tv_lines;
++    int ph = sh * original_h / tv_lines;
+     g_dst = {(float)((ww - sw) / 2), (float)((wh - ph) / 2), (float)sw, (float)ph};
+     draw();
+     events();
+--- a/runtime/src/host/launcher.cpp
++++ b/runtime/src/host/launcher.cpp
+@@ -20,9 +20,22 @@
+ #include <sstream>
+ 
+ namespace {
++void internal_resolution() {
++    auto& set = host_settings();
++    int resolution = g_cfg.internal_resolution - 1;
++    const char* resolutions[] = {"1x (original)", "2x", "3x (CPU intensive)"};
++    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.5f);
++    if (ImGui::Combo("Internal resolution", &resolution, resolutions, 3)) {
++        g_cfg.internal_resolution = resolution + 1;
++        set.set("display", "internal_resolution", std::to_string(resolution + 1));
++        host_settings_save();
++    }
++}
++
+ void time_features() {
+     auto& set = host_settings();
+     ImGui::SeparatorText("Player features");
++    internal_resolution();
+     int seconds = g_cfg.rewind_seconds;
+     if (ImGui::SliderInt("Rewind history", &seconds, 0, 20, "%d s (0 = off)")) {
+         set.set("player", "rewind_seconds", std::to_string(seconds));
+@@ -527,6 +540,7 @@
+ 
+     void display_and_sound() {
+         ImGui::SeparatorText("Display and sound");
++        internal_resolution();
+         bool full = set_.flag("display", "fullscreen");
+         if (ImGui::Checkbox("Fullscreen (F11)", &full)) {
+             set_.set("display", "fullscreen", full ? "true" : "false");
+--- a/runtime/src/host/settings.cpp
++++ b/runtime/src/host/settings.cpp
+@@ -16,6 +16,8 @@
+ fullscreen = false
+ ; the window is 320x240 times this
+ scale = 3
++; CPU internal rendering; hardware framebuffer and guest timing remain original
++internal_resolution = 1
+ ; true: the picture is its lines times the largest whole number that fits, 4:3 and sharp; false: as
+ ; large as fits, smoothed; auto: true for an arcade board (ST-V), false for a disc
+ integer = auto
+@@ -162,7 +164,7 @@
+ // The range a number may take, by key.
+ static const struct { const char* key; int lo, hi; } kRanges[] = {
+     {"start_scene", 0, 72}, {"turbo_p1_a", 0, 30}, {"turbo_p1_b", 0, 30}, {"turbo_p1_c", 0, 30},
+-    {"turbo_p2_a", 0, 30}, {"turbo_p2_b", 0, 30}, {"turbo_p2_c", 0, 30}, {"rewind_seconds", 0, 20}, {"difficulty", 1, 8}, {"vitality", 0, 7}, {"lives", 1, 4}, {"scale", 1, 8}, {"size", 50, 200}, {"volume", 0, 100}, {"stick", 5, 95}, {"trigger", 5, 95}, {"multitap", 0, 2}};
++    {"turbo_p2_a", 0, 30}, {"turbo_p2_b", 0, 30}, {"turbo_p2_c", 0, 30}, {"rewind_seconds", 0, 20}, {"difficulty", 1, 8}, {"vitality", 0, 7}, {"lives", 1, 4}, {"internal_resolution", 1, 3}, {"scale", 1, 8}, {"size", 50, 200}, {"volume", 0, 100}, {"stick", 5, 95}, {"trigger", 5, 95}, {"multitap", 0, 2}};
+ 
+ static std::string trim(const std::string& s) {
+     size_t a = s.find_first_not_of(" \t\r"), b = s.find_last_not_of(" \t\r");
+--- a/runtime/src/machine/saturn.h
++++ b/runtime/src/machine/saturn.h
+@@ -56,6 +56,7 @@
+     std::string shots;              // N,... : the picture to out/shot-N.png at VBlank-IN N
+     bool headless = false;          // no window
+     bool fullscreen = false;        // or as the settings say
++    int internal_resolution = 1;    // presentation only: 1 (original), 2 or 3
+     int scale = 0;                  // the window: 320x240 times this; 0: as the settings say
+     std::string settings;           // the player's settings file (host.cpp); "-": none, the defaults; empty: settings.ini
+                                     // in saturn-recomp's directory in the user's data directory
+--- a/runtime/src/video/vdp1.cpp
++++ b/runtime/src/video/vdp1.cpp
+@@ -36,6 +36,8 @@
+ #include "video.h"
+ #include <algorithm>
+ #include <array>
++#include <atomic>
++#include <thread>
+ #include <climits>
+ #include <cmath>
+ #include <cstdlib>
+@@ -43,10 +45,15 @@
+ 
+ uint8_t g_vdp1_vram[0x80000];
+ static uint16_t g_fb[2][512 * 256];             // host order
+-static uint16_t* g_target = g_fb[0];            // where commands draw
+ static uint16_t g_hi[2][1024 * 512];            // each framebuffer's draw at full height, under FBCR.DIE
+ static bool g_hi_on[2];                         // ... drawn so
+-static uint16_t* g_hi_target;                   // the one being drawn, or null
++// Independent presentation dots. No bus, timing or command-budget operation reads these.
++static std::vector<uint16_t> g_present[2];
++static int g_present_scale = 1;
++static uint64_t g_present_serial, g_present_revision[2];
++static thread_local int g_raster_scale = 1;
++static thread_local bool g_present_pass, g_nearest;
++static thread_local int g_present_y0, g_present_y1;
+ static int g_dil;                               // the field FBCR.DIL names for the framebuffer
+ static int g_draw_fb;                           // the other one is shown
+ static uint16_t g_reg[0x10];                    // TVMR FBCR PTMR EWDR EWLR EWRR ENDR - EDSR LOPR COPR MODR
+@@ -55,10 +62,37 @@
+ static bool g_drawing;
+ static uint64_t g_draw_end, g_frame_changes, g_draws;
+ 
+-// the drawing state that outlives a draw
+-static int g_sys_x = 319, g_sys_y = 223;        // system clip: 0..x, 0..y
+-static int g_ux0, g_uy0, g_ux1 = 319, g_uy1 = 223;
+-static int g_local_x, g_local_y;
++// The chip's persistent draw state is shared by both SH-2 host threads. Only
++// presentation workers redirect these aliases to private copies. A thread-local
++// hardware state would incorrectly forget a clip/local origin when the other CPU
++// starts the next draw.
++struct RasterState {
++    uint16_t* target = g_fb[0];
++    uint16_t* hi_target = nullptr;
++    const uint8_t* tex = g_vdp1_vram;
++    int sys_x = 319, sys_y = 223;
++    int ux0 = 0, uy0 = 0, ux1 = 319, uy1 = 223;
++    int local_x = 0, local_y = 0;
++    bool fb8 = false;
++    uint64_t steps = 0;
++};
++static RasterState g_hardware_raster;
++static thread_local RasterState* g_raster = &g_hardware_raster;
++#define g_target (g_raster->target)
++#define g_hi_target (g_raster->hi_target)
++#define g_tex (g_raster->tex)
++#define g_sys_x (g_raster->sys_x)
++#define g_sys_y (g_raster->sys_y)
++#define g_ux0 (g_raster->ux0)
++#define g_uy0 (g_raster->uy0)
++#define g_ux1 (g_raster->ux1)
++#define g_uy1 (g_raster->uy1)
++#define g_local_x (g_raster->local_x)
++#define g_local_y (g_raster->local_y)
++#define g_fb8 (g_raster->fb8)
++#define g_draw_steps (g_raster->steps)
++
++uint64_t vdp1_present_revision() { return g_present_revision[g_draw_fb ^ 1]; }
+ 
+ uint64_t vdp1_frame_changes() { return g_frame_changes; }
+ uint64_t vdp1_draws() { return g_draws; }
+@@ -77,7 +111,6 @@
+     return (uint16_t)(g_vdp1_vram[a] << 8 | g_vdp1_vram[a + 1]);
+ }
+ // textures, colour tables and Gouraud tables: VRAM, or its copy from when a recorded frame was drawn
+-static const uint8_t* g_tex = g_vdp1_vram;
+ static uint16_t tw(uint32_t a) {
+     a &= 0x7FFFE;
+     return (uint16_t)(g_tex[a] << 8 | g_tex[a + 1]);
+@@ -139,12 +172,25 @@
+     return !(is_zero && !c.spd);
+ }
+ 
+-static bool g_fb8;                              // 8 bits a pixel (TVMR 1) for this draw
+ 
+ static void put(uint16_t& d, const Cmd& c, uint16_t pix, const Rgb* g);
+ 
+ // A pixel already inside the clipping, or the framebuffer's edge.
+ static void plot_clipped(const Cmd& c, int x, int y, uint16_t pix, const Rgb* g) {
++    if (g_present_pass) {
++        int scale = g_present_scale;
++        int ox = g_nearest ? x : x / scale, oy = g_nearest ? y : y / scale;
++        if (x < 0 || y < 0 || ox >= (g_fb8 ? 1024 : 512) || oy >= (g_hi_target ? 512 : 256)) return;
++        if (oy < g_present_y0 || oy >= g_present_y1 || (c.mesh && ((ox ^ oy) & 1))) return;
++        int x0 = g_nearest ? x * scale : x, y0 = g_nearest ? y * scale : y;
++        for (int yy = 0; yy < (g_nearest ? scale : 1); ++yy)
++            for (int xx = 0; xx < (g_nearest ? scale : 1); ++xx) {
++                auto& d = g_present[g_draw_fb][(size_t)(y0 + yy) * (1024 * scale) + x0 + xx];
++                if (g_fb8) { if (!c.mon) d = pix & 255; }
++                else put(d, c, pix, g);
++            }
++        return;
++    }
+     if (x < 0 || y < 0 || x >= (g_fb8 ? 1024 : 512) || y >= (g_hi_target ? 512 : 256)) return;
+     if (c.mesh && ((x ^ y) & 1)) return;
+     if (g_hi_target) {
+@@ -164,9 +210,11 @@
+ }
+ 
+ static void plot(const Cmd& c, int x, int y, uint16_t pix, const Rgb* g) {
+-    if (x < 0 || y < 0 || x > g_sys_x || y > g_sys_y) return;
++    int cx = g_present_pass && !g_nearest ? x / g_present_scale : x;
++    int cy = g_present_pass && !g_nearest ? y / g_present_scale : y;
++    if (x < 0 || y < 0 || cx > g_sys_x || cy > g_sys_y) return;
+     if (c.clip) {
+-        bool in = x >= g_ux0 && x <= g_ux1 && y >= g_uy0 && y <= g_uy1;
++        bool in = cx >= g_ux0 && cx <= g_ux1 && cy >= g_uy0 && cy <= g_uy1;
+         if (in == c.outside) return;
+     }
+     plot_clipped(c, x, y, pix, g);
+@@ -205,7 +253,6 @@
+ // Pixel steps a draw may take, clipped ones included: a few times a busy game frame's. A runaway draw is cut
+ // short, as the next frame change cuts short Mednafen's, which draws in time slices.
+ static const uint64_t kDrawSteps = 4000000;
+-static uint64_t g_draw_steps;
+ 
+ // The shapes drawn to pixels: vdp1_raster.inc's own rules, or with SATURN_VDP1_GPL,
+ // vdp1_raster_gpl.inc's, which follow Mednafen's and are under its licence, the GPL.
+@@ -239,7 +286,7 @@
+         g_local_x = sx11(cw(cmd, 12)); g_local_y = sx11(cw(cmd, 14));
+         return;
+     }
+-    if (comm > 7) { sat_trace("VDP1: command %X at %05X", comm, a); return; }
++    if (comm > 7) { if (!g_present_pass) sat_trace("VDP1: command %X at %05X", comm, a); return; }
+     c.cmode = c.pmod >> 3 & 7;
+     c.ccb = c.pmod & 7;
+     c.spd = c.pmod & 0x40;
+@@ -260,8 +307,9 @@
+         for (int i = 0; i < 4; ++i) c.g[i] = rgb_of(tw(ga + i * 2));
+     }
+     for (Pt& q : p) { q.x += g_local_x; q.y += g_local_y; }
++    if (g_present_pass) { g_nearest = comm <= 1 || comm >= 5; g_raster_scale = g_nearest ? 1 : g_present_scale; }
+     draw_shape(c, cmd, comm, p);
+-    if (g_v1diag && c.textured) {
++    if (g_v1diag && !g_present_pass && c.textured) {
+         int x = p[0].x, y = p[0].y;
+         if (g_v1_ntex == 0) { g_v1_minx = g_v1_maxx = x; g_v1_miny = g_v1_maxy = y; }
+         if (x < g_v1_minx) g_v1_minx = x; if (x > g_v1_maxx) g_v1_maxx = x;
+@@ -324,7 +372,44 @@
+     return x & 1 ? w & 0xFF : w >> 8;
+ }
+ 
++void vdp1_present_sync() {
++    int scale = std::clamp(g_cfg.internal_resolution, 1, 3);
++    if (scale == g_present_scale) return;
++    int old_scale = g_present_scale;
++    for (int b = 0; b < 2; ++b) {
++        std::vector<uint16_t> next;
++        if (scale > 1) {
++            next.resize((size_t)1024 * 512 * scale * scale);
++            bool fb8 = g_reg[TVMR] & 1;
++            for (int y = 0; y < 512 * scale; ++y) for (int x = 0; x < 1024 * scale; ++x) {
++                int ox = x / scale, oy = y / scale;
++                uint16_t d = 0;
++                if (old_scale > 1) d = g_present[b][(size_t)(y * old_scale / scale) * 1024 * old_scale + x * old_scale / scale];
++                else if (g_hi_on[b]) d = g_hi[b][oy * 1024 + ox];
++                else if (oy < 256 && ox < (fb8 ? 1024 : 512)) {
++                    d = g_fb[b][oy * 512 + (fb8 ? ox / 2 : ox)];
++                    if (fb8) d = ox & 1 ? d & 255 : d >> 8;
++                }
++                next[(size_t)y * 1024 * scale + x] = d;
++            }
++        }
++        g_present[b].swap(next);
++        g_present_revision[b] = ++g_present_serial;
++    }
++    g_present_scale = scale;
++}
++
++uint16_t vdp1_present_dot(int x, int y, bool dd, int scale) {
++    int shown = g_draw_fb ^ 1;
++    if (scale == 1 || g_present_scale != scale || g_show_ifb || (g_hi_on[shown] && !dd)) return vdp1_dot(x / scale, y / scale, dd);
++    if (x < 0 || y < 0 || x >= ((g_reg[TVMR] & 1) ? 1024 : 512) * scale) return 0;
++    if (dd && !g_hi_on[shown]) y /= 2;
++    if (y >= (g_hi_on[shown] ? 512 : 256) * scale) return 0;
++    return g_present[shown][(size_t)y * 1024 * scale + x];
++}
++
+ static void draw() {
++    vdp1_present_sync();
+     g_reg[EDSR] = (uint16_t)(g_reg[EDSR] >> 1 & 1);   // BEF <- CEF, CEF <- 0
+     if ((g_reg[TVMR] & 3) == 3) sat_fatal("VDP1: TVMR %04X (8-bit rotation) is not done", g_reg[TVMR]);
+     g_fb8 = g_reg[TVMR] & 1;
+@@ -337,6 +422,36 @@
+         g_rec_cur.draws.push_back({g_sys_x, g_sys_y, g_ux0, g_uy0, g_ux1, g_uy1, g_local_x, g_local_y, {}});
+         rec = &g_rec_cur.draws.back();
+     }
++    // Stream only commands the hardware actually executes. Presentation workers own
++    // disjoint bands, private raster/clip state and immutable texture data. All finish
++    // before draw() returns. It cannot change guest command limits, timing, or registers.
++    std::vector<RecCmd> presentation;
++    std::atomic<int> published{0};
++    std::vector<std::thread> painters;
++    std::vector<uint8_t> texture;
++    int queued = 0;
++    if (g_present_scale > 1) {
++        presentation.resize(20000);
++        texture.assign(g_vdp1_vram, g_vdp1_vram + sizeof g_vdp1_vram);
++        RasterState initial = g_hardware_raster;
++        int height = initial.hi_target ? 512 : 256;
++        int bands = std::clamp((int)std::thread::hardware_concurrency(), 1, 4);
++        for (int band=0;band<bands;++band) painters.emplace_back([&, initial, height, bands, band] {
++            RasterState private_raster = initial;
++            g_raster = &private_raster;
++            g_tex=texture.data(); g_present_pass=true; g_draw_steps=0;
++            g_present_y0=height*band/bands; g_present_y1=height*(band+1)/bands;
++            int read=0;
++            for (;;) {
++                int count=published.load(std::memory_order_acquire);
++                bool done=count<0;
++                int available=done ? -count-1 : count;
++                while (read<available) { const auto& rc=presentation[read++]; command(rc.b,rc.addr); }
++                if (done) break;
++                published.wait(count,std::memory_order_acquire);
++            }
++        });
++    }
+     uint32_t a = 0, ret = 0, last = 0;
+     int n = 0;
+     g_draw_steps = 0;
+@@ -358,6 +473,13 @@
+             rc.key = a / 32 < g_next_keys.size() ? g_next_keys[a / 32] : 0;
+             for (int i = 0; i < 32; ++i) rc.b[i] = g_vdp1_vram[(a + i) & 0x7FFFF];
+             command(rc.b, a);
++            if (!painters.empty()) {
++                presentation[queued++]=rc;
++                if (queued%8==0) {
++                    published.store(queued,std::memory_order_release);
++                    published.notify_all();
++                }
++            }
+             if (rec) rec->cmds.push_back(rc);
+             ++n;
+         }
+@@ -370,6 +492,10 @@
+         }
+         a &= 0x7FFFF;
+     }
++    published.store(-queued-1,std::memory_order_release);
++    published.notify_all();
++    for (auto& painter : painters) painter.join();
++    if (g_present_scale > 1) g_present_revision[g_draw_fb] = ++g_present_serial;
+     g_next_keys.clear();
+     g_reg[LOPR] = (uint16_t)(last >> 3);
+     g_reg[COPR] = (uint16_t)(last >> 3);
+@@ -620,10 +746,18 @@
+ 
+ // ---- frames -------------------------------------------------------------------------------
+ static void erase(int which) {
++    if (g_present_scale > 1) g_present_revision[which] = ++g_present_serial;
+     int x0 = (g_reg[EWLR] >> 9 & 0x7F) * 8, y0 = g_reg[EWLR] & 0x1FF;
+     int x1 = (g_reg[EWRR] >> 9 & 0x7F) * 8, y1 = g_reg[EWRR] & 0x1FF;
+     for (int y = y0; y <= y1 && y < 256; ++y)
+         for (int x = x0; x < x1 && x < 512; ++x) g_fb[which][y * 512 + x] = g_reg[EWDR];
++    if (g_present_scale > 1) {
++        bool fb8 = g_reg[TVMR] & 1;
++        int scale = g_present_scale, rows = g_hi_on[which] ? 2 : 1;
++        for (int y = y0 * rows * scale; y < (y1 + 1) * rows * scale && y < 512 * scale; ++y)
++            for (int x = x0 * (fb8 ? 2 : 1) * scale; x < x1 * (fb8 ? 2 : 1) * scale && x < 1024 * scale; ++x)
++                g_present[which][(size_t)y * 1024 * scale + x] = fb8 ? ((x / scale) & 1 ? g_reg[EWDR] & 255 : g_reg[EWDR] >> 8) : g_reg[EWDR];
++    }
+     if (!g_hi_on[which]) return;
+     bool fb8 = g_reg[TVMR] & 1;                  // 8 bits a pixel: EWDR is two dots, X counts 16 of them
+     int d0 = fb8 ? x0 * 2 : x0, d1 = fb8 ? x1 * 2 : x1;
+@@ -667,6 +801,10 @@
+     int r = (off >> 1) & 0xF;
+     sat_trace("VDP1 reg %02X <- %04X (pr %08X)", off, v, g_cpu->pr);
+     if (r >= EDSR) return;                       // read-only
++    if ((r == TVMR && ((g_reg[r] ^ v) & 3)) || (r == FBCR && ((g_reg[r] ^ v) & 8))) {
++        g_present_scale = 1;
++        for (auto& b : g_present) b.clear();
++    }
+     g_reg[r] = v;
+     switch (r) {
+     case FBCR:
+@@ -693,11 +831,22 @@
+ }
+ 
+ void vdp1_fb_write(uint32_t off, uint32_t v, int size) {
++    vdp1_present_sync();
+     uint16_t* fb = g_fb[g_draw_fb];
+-    if (size == 4) { fb[(off >> 1) & 0x1FFFF] = (uint16_t)(v >> 16); fb[((off >> 1) + 1) & 0x1FFFF] = (uint16_t)v; return; }
++    if (size == 4) { vdp1_fb_write(off, v >> 16, 2); vdp1_fb_write(off + 2, v, 2); return; }
+     uint16_t& w = fb[(off >> 1) & 0x1FFFF];
+     if (size == 2) w = (uint16_t)v;
+     else w = off & 1 ? (uint16_t)((w & 0xFF00) | (v & 0xFF)) : (uint16_t)((w & 0x00FF) | (v & 0xFF) << 8);
++    if (g_present_scale > 1) g_present_revision[g_draw_fb] = ++g_present_serial;
++    if (g_present_scale > 1 && !g_hi_on[g_draw_fb]) {
++        int word = (off >> 1) & 0x1FFFF, y = word / 512, x = word % 512;
++        bool fb8 = g_reg[TVMR] & 1;
++        for (int dot = 0; dot < (fb8 ? 2 : 1); ++dot) {
++            uint16_t d = fb8 ? (dot ? w & 255 : w >> 8) : w;
++            for (int yy = 0; yy < g_present_scale; ++yy) for (int xx = 0; xx < g_present_scale; ++xx)
++                g_present[g_draw_fb][(size_t)(y * g_present_scale + yy) * 1024 * g_present_scale + (x * (fb8 ? 2 : 1) + dot) * g_present_scale + xx] = d;
++        }
++    }
+ }
+ 
+ void vdp1_dump(FILE* f) {
+@@ -721,6 +870,16 @@
+         g_hi_target = hi_target < 0 ? nullptr : g_hi[hi_target];
+         g_tex = g_vdp1_vram;
+     }
++    s(g_present_scale);
++    if (g_present_scale < 1 || g_present_scale > 3) state_fail("invalid presentation resolution");
++    for (auto& b : g_present) {
++        size_t n = g_present_scale > 1 ? (size_t)1024 * 512 * g_present_scale * g_present_scale : 0;
++        if (s.loading) b.resize(n);
++        if (n) s.raw(b.data(), n * sizeof(uint16_t));
++    }
++    if (s.loading) {
++        for (auto& revision : g_present_revision) revision = ++g_present_serial;
++        g_show_ifb = false; g_rec_cur = {}; g_rec_last = {}; g_rec_prev = {}; }
+     s(g_dil), s(g_draw_fb), s(g_reg), s(g_change_pending), s(g_erase_pending), s(g_erase_field), s(g_drawing);
+     s(g_draw_end), s(g_frame_changes), s(g_draws);
+     s(g_sys_x), s(g_sys_y), s(g_ux0), s(g_uy0), s(g_ux1), s(g_uy1), s(g_local_x), s(g_local_y), s(g_fb8);
+--- a/runtime/src/video/vdp1_raster.inc
++++ b/runtime/src/video/vdp1_raster.inc
+@@ -22,7 +22,7 @@
+     int len = std::max(adx, ady);
+     g_draw_steps += (uint64_t)len + 1;
+     int xi = dx < 0 ? -1 : 1, yi = dy < 0 ? -1 : 1;
+-    int ends = 0;
++    int ends = 0, last_end_u = -1;
+     bool stop = false;
+     auto pixel = [&](int x, int y, int k) {
+         if (stop) return;
+@@ -31,7 +31,7 @@
+             bool end;
+             int u = (int)((int64_t)k * c.w / (len + 1));
+             if (!texel(c, u, v, pix, end)) {
+-                if (end && ++ends == 2) stop = true;
++                if (end && (!g_present_pass || g_nearest || u != last_end_u)) { last_end_u = u; if (++ends == 2) stop = true; }
+                 return;
+             }
+         }
+@@ -77,6 +77,11 @@
+ 
+ // the area a pixel can land in: system clipping, and the user clipping inside it
+ static bool outside_clip(const Cmd& c, int x0, int y0, int x1, int y1) {
++    if (g_raster_scale > 1) {
++        x0 /= g_raster_scale; y0 /= g_raster_scale;
++        x1 /= g_raster_scale; y1 /= g_raster_scale;
++    }
++    if (g_present_pass && (y1 < g_present_y0 || y0 >= g_present_y1)) return true;
+     if (x1 < 0 || y1 < 0 || x0 > std::min(g_sys_x, g_fb8 ? 1023 : 511) || y0 > std::min(g_sys_y, g_hi_target ? 511 : 255)) return true;
+     return c.clip && !c.outside && (x1 < g_ux0 || y1 < g_uy0 || x0 > g_ux1 || y0 > g_uy1);
+ }
+@@ -88,8 +93,8 @@
+     int left = std::max(std::abs(d.x - a.x), std::abs(d.y - a.y));
+     int right = std::max(std::abs(cc.x - b.x), std::abs(cc.y - b.y));
+     int n = std::max(left, right);
+-    if (n > 2048) return;                       // a shape far off the framebuffer: the chip would spend ages on it
+-    for (int i = 0; i <= n && g_draw_steps < kDrawSteps; ++i) {
++    if (n > 2048 * g_raster_scale) return;                       // a shape far off the framebuffer: the chip would spend ages on it
++    for (int i = 0; i <= n && g_draw_steps < kDrawSteps * (g_present_pass ? 9 : 1); ++i) {
+         Pt l{step_to(a.x, d.x, i, n), step_to(a.y, d.y, i, n)};
+         Pt r{step_to(b.x, cc.x, i, n), step_to(b.y, cc.y, i, n)};
+         int v = c.textured ? (int)((int64_t)i * c.h / (n + 1)) : 0;
+@@ -101,6 +106,15 @@
+ 
+ // Command `comm` (0-7) with its vertices: sprites and polygons as quadrilaterals, lines alone.
+ static void draw_shape(const Cmd& c, const uint8_t* cmd, int comm, Pt* p) {
++    Pt scaled[4];
++    if (g_raster_scale > 1) {
++        int minx = p[0].x, miny = p[0].y;
++        for (int i = 1; i < 4; ++i) { minx = std::min(minx, p[i].x); miny = std::min(miny, p[i].y); }
++        for (int i = 0; i < 4; ++i) scaled[i] = {
++            p[i].x * g_raster_scale + (p[i].x > minx ? g_raster_scale - 1 : 0),
++            p[i].y * g_raster_scale + (p[i].y > miny ? g_raster_scale - 1 : 0)};
++        p = scaled;
++    }
+     switch (comm) {
+     case 0x0: {                                 // normal sprite
+         int x0 = p[0].x, y0 = p[0].y, x1 = x0 + c.w - 1, y1 = y0 + c.h - 1;
+--- a/runtime/src/video/vdp2.cpp
++++ b/runtime/src/video/vdp2.cpp
+@@ -37,6 +37,7 @@
+ #include "state.h"
+ #include "video.h"
+ #include <algorithm>
++#include <array>
+ #include <cmath>
+ #include <cstdlib>
+ #include <cstring>
+@@ -54,8 +55,8 @@
+     return (int32_t)((value & (sign * 2 - 1)) ^ sign) - (int32_t)sign;
+ }
+ 
+-static uint16_t sprite_dot(int x, int y, bool dd) {
+-    if (!(vdp1_reg_read(0, 2) & 2)) return vdp1_dot(x, y, dd);
++static uint16_t sprite_dot(int x, int y, bool dd, int scale = 1) {
++    if (!(vdp1_reg_read(0, 2) & 2)) return scale == 1 ? vdp1_dot(x, y, dd) : vdp1_present_dot(x, y, dd, scale);
+     uint32_t table = (((uint32_t)(reg(0xBC) & 7) << 16 | reg(0xBE)) & ~0x41u) * 2;
+     auto parameter = [&](uint32_t off, int bits, int shift) {
+         return signed_bits(((uint32_t)vw(table + off) << 16 | vw(table + off + 2)) >> shift, bits);
+@@ -63,6 +64,17 @@
+     int32_t sx = parameter(0, 23, 6), sy = parameter(4, 23, 6);
+     int32_t vx = parameter(12, 13, 6), vy = parameter(16, 13, 6);
+     int32_t dx = parameter(20, 12, 7), dy = parameter(24, 12, 7);
++    if (scale > 1) {
++        double fx = (double)x / scale, fy = (double)y / scale;
++        double ax = sx + (!(reg(0xB2) & 1) ? fy * vx : 0);
++        double ay = sy + (!(reg(0xB2) & 2) ? fy * vy : 0);
++        // Preserve the signed 20-bit origin wrapping before the horizontal increment.
++        double bx = ax / 2, by = ay / 2;
++        bx -= std::floor((bx + 524288) / 1048576) * 1048576;
++        by -= std::floor((by + 524288) / 1048576) * 1048576;
++        return vdp1_present_dot((int)std::floor((bx + fx * dx) * scale / 512),
++                                (int)std::floor((by + fx * dy) * scale / 512), false, scale);
++    }
+     if (!(reg(0xB2) & 1)) sx += y * vx;
+     if (!(reg(0xB2) & 2)) sy += y * vy;
+     sx = signed_bits((uint32_t)(sx >> 1), 20);
+@@ -81,7 +93,10 @@
+ static int cram_mode() { return reg(0x0E) >> 12 & 3; }
+ 
+ // A colour RAM entry as 0x00RRGGBB, and its MSB (the colour calculation bit).
++struct Colour { uint32_t rgb; bool msb; };
++static thread_local const Colour* g_palette;
+ static uint32_t cram(uint32_t i, bool* msb) {
++    if (g_palette) { const auto& c=g_palette[i & 0x7ff]; if (msb) *msb=c.msb; return c.rgb; }
+     if (cram_mode() == 2) {
+         uint32_t a = (i & 0x3FF) * 4;
+         uint32_t v = (uint32_t)g_vdp2_cram[a] << 24 | g_vdp2_cram[a + 1] << 16 | g_vdp2_cram[a + 2] << 8 | g_vdp2_cram[a + 3];
+@@ -256,8 +271,19 @@
+     return s;
+ }
+ 
+-static bool nbg_pixel(const Nbg& s, int x, int y, Pix& p) {
+-    uint32_t sx = (uint32_t)(s.sx + x * s.dx) >> 8, sy = (uint32_t)(s.sy + y * s.dy) >> 8;
++static bool nbg_pixel(const Nbg& s, int x, int y, Pix& p, int scale = 1) {
++    uint32_t sx, sy;
++    if (scale == 1) {
++        sx = (uint32_t)(s.sx + x * s.dx) >> 8;
++        sy = (uint32_t)(s.sy + y * s.dy) >> 8;
++    } else {
++        auto sample = [scale](int32_t origin, int coord, int32_t increment) {
++            int64_t value = (int64_t)origin * scale + (int64_t)coord * increment;
++            int64_t divisor = scale * 256;
++            return (uint32_t)(value >= 0 ? value / divisor : -((-value + divisor - 1) / divisor));
++        };
++        sx = sample(s.sx, x, s.dx); sy = sample(s.sy, y, s.dy);
++    }
+     if (s.bitmap) {
+         sx &= (uint32_t)(s.line_flags & 2 ? 1024 : s.bm_w) - 1;
+         sy &= (uint32_t)(s.line_flags & 4 ? 512 : s.bm_h) - 1;
+@@ -339,6 +365,8 @@
+     double KAst, dKAst, dKAx;                   // coefficient address (table-entry units) + deltas
+     uint32_t kt_base;                           // coefficient table VRAM byte base
+     const Rbg* alt;                             // RPMD=2: the parameter-B screen for coefficient-MSB dots
++    bool row_cached = false;
++    double row_xsp = 0, row_ysp = 0, row_dxd = 0, row_dyd = 0;
+     double xscale, yscale;                      // display dot -> rotation-screen dot (0.5 in hi-res / DDI)
+ };
+ 
+@@ -561,13 +589,14 @@
+ }
+ 
+ // a rotation screen dot at display column dx, line dy: false if transparent / off the map.
+-static bool rbg_pixel(const Rbg& s, int dx, int dy, Pix& p) {
++static bool rbg_pixel(const Rbg& s, double dx, double dy, Pix& p) {
+     double x = dx * s.xscale, y = dy * s.yscale;
+     // the screen-space pre-transform at this line, and the per-dot increments (through the matrix)
+     double Xstv = s.Xst + s.dXst * y, Ystv = s.Yst + s.dYst * y;
+-    double Xsp = s.A * (Xstv - s.Px) + s.B * (Ystv - s.Py) + s.C * (s.Zst - s.Pz);
+-    double Ysp = s.D * (Xstv - s.Px) + s.E * (Ystv - s.Py) + s.F * (s.Zst - s.Pz);
+-    double dXd = s.A * s.dX + s.B * s.dY, dYd = s.D * s.dX + s.E * s.dY;
++    double Xsp = s.row_cached ? s.row_xsp : s.A * (Xstv - s.Px) + s.B * (Ystv - s.Py) + s.C * (s.Zst - s.Pz);
++    double Ysp = s.row_cached ? s.row_ysp : s.D * (Xstv - s.Px) + s.E * (Ystv - s.Py) + s.F * (s.Zst - s.Pz);
++    double dXd = s.row_cached ? s.row_dxd : s.A * s.dX + s.B * s.dY;
++    double dYd = s.row_cached ? s.row_dyd : s.D * s.dX + s.E * s.dY;
+     double kx = 1.0, ky = 1.0, xp = s.Xp;
+     if (s.kt_enable) {
+         double kaddr = s.KAst + s.dKAst * y + s.dKAx * x;
+@@ -759,7 +788,13 @@
+     once(7, mode(reg(0xEA), 2) || mode(reg(0xEE), 2), "special priority or colour calculation by dot (SFPRMD, SFCCMD)", reg(0xEA));
+ }
+ 
++using OffsetTable = std::array<std::array<std::array<uint8_t,256>,3>,2>;
++static thread_local const OffsetTable* g_offset_table;
+ static uint32_t apply_offset(uint32_t rgb, bool b) {
++    if (g_offset_table) {
++        const auto& t=(*g_offset_table)[b];
++        return (uint32_t)t[0][rgb>>16&255]<<16 | (uint32_t)t[1][rgb>>8&255]<<8 | t[2][rgb&255];
++    }
+     uint32_t base = b ? 0x11A : 0x114;
+     int out = 0;
+     for (int i = 0; i < 3; ++i) {
+@@ -770,13 +805,32 @@
+     return (uint32_t)out;
+ }
+ 
++// Only the enhanced path caches fields. The comparison is exact (no hash), and
++// the displayed VDP1 token changes on draw/erase/CPU writes, swaps and restore.
++// TVSTAT/HCNT/VCNT are raster counters not read by this compositor.
++struct EnhancedFrameCache {
++    bool valid = false;
++    int scale = 0;
++    uint64_t vdp1 = 0;
++    std::array<uint8_t,0x80000> vram;
++    std::array<uint8_t,0x1000> cram;
++    std::array<uint8_t,0x200> regs;
++    Frame frame;
++};
++static EnhancedFrameCache g_frame_cache;
++static uint64_t g_cache_hits, g_cache_misses;
++uint64_t vdp2_cache_hits() { return g_cache_hits; }
++uint64_t vdp2_cache_misses() { return g_cache_misses; }
++
+ void vdp2_compose(Frame& f) {
+     uint16_t tvmd = reg(0x00);
+     static const int kWidths[4] = {320, 352, 640, 704};
+     int hreso = tvmd & 7;
+-    f.w = kWidths[hreso < 4 ? hreso : hreso & 1];
++    int scale = std::clamp(g_cfg.internal_resolution, 1, 3);
++    vdp1_present_sync();
++    f.w = kWidths[hreso < 4 ? hreso : hreso & 1] * scale;
+     bool dd = (tvmd >> 6 & 3) == 3;              // double-density interlace
+-    f.h = vdp2_lines() * (dd ? 2 : 1);
++    f.h = vdp2_lines() * (dd ? 2 : 1) * scale;
+     f.px.assign((size_t)f.w * f.h, 0);
+     // STV_HOLDDISP (labeled bridge, default off): scene81_game_sm (func_02206876) state 5 is the
+     // ENTER-PLAY commit -- it DISABLES TVMD display-enable (*0x25F80000 = DISP.0 & 0x7FFF), tears
+@@ -793,9 +847,9 @@
+     note_unsupported();
+     Nbg nbg[4];
+     for (int n = 0; n < 4; ++n) setup_nbg(n, nbg[n]);
+-    Rbg rbg, rbg_b;
++    Rbg rbg{}, rbg_b{};
+     setup_rbg(rbg, rbg_b);
+-    Rbg rbg1;
++    Rbg rbg1{};
+     setup_rbg1(rbg1);
+     // DIAGNOSTIC (STV_LAYERDIAG="[intv]", default off): read-only log of which VDP2 layers are
+     // enabled (BGON) each `intv` frames, plus the director scene index -- used to find exactly when
+@@ -839,24 +893,101 @@
+     // Each line is composed from the setup above, which nothing changes from here on, and the video
+     // memories, which nothing writes while the machine waits for the picture; so bands of lines go to a
+     // few threads at once. Each band has its own back and line colour screens (the lambda's copies).
++    bool cacheable = scale > 1 && !g_cfg.interp;
++    std::array<uint8_t,0x200> render_regs;
++    uint64_t sprite_revision = vdp1_present_revision();
++    if (cacheable) {
++        std::copy(std::begin(g_vdp2_regs),std::end(g_vdp2_regs),render_regs.begin());
++        for(int off : {0x04,0x08,0x0a}) render_regs[off]=render_regs[off+1]=0;
++        const auto& c=g_frame_cache;
++        if (c.valid && c.scale==scale && c.vdp1==sprite_revision && c.regs==render_regs &&
++            !std::memcmp(c.cram.data(),g_vdp2_cram,sizeof g_vdp2_cram) &&
++            !std::memcmp(c.vram.data(),g_vdp2_vram,sizeof g_vdp2_vram)) {
++            ++g_cache_hits;
++            f=c.frame;
++            return;
++        }
++        ++g_cache_misses;
++    }
++    OffsetTable offset_table;
++    if (scale>1) for(int b=0;b<2;++b) for(int channel=0;channel<3;++channel) {
++        int o=signed_bits(reg((b ? 0x11a : 0x114)+channel*2),9);
++        for(int c=0;c<256;++c) offset_table[b][channel][c]=(uint8_t)std::clamp(c+o,0,255);
++    }
++    // The same priority order as the general compositor. An opaque top screen
++    // needs no samples from the screens under it. Colour calculation falls back
++    // to the general path, including its second-image and line-colour rules.
++    std::vector<std::pair<int,int>> opaque_order;
++    if (scale>1 && grad<0 && !sfprmd) {
++        if(rbg.on && rbg.prio) opaque_order.emplace_back(L_RBG0,rbg.prio);
++        if(rbg1.on && rbg1.prio) opaque_order.emplace_back(L_RBG1,rbg1.prio);
++        for(int n=0;n<4;++n) if(nbg[n].on && nbg[n].prio) opaque_order.emplace_back(L_NBG0+n,nbg[n].prio);
++        std::stable_sort(opaque_order.begin(),opaque_order.end(),[](auto a,auto b){return a.second>b.second;});
++    }
++    std::array<Colour,2048> palette;
++    g_palette=nullptr;
++    if (scale > 1) for (unsigned i=0;i<palette.size();++i) palette[i].rgb=cram(i,&palette[i].msb);
++    std::array<Pix,256> sprite_pixels{};
++    std::array<SpriteDot,256> sprite_kinds{};
++    bool cached_sprites=scale>1 && (vdp1_reg_read(0,2)&1);
++    if (cached_sprites) for (unsigned i=0;i<256;++i) sprite_kinds[i]=sprite_pixel(i,sprite_pixels[i]);
++    auto sample_sprite = [&](int x,int y,Pix& p) {
++        uint16_t d=sprite_dot(x,y,dd,scale);
++        if (cached_sprites && d<256) { p=sprite_pixels[d]; return sprite_kinds[d]; }
++        return sprite_pixel(d,p);
++    };
+     auto lines = [&, back, line_colour](int y0, int y1) mutable {
++        g_palette=scale>1 ? palette.data() : nullptr;
++        g_offset_table=scale>1 ? &offset_table : nullptr;
+         std::vector<uint32_t> blur(grad >= 0 ? f.w : 0);
++        struct Sample { Pix p; bool drawn; };
++        std::vector<Sample> normal[4];
++        bool cached_normal[4]{};
++        int previous_y=-1;
++        Nbg row_nbg[4];
++        auto row_rotation = [](Rbg s, double y) {
++            double Y=y*s.yscale;
++            double Xstv=s.Xst+s.dXst*Y, Ystv=s.Yst+s.dYst*Y;
++            s.row_xsp=s.A*(Xstv-s.Px)+s.B*(Ystv-s.Py)+s.C*(s.Zst-s.Pz);
++            s.row_ysp=s.D*(Xstv-s.Px)+s.E*(Ystv-s.Py)+s.F*(s.Zst-s.Pz);
++            s.row_dxd=s.A*s.dX+s.B*s.dY; s.row_dyd=s.D*s.dX+s.E*s.dY;
++            s.row_cached=true; return s;
++        };
+         for (int y = y0; y < y1; ++y) {
+-            int line = dd ? y >> 1 : y;
+-            Nbg row_nbg[4];
+-            for (int n = 0; n < 4; ++n) row_nbg[n] = nbg_line(nbg[n], y);
+-            Win win[2] = {window_line(0, y, dd), window_line(1, y, dd)};
++            int hardware_y = y / scale;
++            int line = dd ? hardware_y >> 1 : hardware_y;
++            if (hardware_y!=previous_y) {
++                previous_y=hardware_y;
++                for (int n=0;n<4;++n) {
++                    row_nbg[n]=nbg_line(nbg[n],hardware_y);
++                    const auto& s=row_nbg[n];
++                    cached_normal[n]=scale>1 && s.on && s.prio && s.dx==256 && s.dy==256 && !(s.sx&255) && !(s.sy&255);
++                    if (cached_normal[n]) {
++                        normal[n].resize(f.w/scale);
++                        for(int x=0;x<f.w/scale;++x) {
++                            auto& sample=normal[n][x];sample.p={};
++                            sample.drawn=nbg_pixel(s,x,hardware_y,sample.p);
++                        }
++                    }
++                }
++            }
++            Rbg row_b=scale>1 ? row_rotation(rbg_b,(double)y/scale) : rbg_b;
++            Rbg row_rbg=scale>1 ? row_rotation(rbg,(double)y/scale) : rbg;
++            Rbg row_rbg1=scale>1 ? row_rotation(rbg1,(double)y/scale) : rbg1;
++            if (row_rbg.alt) row_rbg.alt=&row_b;
++            Win win[2] = {window_line(0, hardware_y, dd), window_line(1, hardware_y, dd)};
+             back.rgb = rgb555(vw(bk + (bk_lines ? (uint32_t)line * 2 : 0)));
+             // a table word a line, a line of either field in double-density interlace
+-            line_colour.rgb = cram(vw(lc_table + (lc_lines ? (uint32_t)y * 2 : 0)) & 0x7FF, nullptr);
++            line_colour.rgb = cram(vw(lc_table + (lc_lines ? (uint32_t)hardware_y * 2 : 0)) & 0x7FF, nullptr);
+             if (grad >= 0) {
+                 // each dot averaged with the average of the two before it; a dot the screen does not draw is black
+                 auto avg = [](uint32_t a, uint32_t b) { return (a + b - ((a ^ b) & 0x010101)) >> 1; };
+                 uint32_t prev[2] = {0, 0};
+                 for (int x = 0; x < f.w; ++x) {
++                    if (x % scale) { blur[x] = blur[x - 1]; continue; }
+                     Pix p{};
+-                    bool drawn = grad == L_SPRITE ? sprite_pixel(sprite_dot(x, y, dd), p) == S_DOT
+-                                                  : row_nbg[grad - L_NBG0].on && nbg_pixel(row_nbg[grad - L_NBG0], x, y, p);
++                    bool drawn = grad == L_SPRITE ? sample_sprite(x,y,p) == S_DOT
++                                                  : row_nbg[grad - L_NBG0].on && nbg_pixel(row_nbg[grad - L_NBG0], x, y, p, scale);
+                     uint32_t here = drawn ? p.rgb : 0;
+                     if (x == 0) prev[0] = prev[1] = here;
+                     blur[x] = avg(avg(prev[0], prev[1]), here);
+@@ -865,6 +996,44 @@
+                 }
+             }
+             for (int x = 0; x < f.w; ++x) {
++                if (scale>1 && grad<0 && !sfprmd) {
++                    Pix sprite{};
++                    SpriteDot kind=windowed(wctl[L_SPRITE],win,x/scale) ? S_NONE : sample_sprite(x,y,sprite);
++                    Pix top=back;
++                    int layer=-1;
++                    bool found=false;
++                    for (const auto& [candidate,priority] : opaque_order) {
++                        if(kind==S_DOT && sprite.prio>=priority) {top=sprite;layer=L_SPRITE;found=true;break;}
++                        if(windowed(wctl[candidate],win,x/scale)) continue;
++                        Pix p{};bool drawn=false;
++                        if(candidate==L_RBG0 || candidate==L_RBG1) {
++                            const auto& r=candidate==L_RBG0 ? row_rbg : row_rbg1;
++                            drawn=rbg_pixel(r,(double)x/scale,(double)y/scale,p);
++                            p.prio=r.prio;p.cc=r.cc;p.ratio=r.ratio;p.offset=r.offset;p.offset_b=r.offset_b;
++                        } else {
++                            int n=candidate-L_NBG0;const auto& r=row_nbg[n];
++                            if(cached_normal[n]) {const auto& sample=normal[n][x/scale];p=sample.p;drawn=sample.drawn;}
++                            else drawn=nbg_pixel(r,x,y,p,scale);
++                            p.prio=r.prio;
++                            switch(sfccmd>>(n*2)&3) {
++                            case 1:p.cc=r.cc && p.scc;break;
++                            case 3:p.cc=r.cc && p.msb;break;
++                            default:p.cc=r.cc;break;
++                            }
++                            p.offset=r.offset;p.offset_b=r.offset_b;
++                        }
++                        if(drawn) {top=p;layer=candidate;found=true;break;}
++                    }
++                    if(!found && kind==S_DOT) {top=sprite;layer=L_SPRITE;}
++                    if(layer<0 || !top.cc || windowed(cc_wctl,win,x/scale)) {
++                        uint32_t rgb=top.offset ? apply_offset(top.rgb,top.offset_b) : top.rgb;
++                        bool shaded=layer==L_SPRITE ? top.shade : kind==S_SHADOW && sprite.prio>=top.prio &&
++                            (sdctl>>(layer==L_RBG0 ? 4 : layer==L_RBG1 ? 0 : layer>=0 ? layer-L_NBG0 : 5)&1);
++                        if(shaded) rgb=rgb>>1&0x7f7f7f;
++                        f.px[(size_t)y*f.w+x]=rgb;
++                        continue;
++                    }
++                }
+                 Pix l[L_COUNT];
+                 int top = -1, second = -1;
+                 auto consider = [&](int i) {
+@@ -875,8 +1044,8 @@
+                 // in the order that wins ties: sprite, then NBG0..NBG3
+                 l[L_SPRITE] = {};
+                 uint8_t shadow = 0;                  // the priority of a shadow dot here
+-                if (!windowed(wctl[L_SPRITE], win, x)) {
+-                    switch (sprite_pixel(sprite_dot(x, y, dd), l[L_SPRITE])) {
++                if (!windowed(wctl[L_SPRITE], win, x / scale)) {
++                    switch (sample_sprite(x,y,l[L_SPRITE])) {
+                     case S_DOT: consider(L_SPRITE); break;
+                     case S_SHADOW: shadow = l[L_SPRITE].prio; l[L_SPRITE] = {}; break;
+                     case S_NONE: break;
+@@ -885,7 +1054,7 @@
+                 // RBG0 (the rotation BG) wins ties over the NBGs but loses to the sprite, so it is
+                 // considered right after the sprite.
+                 l[L_RBG0] = {};
+-                if (rbg.on && rbg.prio && !windowed(wctl[L_RBG0], win, x) && rbg_pixel(rbg, x, y, l[L_RBG0])) {
++                if (rbg.on && rbg.prio && !windowed(wctl[L_RBG0], win, x / scale) && rbg_pixel(row_rbg, (double)x / scale, (double)y / scale, l[L_RBG0])) {
+                     Pix& p = l[L_RBG0];
+                     p.prio = rbg.prio;
+                     p.cc = rbg.cc;
+@@ -897,7 +1066,7 @@
+                 // RBG1 sits in NBG0's slot: it loses ties to the sprite and RBG0 but wins over NBG1-3,
+                 // so it is considered right after RBG0 (NBG0 itself is suppressed when RBG1 is on).
+                 l[L_RBG1] = {};
+-                if (rbg1.on && rbg1.prio && !windowed(wctl[L_RBG1], win, x) && rbg_pixel(rbg1, x, y, l[L_RBG1])) {
++                if (rbg1.on && rbg1.prio && !windowed(wctl[L_RBG1], win, x / scale) && rbg_pixel(row_rbg1, (double)x / scale, (double)y / scale, l[L_RBG1])) {
+                     Pix& p = l[L_RBG1];
+                     p.prio = rbg1.prio;
+                     p.cc = rbg1.cc;
+@@ -910,8 +1079,12 @@
+                     Pix& p = l[L_NBG0 + n];
+                     p = {};
+                     const Nbg& s = row_nbg[n];
+-                    if (!s.on || !s.prio || windowed(wctl[L_NBG0 + n], win, x)) continue;
+-                    if (!nbg_pixel(s, x, y, p)) continue;
++                    if (!s.on || !s.prio || windowed(wctl[L_NBG0 + n], win, x / scale)) continue;
++                    if (cached_normal[n]) {
++                        const auto& sample=normal[n][x/scale];
++                        if (!sample.drawn) continue;
++                        p=sample.p;
++                    } else if (!nbg_pixel(s, x, y, p, scale)) continue;
+                     p.prio = s.prio;
+                     if ((sfprmd >> (n * 2) & 3) == 1) p.prio = (uint8_t)((s.prio & 6) | p.spr);
+                     if (!p.prio) continue;
+@@ -928,7 +1101,7 @@
+                       : second >= 0 ? l[second] : back;
+                 if (grad >= 0 && (top == grad || second == grad)) u.rgb = blur[x];
+                 uint32_t rgb = t.rgb;
+-                if (top >= 0 && t.cc && !windowed(cc_wctl, win, x)) {
++                if (top >= 0 && t.cc && !windowed(cc_wctl, win, x / scale)) {
+                     uint32_t out = 0;
+                     int ratio = second_ratio ? u.ratio : t.ratio;
+                     for (int sh = 16; sh >= 0; sh -= 8) {
+@@ -953,6 +1126,15 @@
+     for (int k = 1; k < bands; ++k) others.emplace_back(lines, f.h * k / bands, f.h * (k + 1) / bands);
+     lines(0, f.h / bands);
+     for (auto& t : others) t.join();
++    g_palette=nullptr;
++    g_offset_table=nullptr;
++    if (cacheable) {
++        auto& c=g_frame_cache;
++        c.valid=true; c.scale=scale; c.vdp1=sprite_revision; c.regs=render_regs;
++        std::copy(std::begin(g_vdp2_vram),std::end(g_vdp2_vram),c.vram.begin());
++        std::copy(std::begin(g_vdp2_cram),std::end(g_vdp2_cram),c.cram.begin());
++        c.frame=f;
++    }
+ }
+ 
+ void vdp2_state(State& s) { s(g_vdp2_vram), s(g_vdp2_cram), s(g_vdp2_regs); }
+--- a/runtime/src/video/video.h
++++ b/runtime/src/video/video.h
+@@ -17,6 +17,9 @@
+ void vdp1_vblank_out();                              // erase, frame change, the draw PTMR 2 asks for
+ void vdp1_tick(uint64_t now);                        // the end of a draw
+ uint16_t vdp1_dot(int x, int y, bool dd);           // the sprite dot VDP2 shows at x, line y (dd: double-density, 2 lines a framebuffer line)
++uint16_t vdp1_present_dot(int x, int y, bool dd, int scale);
++void vdp1_present_sync();
++uint64_t vdp1_present_revision();
+ uint64_t vdp1_frame_changes();
+ uint64_t vdp1_draws();
+ void vdp1_dump(FILE* f);                             // VRAM, the draw framebuffer, the registers
+@@ -30,6 +33,8 @@
+     int w = 0, h = 0;
+     std::vector<uint32_t> px;                       // 0x00RRGGBB, w*h, top row first
+ };
++uint64_t vdp2_cache_hits();
++uint64_t vdp2_cache_misses();
+ void vdp2_compose(Frame& out);                       // the picture of the field that has just ended
+ int vdp2_lines();                                    // 224, 240 or 256 (TVMD VRESO)
+ 
+--- a/runtime/tests/CMakeLists.txt
++++ b/runtime/tests/CMakeLists.txt
+@@ -8,5 +8,5 @@
+   set(CMAKE_BUILD_TYPE Release)
+ endif()
+ include(${CMAKE_CURRENT_LIST_DIR}/../runtime.cmake)
+-add_executable(runtime_tests main.cpp no_modules.cpp player_test.cpp player_training_test.cpp stv_bios_test.cpp vdp2_test.cpp onchip_test.cpp bup_test.cpp pads_test.cpp settings_test.cpp touch_test.cpp pace_test.cpp frame_change_test.cpp modem_test.cpp scu_test.cpp cdrom_test.cpp cdblock_test.cpp clock_test.cpp tasks_test.cpp scsp_test.cpp)
++add_executable(runtime_tests main.cpp no_modules.cpp hires_test.cpp player_test.cpp player_training_test.cpp stv_bios_test.cpp vdp2_test.cpp onchip_test.cpp bup_test.cpp pads_test.cpp settings_test.cpp touch_test.cpp pace_test.cpp frame_change_test.cpp modem_test.cpp scu_test.cpp cdrom_test.cpp cdblock_test.cpp clock_test.cpp tasks_test.cpp scsp_test.cpp)
+ target_link_libraries(runtime_tests saturn_core saturn_machine saturn_host Threads::Threads)
+--- /dev/null
++++ b/runtime/tests/hires_test.cpp
+@@ -0,0 +1,164 @@
++// P4.14: presentation buffers must never replace the hardware framebuffer.
++#include "test.h"
++#include "saturn.h"
++#include "video.h"
++#include "state.h"
++#include <algorithm>
++#include <cstring>
++#include <thread>
++
++namespace {
++void word(int a, uint16_t w) { g_vdp1_vram[a] = w >> 8; g_vdp1_vram[a+1] = w; }
++void cmd(int a, int kind, int mode, int color, int x, int y, int x1, int y1) {
++    for (int i=0;i<32;i++) g_vdp1_vram[a+i]=0;
++    word(a,kind);word(a+4,mode);word(a+6,color);
++    word(a+12,x);word(a+14,y);word(a+16,x1);word(a+18,y);
++    word(a+20,x1);word(a+22,y1);word(a+24,x);word(a+26,y1);
++}
++void setup(int scale) {
++    g_cfg.internal_resolution=scale;
++    vdp1_reg_write(0,0,2);vdp1_reg_write(2,0,2);vdp1_reg_write(4,0,2);
++    vdp1_reg_write(6,0,2);vdp1_reg_write(8,0,2);vdp1_reg_write(10,(64<<9)|255,2);
++    // Erase both buffers and show a clean one.
++    for(int i=0;i<3;i++) vdp1_vblank_out();
++    cmd(0,9,0,0,0,0,511,255);
++    cmd(32,10,0,0,0,0,0,0);
++    cmd(64,4,0,0x801f,10,10,20,20);
++    word(96,0x8000);
++}
++struct Restore {
++    State saved; int scale=g_cfg.internal_resolution;
++    Restore() {vdp1_state(saved);}
++    ~Restore() {saved.loading=true;vdp1_state(saved);g_cfg.internal_resolution=scale;}
++};
++}
++
++TEST(hires_hardware_authority_and_inclusive_clipping) {
++    Restore restore;
++    std::vector<uint32_t> reference;
++    for(int scale=1;scale<=3;scale++) {
++        setup(scale);
++        // System clip through x=18, inclusive; user clip outside x=12..14.
++        word(20,18);cmd(32,8,0,0,12,0,14,255);
++        word(68,0x600);
++        vdp1_reg_write(4,1,2);
++        std::vector<uint32_t> hw;
++        for(int i=0;i<512*256;i++) hw.push_back(vdp1_fb_read(i*2,2));
++        if(scale==1) reference=hw; else CHECK_EQ(hw==reference,true);
++        vdp1_vblank_out();
++        for(int x=9*scale;x<22*scale;x++) {
++            int ox=x/scale;
++            CHECK_EQ(vdp1_present_dot(x,10*scale,false,scale),ox>=10 && ox<=18 && !(ox>=12 && ox<=14)?0x801f:0);
++        }
++    }
++}
++
++TEST(hires_cpu_writes_and_erase_mirror_both_palette_bytes) {
++    Restore restore;
++    for(int scale=2;scale<=3;scale++) {
++        setup(scale);vdp1_reg_write(0,1,2);
++        vdp1_fb_write(0,0x12345678,4);vdp1_fb_write(1,0x9a,1);
++        CHECK_EQ(vdp1_fb_read(0,4),0x129a5678);
++        vdp1_vblank_out();
++        for(int x=0;x<4*scale;x++) CHECK_EQ(vdp1_present_dot(x,0,false,scale),(0x129a5678u >> ((3-x/scale)*8))&255);
++        vdp1_reg_write(6,0xabcd,2);vdp1_vblank_out();vdp1_vblank_out();
++        CHECK_EQ(vdp1_present_dot(0,0,false,scale),0xab);
++        CHECK_EQ(vdp1_present_dot(scale,0,false,scale),0xcd);
++    }
++}
++
++TEST(hires_snapshot_restores_display_without_replaying_texture_ram) {
++    Restore restore;
++    setup(3);vdp1_reg_write(4,1,2);vdp1_vblank_out();
++    State image;vdp1_state(image);
++    std::memset(g_vdp1_vram,0xff,sizeof g_vdp1_vram);
++    g_cfg.internal_resolution=1;vdp1_present_sync();
++    image.loading=true;vdp1_state(image);
++    g_cfg.internal_resolution=3;vdp1_present_sync();
++    CHECK_EQ(vdp1_present_dot(45,45,false,3),0x801f);
++    CHECK_EQ(vdp1_present_dot(29,45,false,3),0);
++    // Switching resolution resamples saved presentation data, never the current command list.
++    g_cfg.internal_resolution=2;vdp1_present_sync();
++    CHECK_EQ(vdp1_present_dot(30,30,false,2),0x801f);
++}
++
++TEST(hires_end_codes_count_texels_instead_of_repeated_samples) {
++    Restore restore;
++    setup(3);
++    cmd(64,2,0x20,0,10,10,40,20);word(72,0x100);word(74,0x108);
++    for(int y=0;y<8;y++) for(int x=0;x<8;x++) g_vdp1_vram[0x800+y*8+x]=x==1||x==6?255:x+1;
++    vdp1_reg_write(4,1,2);vdp1_vblank_out();
++    CHECK_EQ(vdp1_present_dot(65,30,false,3)!=0,true); // past first repeated end texel
++    CHECK_EQ(vdp1_present_dot(120,30,false,3),0);       // past second end texel
++}
++
++TEST(hires_normal_sprite_mesh_and_rgb_calculation_keep_original_cells) {
++    Restore restore;
++    setup(2);
++    cmd(64,0,0x168,0,10,10,0,0); // RGB texture, SPD/ECD/mesh
++    word(72,0x100);word(74,0x108);
++    for(int i=0;i<64;i++) word(0x800+i*2,0xffff);
++    vdp1_reg_write(4,1,2);vdp1_vblank_out();
++    for(int y=20;y<24;y++) for(int x=20;x<24;x++)
++        CHECK_EQ(vdp1_present_dot(x,y,false,2),((x/2 ^ y/2)&1)?0:0xffff);
++}
++
++TEST(hires_rgb_shadow_transparency_luminance_and_gouraud) {
++    Restore restore;
++    for(int scale : {2,3}) for(int mode=0;mode<4;++mode) {
++        setup(scale);
++        cmd(96,4,mode,0xfc00,10,10,20,20);word(128,0x8000);
++        vdp1_reg_write(4,1,2);vdp1_vblank_out();
++        const uint16_t expected[]={0xfc00,0x800f,0xbc00,0xbc0f};
++        CHECK_EQ(vdp1_present_dot(15*scale,15*scale,false,scale),expected[mode]);
++    }
++    setup(3);
++    // A constant Gouraud table adds 15 red levels to black.
++    cmd(96,4,4,0x8000,10,10,20,20);word(124,0x200);word(128,0x8000);
++    for(int i=0;i<4;++i) word(0x1000+i*2,0x421f);
++    vdp1_reg_write(4,1,2);vdp1_vblank_out();
++    CHECK_EQ(vdp1_present_dot(45,45,false,3),0x800f);
++}
++
++TEST(hires_adjacent_sloping_quads_cover_shared_edges) {
++    Restore restore;
++    for(int scale : {2,3}) {
++        setup(scale);
++        // Two strips share a sloping edge and cover this entire interior rectangle.
++        cmd(64,4,0,0x801f,10,10,40,40);
++        word(84,30);word(86,40);word(88,10);word(90,40);
++        cmd(96,4,0,0x83e0,40,10,60,40);
++        word(120,30);word(122,40);word(128,0x8000);
++        vdp1_reg_write(4,1,2);vdp1_vblank_out();
++        for(int y=11*scale;y<40*scale;++y) for(int x=11*scale;x<60*scale;++x)
++            CHECK_EQ(vdp1_present_dot(x,y,false,scale)!=0,true);
++    }
++}
++
++TEST(hires_interlace_cpu_writes_preserve_the_displayed_full_height_copy) {
++    Restore restore;
++    setup(2);vdp1_reg_write(2,8,2);vdp1_reg_write(4,1,2);
++    vdp1_fb_write((15*512+15)*2,0xffff,2);
++    vdp1_vblank_out();
++    CHECK_EQ(vdp1_present_dot(30,30,true,2),0x801f);
++    // With a non-interlaced VDP2 display, authoritative compressed hardware dots win.
++    CHECK_EQ(vdp1_present_dot(30,30,false,2),vdp1_dot(15,15,false));
++}
++
++
++TEST(hires_hardware_draw_state_is_shared_across_both_cpu_threads) {
++    Restore restore;
++    for(int scale : {1,2,3}) {
++        setup(scale);
++        word(20,18); // the first draw installs a persistent system clip
++        auto* cpu=g_cpu;
++        std::thread other_cpu([cpu] { g_cpu=cpu; vdp1_reg_write(4,1,2); });
++        other_cpu.join();
++        // A subsequent draw from the other host thread omits clipping commands.
++        cmd(0,4,0,0x83e0,30,10,40,20);word(32,0x8000);
++        vdp1_reg_write(4,1,2);
++        CHECK_EQ(vdp1_fb_read((15*512+35)*2,2),0);
++        vdp1_vblank_out();
++        CHECK_EQ(vdp1_present_dot(35*scale,15*scale,false,scale),0);
++    }
++}
+--- a/runtime/tests/vdp2_test.cpp
++++ b/runtime/tests/vdp2_test.cpp
+@@ -1,6 +1,8 @@
+ // VDP2 composition from registers, VRAM and colour RAM set by hand.
+ #include "test.h"
+ #include "video.h"
++#include "saturn.h"
++#include "state.h"
+ #include <cstring>
+ 
+ namespace {
+@@ -449,3 +451,86 @@
+     CHECK_EQ(at(f, 0, 1), 0x101010);             // source row 8, not row 7 again
+     CHECK_EQ(at(f, 0, 2), 0x080808);             // next record replaces the source row with 0
+ }
++
++TEST(hires_fractional_nbg_sampling_does_not_accumulate_thirds) {
++    line_bitmap(0);
++    reg(0x78, 3); // three source dots per hardware dot
++    for (int scale : {2, 3}) {
++        g_cfg.internal_resolution = scale;
++        Frame f; vdp2_compose(f);
++        CHECK_EQ(f.w, 320 * scale); CHECK_EQ(f.h, 224 * scale);
++        for (int x=0;x<300*scale;x++) {
++            unsigned cell = ((x * 3 / scale) % 512) / 8;
++            unsigned c = cell % 31 + 1; c = (c << 3) | (c >> 2);
++            CHECK_EQ(at(f,x,0),c * 0x010101);
++        }
++    }
++    g_cfg.internal_resolution=1;
++}
++
++TEST(hires_rbg_fractional_transform_and_window_keep_hardware_coordinates) {
++    red_screen(); two_plane_rbg0((511u << 16) | 0x8000, 0);
++    reg(0xC4, 2); reg(0xC6, 223); reg(0xD4, 2 << 8); // sprite only; RBG remains visible
++    for (int scale : {2, 3}) {
++        g_cfg.internal_resolution=scale;
++        Frame f;vdp2_compose(f);
++        CHECK_EQ(at(f,0,0),8u << 16);
++        CHECK_EQ(at(f,scale-1,0),16u << 16);
++        CHECK_EQ(at(f,scale,0),16u << 16);
++    }
++    g_cfg.internal_resolution=1;
++}
++
++TEST(hires_composition_keeps_priorities_windows_calculation_and_shadow_meanings) {
++    for(int fixture=0;fixture<8;++fixture) {
++        g_cfg.internal_resolution=1;
++        switch(fixture) {
++        case 0:red_screen();green_bitmap_nbg0();reg(0xC4,38);reg(0xC6,223);reg(0xD0,2);break;
++        case 1:line_colour_over_green();reg(0xE8,1);break;
++        case 2:green_over_blue_then_black();reg(0xEC,2);break;
++        case 3:sprites_over_green();reg(0xE2,1);show_sprites(0x7fe,10,19);break;
++        case 4:sprites_over_green();cram16(2,0x7c00);show_sprites(0x8002,10,19);break;
++        case 5:red_screen();two_plane_rbg0(508u<<16,0);reg(0x00,0x8003);break;
++        case 6:line_colour_over_green();reg(0xEA,1);reg(0xEE,1);break;
++        case 7:green_over_blue_then_black();reg(0xEC,0xa002);break;
++        }
++        Frame original;vdp2_compose(original);
++        for(int scale : {2,3}) {
++            g_cfg.internal_resolution=scale;
++            Frame enhanced;vdp2_compose(enhanced);
++            for(int y=0;y<original.h;y+=17) for(int x=0;x<original.w;++x)
++                CHECK_EQ(at(enhanced,x*scale,y*scale),at(original,x,y));
++        }
++    }
++    g_cfg.internal_resolution=1;
++}
++
++
++TEST(hires_exact_frame_cache_tracks_memory_cpu_writes_and_restore) {
++    g_cfg.internal_resolution=1;
++    vdp1_reg_write(0,0,2);vdp1_reg_write(2,0,2);vdp1_reg_write(4,0,2);
++    red_screen();show_sprites();green_bitmap_nbg0();
++    g_cfg.internal_resolution=2;
++    Frame first;vdp2_compose(first);
++    uint64_t hits=vdp2_cache_hits(),misses=vdp2_cache_misses();
++    first.px[0]=0; // callers may edit their output; the cache owns a separate image
++    Frame second;vdp2_compose(second);
++    CHECK_EQ(vdp2_cache_hits(),hits+1);CHECK_EQ(at(second,0,0),kGreen);
++    // Raster counters do not participate in composition, so changing them is safe.
++    reg(0x04,0xffff);reg(0x08,123);reg(0x0a,234);vdp2_compose(second);
++    CHECK_EQ(vdp2_cache_hits(),hits+2);
++    cram16(1,0x7c00);vdp2_compose(second);CHECK_EQ(at(second,0,0),kBlue);
++    CHECK_EQ(vdp2_cache_misses(),misses+1);
++    g_vdp2_vram[5]=0;vdp2_compose(second);CHECK_EQ(at(second,10,0),kRed);
++    reg(0xc4,38);reg(0xc6,223);reg(0xd0,2);vdp2_compose(second);
++    CHECK_EQ(at(second,20,0),kRed);CHECK_EQ(at(second,40,0),kBlue);
++    reg(0xe0,0x20);reg(0xf0,7);
++    State saved;vdp1_state(saved);
++    vdp1_fb_write(30*2,0x83e0,2);vdp1_vblank_out();vdp2_compose(second);
++    CHECK_EQ(at(second,60,0),kGreen);
++    saved.loading=true;vdp1_state(saved);vdp2_compose(second);
++    CHECK_EQ(at(second,60,0),kBlue);
++    g_cfg.internal_resolution=1;
++    hits=vdp2_cache_hits();vdp2_compose(first);vdp2_compose(second);
++    CHECK_EQ(vdp2_cache_hits(),hits); // original path bypasses the enhanced cache
++}

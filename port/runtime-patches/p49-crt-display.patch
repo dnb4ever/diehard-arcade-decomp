@@ -1,0 +1,186 @@
+--- a/runtime/src/host/host.cpp
++++ b/runtime/src/host/host.cpp
+@@ -129,6 +129,22 @@
+     return true;
+ }
+ 
++void host_save_picture(const std::string& path) {
++    SDL_Surface* got = SDL_RenderReadPixels(g_ren, nullptr);
++    SDL_Surface* px = got ? SDL_ConvertSurface(got, SDL_PIXELFORMAT_XRGB8888) : nullptr;
++    if (px) {
++        Frame f;
++        f.w = px->w; f.h = px->h;
++        f.px.resize((size_t)f.w * f.h);
++        for (int y = 0; y < f.h; ++y)
++            std::memcpy(&f.px[(size_t)y * f.w], (const uint8_t*)px->pixels + (size_t)y * px->pitch, (size_t)f.w * 4);
++        write_png(path, f);
++        sat_note("picture saved: %s", path.c_str());
++    } else sat_note("window capture failed: %s", SDL_GetError());
++    SDL_DestroySurface(px);
++    SDL_DestroySurface(got);
++}
++
+ SDL_Window* host_sdl_window() { return g_win; }
+ SDL_Renderer* host_sdl_renderer() { return g_ren; }
+ 
+@@ -1180,6 +1196,14 @@
+         ui_text(g_out_w / 2.0f, 44 * u, 17 * u, "Saving…", rgba(1, 1, 1, 0.95f), true);
+     }
+     SDL_SetRenderDrawBlendMode(g_ren, SDL_BLENDMODE_NONE);
++    // Opt-in software-renderer evidence, captured after filters and overlays.
++    static bool captured = false;
++    const char* shot = SDL_getenv("SATURN_WINDOW_SHOT");
++    const char* at = SDL_getenv("SATURN_WINDOW_SHOT_VB");
++    if (shot && !captured && sat_vblanks() >= (at ? SDL_strtoull(at, nullptr, 10) : 1)) {
++        host_save_picture(shot);
++        captured = true;
++    }
+     HostCall in("SDL_RenderPresent");
+     SDL_RenderPresent(g_ren);
+ }
+@@ -1228,6 +1252,30 @@
+     most = 0;
+ }
+ 
++// Presentation-only RGB aperture mask and short horizontal beam footprint.
++// Double the texture's lines so a scanline has a dark lower half even at 1x.
++// The original composed frame remains untouched (headless/reference shots, F12).
++static std::vector<uint32_t> g_crt_pixels;
++static void crt_pixels(const Frame& f) {
++    g_crt_pixels.resize((size_t)f.w * f.h * 2);
++    for (int y = 0; y < f.h; ++y) for (int x = 0; x < f.w; ++x) {
++        uint32_t left = f.px[(size_t)y*f.w + std::max(0, x-1)];
++        uint32_t centre = f.px[(size_t)y*f.w + x];
++        uint32_t right = f.px[(size_t)y*f.w + std::min(f.w-1, x+1)];
++        uint32_t bright = 0, dark = 0;
++        for (int channel = 0; channel < 3; ++channel) {
++            int shift = channel * 8;
++            unsigned value = (((left >> shift) & 255) + 6*((centre >> shift) & 255) + ((right >> shift) & 255)) / 8;
++            // 12% attenuation of the other two phosphors, RGB repeating.
++            if (2-channel != x%3) value = value * 225 / 256;
++            bright |= value << shift;
++            dark |= (value * 184 / 256) << shift;
++        }
++        g_crt_pixels[(size_t)(2*y)*f.w + x] = bright;
++        g_crt_pixels[(size_t)(2*y+1)*f.w + x] = dark;
++    }
++}
++
+ static void present(const Frame& f) {
+     g_last = &f;
+     if (g_cfg.stats > 0) stats_tick();
+@@ -1236,17 +1284,22 @@
+         if (g_menu_open) menu_loop();
+         return;
+     }
+-    if (f.w != g_tex_w || f.h != g_tex_h) {
++    bool crt = g_settings.flag("display", "crt");
++    int texture_h = f.h * (crt ? 2 : 1);
++    if (f.w != g_tex_w || texture_h != g_tex_h) {
+         if (g_tex) SDL_DestroyTexture(g_tex);
+-        g_tex = SDL_CreateTexture(g_ren, SDL_PIXELFORMAT_XRGB8888, SDL_TEXTUREACCESS_STREAMING, f.w, f.h);
++        g_tex = SDL_CreateTexture(g_ren, SDL_PIXELFORMAT_XRGB8888, SDL_TEXTUREACCESS_STREAMING, f.w, texture_h);
+         if (!g_tex) sat_fatal("SDL: no %dx%d texture: %s", f.w, f.h, SDL_GetError());
+         g_tex_w = f.w;
+-        g_tex_h = f.h;
++        g_tex_h = texture_h;
+     }
+     std::string integer_mode = g_settings.get("display", "integer");
+     bool integer = integer_mode == "true" || (integer_mode == "auto" && g_cfg.arcade);
+-    SDL_SetTextureScaleMode(g_tex, integer ? SDL_SCALEMODE_PIXELART : SDL_SCALEMODE_LINEAR);
+-    SDL_UpdateTexture(g_tex, nullptr, f.px.data(), f.w * 4);
++    std::string scaling = g_settings.get("display", "scaling");
++    bool sharp = scaling == "sharp" || (scaling == "auto" && integer);
++    SDL_SetTextureScaleMode(g_tex, sharp ? SDL_SCALEMODE_PIXELART : SDL_SCALEMODE_LINEAR);
++    if (crt) crt_pixels(f);
++    SDL_UpdateTexture(g_tex, nullptr, crt ? g_crt_pixels.data() : f.px.data(), f.w * 4);
+     int ww = 0, wh = 0;
+     SDL_GetCurrentRenderOutputSize(g_ren, &ww, &wh);
+     // the TV's 4:3 screen, as large as the window allows, centred; a PAL TV
+--- a/runtime/src/host/host_sdl.h
++++ b/runtime/src/host/host_sdl.h
+@@ -19,3 +19,5 @@
+ struct HostController { std::string name; int slot; bool held; SDL_JoystickID id; };   // held: any of its bound buttons
+ std::string host_gamepad_value(int slot, const std::string& key); // effective layout, including model fallback
+ std::vector<HostController> host_controllers();      // the open gamepads, by player
++
++void host_save_picture(const std::string& path); // rendered window, including filters and overlays
+--- a/runtime/src/host/settings.cpp
++++ b/runtime/src/host/settings.cpp
+@@ -19,6 +19,10 @@
+ ; true: the picture is its lines times the largest whole number that fits, 4:3 and sharp; false: as
+ ; large as fits, smoothed; auto: true for an arcade board (ST-V), false for a disc
+ integer = auto
++; auto preserves the integer setting's scaler; sharp or smooth chooses it independently
++scaling = auto
++; Mild horizontal blur, RGB phosphor mask and scanlines; presentation only
++crt = false
+ ; while the computer cannot keep up, leave out up to two pictures in a row, so that the game keeps its
+ ; speed and its sound
+ frameskip = true
+@@ -126,7 +130,7 @@
+ 
+ // The values a word may take, by key.
+ static const struct { const char* key; const char* values[3]; } kChoices[] = {
+-    {"controls", {"auto", "on", "off"}}, {"style", {"western", "japanese"}}, {"integer", {"auto", "true", "false"}}};
++    {"controls", {"auto", "on", "off"}}, {"style", {"western", "japanese"}}, {"integer", {"auto", "true", "false"}}, {"scaling", {"auto", "sharp", "smooth"}}};
+ 
+ // The range a number may take, by key.
+ static const struct { const char* key; int lo, hi; } kRanges[] = {
+--- a/runtime/src/host/launcher.cpp
++++ b/runtime/src/host/launcher.cpp
+@@ -23,23 +23,6 @@
+     {"a", "A"}, {"b", "B"}, {"c", "C"}, {"x", "X"}, {"y", "Y"}, {"z", "Z"}, {"l", "L"}, {"r", "R"}};
+ 
+ const char* const kTaps[] = {"No multitap: 2 players", "Multitap on port 1: 7 players", "Multitaps on both ports: 12 players"};
+-
+-void save_picture(SDL_Renderer* ren, const std::string& path) {
+-    SDL_Surface* got = SDL_RenderReadPixels(ren, nullptr);
+-    SDL_Surface* px = got ? SDL_ConvertSurface(got, SDL_PIXELFORMAT_XRGB8888) : nullptr;
+-    if (px) {
+-        Frame f;
+-        f.w = px->w;
+-        f.h = px->h;
+-        f.px.resize((size_t)f.w * f.h);
+-        for (int y = 0; y < f.h; ++y)
+-            std::memcpy(&f.px[(size_t)y * f.w], (const uint8_t*)px->pixels + (size_t)y * px->pitch, (size_t)f.w * 4);
+-        write_png(path, f);
+-        sat_note("picture saved: %s", path.c_str());
+-    }
+-    SDL_DestroySurface(px);
+-    SDL_DestroySurface(got);
+-}
+ 
+ // A game's start option (--options FILE): a list to choose one item from, or a checkbox. The file has
+ // a line each, its fields separated by tabs: "choice NAME", then "item LABEL ARGS" for each of its
+@@ -150,10 +133,10 @@
+             SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
+             SDL_RenderClear(ren);
+             ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), ren);
+-            if (want_picture_) save_picture(ren, cfg_.out + "/launcher.png");
++            if (want_picture_) host_save_picture(cfg_.out + "/launcher.png");
+             want_picture_ = false;
+             if (shot && frame == capture_frame) {                // ImGui lays a window out over its first frames
+-                save_picture(ren, shot);
++                host_save_picture(shot);
+                 going = false;
+             }
+             SDL_RenderPresent(ren);
+@@ -422,6 +405,17 @@
+             if (!full) SDL_SetWindowSize(host_sdl_window(), 320 * scale, 240 * scale);
+             save();
+         }
++        static const char* const scalers[] = {"Auto", "Sharp", "Smooth"};
++        static const char* const scaler_values[] = {"auto", "sharp", "smooth"};
++        int scaler = 0;
++        for (int i = 1; i < 3; ++i) if (set_.get("display", "scaling") == scaler_values[i]) scaler = i;
++        if (ImGui::Combo("Scaling", &scaler, scalers, 3)) {
++            set_.set("display", "scaling", scaler_values[scaler]); save();
++        }
++        bool crt = set_.flag("display", "crt");
++        if (ImGui::Checkbox("CRT scanlines / phosphor mask", &crt)) {
++            set_.set("display", "crt", crt ? "true" : "false"); save();
++        }
+         int volume = set_.number("audio", "volume");
+         if (ImGui::SliderInt("Volume", &volume, 0, 100, "%d%%")) {
+             set_.set("audio", "volume", std::to_string(volume));

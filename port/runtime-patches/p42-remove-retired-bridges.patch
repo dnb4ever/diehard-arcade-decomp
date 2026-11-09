@@ -1,0 +1,229 @@
+diff --git a/runtime/src/machine/bios.cpp b/runtime/src/machine/bios.cpp
+--- a/runtime/src/machine/bios.cpp
++++ b/runtime/src/machine/bios.cpp
+@@ -495,91 +495,6 @@
+                 sat_note("  SPECIAL %08X +10=%08X +14=%08X STG{30=%08X 34=%08X 38=%08X 3A=%04X 3C=%08X}",
+                          d, ld32(d+0x10u), ld32(d+0x14u), ld32(d+0x30u), ld32(d+0x34u),
+                          ld32(d+0x38u), (uint16_t)ld16(d+0x3Au), ld32(d+0x3Cu));
+-            }
+-        }
+-    }
+-    // STV_SYNTHDEF="dst[:src]" (LABELED default-off bridge; byte-identical when unset): route-(b)
+-    // SYNTHESIS of a play-definition layout. Overwrites scene `dst`'s descriptor +0x10 (the def
+-    // pointer scene_obj_handler case-0 dereferences and whose unk0 it CALLS) with scene `src`'s
+-    // def pointer (src defaults to 2, a real stage scene). Attract scenes (3,5,7,9,15,...) carry
+-    // a def at 0x0600F1C0/F6B2/FC20 whose unk0 = 0x2FE62FD6 (raw instruction data, NOT a function
+-    // pointer) -> scene_run -> func_02218038 -> scene_obj_handler case-0 FATALs "call to 0FE62FD6".
+-    // A real stage scene's def (scene 2 @0x06063F40) has unk0 = 0x060125BC (cart func_0220e5bc, the
+-    // real play scene-object step callback) + valid unk4/unk8 data-block args + substate seed. Writing
+-    // it onto the held attract scene's +0x10 converts the FATAL into a clean scene_obj_handler step.
+-    // Applied every frame (idempotent). Read scene 2's +0x10 each frame in case the table relocates.
+-    if (const char* e_sd = std::getenv("STV_SYNTHDEF")) {
+-        uint32_t dst = (uint32_t)std::strtoul(e_sd, nullptr, 0);
+-        uint32_t src = 2; uint64_t sd_start = 0;
+-        if (const char* c = std::strchr(e_sd, ':')) { src = (uint32_t)std::strtoul(c + 1, nullptr, 0);
+-            if (const char* c2 = std::strchr(c + 1, ':')) sd_start = (uint64_t)std::strtoull(c2 + 1, nullptr, 0); }
+-        if (vb < sd_start) { /* wait: attract scenes use desc+0x10 as a DIRECT code ptr; only patch after the morph */ } else {
+-        uint32_t ddesc = 0x06072660u + dst * 0x50u;
+-        uint32_t sdesc = 0x06072660u + src * 0x50u;
+-        uint32_t sdef  = ld32(sdesc + 0x10u);
+-        if (sdef && ld32(ddesc + 0x10u) != sdef) {
+-            st32(ddesc + 0x10u, sdef);
+-            static bool noted = false;
+-            if (!noted) { noted = true;
+-                sat_note("STV_SYNTHDEF: scene %u desc+0x10 <- scene %u def %08X (unk0=%08X) at VB %llu [route-b synthesis]",
+-                         dst, src, sdef, ld32(sdef + 0u), (unsigned long long)vb); }
+-        }
+-        }
+-    }
+-    // STV_STAGEDMA="vb[:src[:intv]]" (LABELED default-off bridge; byte-identical when unset): the FLOOR
+-    // fix for route-b. On route-b the director is HELD on attract scene 3 whose VDP2 background is the
+-    // night-skyline (scene 3's stage bundle 0x0607238C, DMA'd at its bootstrap). scene_run installs
+-    // scene_obj_handler (func_0220f6f6), which steps the SYNTHDEF'd play content but NEVER re-DMAs a
+-    // stage -- so the fighters render over scene 3's skyline instead of SRC's real stage floor.
+-    //
+-    // Every play scene's descriptor (base 0x06072660 stride 0x50) carries the stage-config fields
+-    // scene81_stage_setup (func_02206e2e) reads from a node: +0x30 flags (bit0=DMA gate), +0x34 2nd-layer
+-    // flags, +0x38 layer/tile-base, +0x3A cell-column count, +0x3C stage-asset bundle ptr. e.g. SRC
+-    // scene 8: {30=0x21,34=0x30001,38=8,3A=8,3C=0x06072378}. This knob builds a scratch ctx with SRC's
+-    // stage config and CALLS the game's own scene81_stage_setup (recomp 0x0600AE2E) -- the exact DMA +
+-    // VDP2 RBG0 plane/palette setup the real scene-81 game SM runs -- so SRC's real floor tiles + RBG0
+-    // plane replace scene 3's skyline. (The bundle-keyed DMA cache 0x06098690/94 makes the heavy DMA
+-    // run once; re-applying each `intv` frames re-asserts the RBG0 plane regs in case content writes
+-    // VDP2.) Also mirrors SRC's stage-config into the HELD descriptor (scene 3 / g_0609866c) so any
+-    // code reading the live descriptor's +0x30/0x3C sees SRC's stage. FORCED because the faithful
+-    // selection chain (75-80) that would copy this config is not driven here. Default off => no effect.
+-    static const char* e_stagedma = std::getenv("STV_STAGEDMA");
+-    if (e_stagedma) {
+-        static bool sdma_busy = false;
+-        if (!sdma_busy) {
+-            static bool parsed = false; static uint64_t sd_vb = 0; static uint32_t sd_src = 8; static uint32_t sd_intv = 0;
+-            if (!parsed) { sd_vb = (uint64_t)std::strtoull(e_stagedma, nullptr, 0);
+-                if (const char* c = std::strchr(e_stagedma, ':')) { sd_src = (uint32_t)std::strtoul(c+1,nullptr,0);
+-                    if (const char* c2 = std::strchr(c+1, ':')) sd_intv = (uint32_t)std::strtoul(c2+1,nullptr,0); }
+-                parsed = true; }
+-            static bool first = true;
+-            bool fire = vb >= sd_vb && (first || (sd_intv && ((vb - sd_vb) % sd_intv) == 0));
+-            if (fire) {
+-                uint32_t sdesc = (sd_src >= 0x06000000u) ? sd_src : (0x06072660u + sd_src * 0x50u);  // src>=0x06000000 => literal desc addr (e.g. 0x06073FB0 special)
+-                uint32_t s30 = ld32(sdesc + 0x30u), s34 = ld32(sdesc + 0x34u), s38 = ld32(sdesc + 0x38u);
+-                uint16_t s3a = (uint16_t)ld16(sdesc + 0x3Au); uint32_t s3c = ld32(sdesc + 0x3Cu);
+-                if (s3c && (s3c >> 24) == 0x06 && (s30 & 1u)) {
+-                    // build a minimal ctx at scratch 0x060FA100 (scene81_stage_setup reads only +0x30..0x3C)
+-                    const uint32_t CTX = 0x060FA100u;
+-                    for (uint32_t i = 0; i < 0x40; i += 4) st32(CTX + i, 0);
+-                    st32(CTX + 0x30u, s30); st32(CTX + 0x34u, s34); st32(CTX + 0x38u, s38);
+-                    st16(CTX + 0x3Au, s3a); st32(CTX + 0x3Cu, s3c);
+-                    // mirror into the live HELD descriptor too (the task's "point held desc at SRC's stage")
+-                    uint32_t hdesc = ld32(0x0609866Cu);
+-                    if (hdesc && (hdesc >> 24) == 0x06) {
+-                        st32(hdesc + 0x30u, s30); st32(hdesc + 0x34u, s34); st32(hdesc + 0x38u, s38);
+-                        st16(hdesc + 0x3Au, s3a); st32(hdesc + 0x3Cu, s3c);
+-                    }
+-                    sdma_busy = true;
+-                    SH2Context& c = g_master; SH2Context save = c;
+-                    c.r[4] = CTX; c.r[5] = 0; c.pr = kRet; c.pc = 0; c.budget = 0x40000000;
+-                    sh2_call(c, 0x0600AE2Eu);                 // func_02206e2e scene81_stage_setup(ctx, 0)
+-                    bool ok = (c.pc == kRet);
+-                    c = save; sdma_busy = false;
+-                    if (first) sat_note("STV_STAGEDMA: scene81_stage_setup(src=%08X bundle=%08X s30=%08X s38=%08X s3A=%04X) ret_ok=%d at VB %llu [route-b FLOOR]",
+-                                        sdesc, s3c, s30, s38, s3a, ok, (unsigned long long)vb);
+-                    first = false;
+-                }
+             }
+         }
+     }
+@@ -1000,8 +915,7 @@
+     static const char* e_stagecfg = std::getenv("STV_STAGECFG");
+     static const char* e_playroute = std::getenv("STV_PLAYROUTE");
+     static const char* e_joinhold = std::getenv("STV_JOINHOLD");   // two-task arbitration (see block below)
+-    static const char* e_liveround = std::getenv("STV_LIVEROUND"); // sustained live-stage DUAL round (see block below)
+-    if (!(e_seed || e_adv || e_pin || e_join || e_char || e_gate || e_senable || e_spawn || e_joinforce || e_diag || e_forcearm || e_stagecfg || e_playroute || e_joinhold || e_liveround || std::getenv("STV_RAWINPUT"))) return;  // default off: no effect (STV_RAWINPUT self-enables so cooked input reaches the faithful route)
++    if (!(e_seed || e_adv || e_pin || e_join || e_char || e_gate || e_senable || e_spawn || e_joinforce || e_diag || e_forcearm || e_stagecfg || e_playroute || e_joinhold || std::getenv("STV_RAWINPUT"))) return;  // default off: no effect (STV_RAWINPUT self-enables so cooked input reaches the faithful route)
+     auto scn_desc = [](uint32_t idx) -> uint32_t { return 0x06072660u + idx * 0x50u; };
+     if (e_stagecfg) {
+         if (ld32(0x06098668u) == 81u) {
+@@ -1217,123 +1131,6 @@
+                 st8(0x06098674u, 2u); st8(0x06098675u, 2u);    // keep the 2P join for the case-3 selector
+             }
+         }
+-    }
+-    // STV_LIVEROUND="vb[:stage]" (LABELED BRIDGE for the two absent executive/director couplings;
+-    // default off => byte-identical when unset). Drives the plain faithful stage route (STV_BOOTMODE=0
+-    // STV_CFG798=40) from ATTRACT-on-a-stage into a SUSTAINED live DUAL round WITHOUT tearing down the
+-    // input-responsive stage player. It bridges exactly the two gaps every prior pass converged on:
+-    //
+-    //  (1) MORPH GATE (coupling #1). On this route the director sits on a gameplay STAGE scene (2..72,
+-    //      here scene 3) whose spawn-list has built the live, input-responsive demo P1 actor (ent
+-    //      060E1AA0, unk34=1), kept responsive because the 2P-arm g_06098670==1 makes the cart cook
+-    //      func_0220f9d4 feed the P1/P2 cooked records (consumed by STV_RAWINPUT). The executive
+-    //      (*g_06098678) never leaves attract_handler on its own (no START flag is ever committed), so
+-    //      the "INSERT COIN(S)" overlay persists. attract_handler's dual-vs-join gate picks
+-    //      round_controller_JOIN whenever the demo entity slots (g_06099594 id[1] + g_06099598 id[2])
+-    //      are non-zero -- which they ARE while the responsive demo P1 is alive. So we CANNOT clear the
+-    //      slots to reach DUAL directly without despawning the player. Instead this knob presses START
+-    //      for the two players the way a player's hand would -- it sets the cart's own per-player START
+-    //      edge flags g_06098688 (P1) then g_06098689 (P2) across two frames so REAL cart code morphs
+-    //      attract_handler -> round_controller_join (P1 START, demo slots present) -> round_controller_
+-    //      dual (P2 START seen mid-countdown: func_02204afa's "other player pressed start" branch). The
+-    //      demo actors are NEVER cleared, so the responsive P1 (060E1AA0) survives the morph. The
+-    //      round-controller countdown (entity->unk40/unk44, armed to 0x27f by the cart on the START
+-    //      edge) then expires and func_02205232 installs scene_run_handler (0x02205812) == ENTER PLAY,
+-    //      all by the game's own code. The only harness action is CHOOSING when to press START (the
+-    //      stand-in for the player's hand + the BIOS start-enable signal, same class as STV_COINSEQ).
+-    //
+-    //  (2) POST-MORPH ROUTING (coupling #2). scene_run_handler tail-steps whatever scene the DIRECTOR
+-    //      holds (g_0609867c steps g_0609866c). To keep it stepping a LIVE STAGE (not advancing to the
+-    //      terminal ENTER-PLAY intro scene 81) we HOLD the director parked on the stage scene: keep the
+-    //      2P-arm g_06098670==1 (which freezes the attract fade so the director entity's unk3c bit0 is
+-    //      never set -> func_02205b20's main body, incl. its reset-timeout force-jump-to-81, never
+-    //      runs) and pin g_06098668 + g_0609866c to the held stage scene as belt-and-suspenders, and
+-    //      disarm the director reset-timeout (task *0x060987B8 unk13) if it ever goes negative. Holding
+-    //      arm==1 ALSO keeps the input cook feeding the player -- the same flag serves both couplings.
+-    //      Result: executive in round_controller_dual -> scene_run_handler stepping stage scene 3 with
+-    //      the live input-responsive P1, HUD, and the attract insert-coin overlay gone (attract_handler
+-    //      no longer runs; its blank-HUD prints during the join/dual phase clear the overlay lines).
+-    //
+-    // HONESTY: both presses and the director hold are LABELED bridges for BIOS/director-synthesized
+-    // couplings the HLE harness does not reproduce; the morph chain, the countdown, the scene stepping
+-    // and the player movement are all the game's own code. Default off => byte-identical.
+-    if (e_liveround) {
+-        static bool lr_parsed = false;
+-        static uint64_t lr_vb = 0;
+-        static uint32_t lr_stage = 0;          // 0 => capture current director scene at trigger
+-        static int lr_phase = 0;               // 0 wait vb; 1 pressed P1; 2 pressed P2; 3 in dual; 4 in scene_run
+-        static uint32_t lr_held = 3;           // the stage scene we pin the director to
+-        if (!lr_parsed) {
+-            lr_parsed = true;
+-            lr_vb = (uint64_t)std::strtoull(e_liveround, nullptr, 10);
+-            const char* c = std::strchr(e_liveround, ':');
+-            if (c) lr_stage = (uint32_t)std::strtoul(c + 1, nullptr, 0);
+-        }
+-        uint32_t exo = ld32(0x06098678u);                 // executive object (*g_06098678)
+-        uint32_t h = (exo && (exo >> 24) == 0x06) ? ld32(exo + 0u) : 0;  // its per-frame handler (RECOMP addr)
+-        // Handler slots hold RECOMP addresses (cart+0x03E04000): attract 0x06008868, join 0x06008AFA,
+-        // dual 0x06009232, scene_run 0x06009812 (the same addresses main_stv.cpp's STV_COV table uses).
+-        if (lr_phase == 0 && vb >= lr_vb && h == 0x06008868u) {   // attract_handler running
+-            uint32_t sc = ld32(0x06098668u);
+-            lr_held = lr_stage ? lr_stage : ((sc >= 2u && sc <= 72u) ? sc : 3u);
+-            st8(0x06098688u, 1);                          // press P1 START -> attract morphs to join
+-            lr_phase = 1;
+-            sat_note("STV_LIVEROUND: pressed P1 START at VB %llu (held stage scene=%u) -> expect round_controller_join", (unsigned long long)vb, lr_held);
+-        } else if (lr_phase == 1 && h == 0x06008AFAu) {           // round_controller_join running
+-            st8(0x06098689u, 1);                          // press P2 START mid-countdown -> join morphs to dual
+-            lr_phase = 2;
+-            sat_note("STV_LIVEROUND: pressed P2 START at VB %llu -> expect round_controller_dual", (unsigned long long)vb);
+-        } else if (lr_phase == 2 && h == 0x06009232u) {          // round_controller_dual running
+-            lr_phase = 3;
+-            sat_note("STV_LIVEROUND: executive in round_controller_dual at VB %llu -> awaiting countdown -> scene_run", (unsigned long long)vb);
+-        } else if (lr_phase >= 2 && h == 0x06009812u) {          // scene_run_handler installed (ENTER PLAY)
+-            if (lr_phase != 4)
+-                sat_note("STV_LIVEROUND: executive in scene_run_handler at VB %llu -- SUSTAINED LIVE ROUND on stage scene %u", (unsigned long long)vb, lr_held);
+-            lr_phase = 4;
+-        }
+-
+-        // Director hold (coupling #2): active from the first press onward. Keep the stage parked.
+-        if (lr_phase >= 1) {
+-            st32(0x06098670u, 1);                                 // hold 2P-arm: director parked + cook feeds input
+-            if (ld32(0x06098668u) != lr_held) {
+-                st32(0x06098668u, lr_held);
+-                st32(0x0609866Cu, scn_desc(lr_held));
+-            }
+-            uint32_t dtask = ld32(0x060987B8u);
+-            if (dtask && (dtask >> 24) == 0x06 && (int8_t)ld8(dtask + 0x0Du) < 0)
+-                st8(dtask + 0x0Du, 0);                            // disarm director reset-timeout (force-jump-to-81)
+-        }
+-        // NEGATIVE RESULT (recorded, not re-implemented): once the dual countdown expires the game
+-        // installs scene_run_handler, and the game's setup-scene SM (func_02218038, cart 0x02218076 ->
+-        // store fn cart 0x02213A70) reinstalls the PLAY scene-object handler scene_obj_handler (recomp
+-        // 0x060136F6) into the scene node *g_0609882C within the SAME frame; its case-0 "restart" reads
+-        // scene 3's ATTRACT descriptor desc+0x10 (= cart CODE 0x0600F1C0) as a play DEFINITION and calls
+-        // its garbage unk0 (0x2FE62FD6) -> FATAL. Scene 3 is an attract-demo descriptor with no play-
+-        // definition layout, and the install+call happen mid-frame so a vblank-in revert is too late.
+-        // A faithful clean play round therefore needs a real PLAY-scene descriptor (play-definition
+-        // layout + play HUD + both-joined), which only the absent setup chain 73-80 builds. The reachable
+-        // crash-free sustained state is the DUAL window (executive in round_controller_dual stepping the
+-        // live stage with the input-responsive player; scene81 never reached) -- still carrying scene 3's
+-        // own coin/continue HUD (CONTINUE? countdown + INSERT COIN for the unjoined P2).
+-        //
+-        // UPDATE 2026-10-23c: the scene_run FATAL is SOLVED (route-b synthesis, STV_SYNTHDEF). The
+-        // crash was ONLY that scene 3's desc+0x10 is an ATTRACT def (a DIRECT code ptr 0x0600F1C0 the
+-        // attract handler calls) that scene_obj_handler case-0 misreads as a play-def and calls its
+-        // non-fn-ptr unk0 (0x2FE62FD6). Two crash-free routes now exist, both default-off:
+-        //   (i)  STV_LIVEROUND="vb:STAGE" with STAGE a native play-def scene (2/4/6/8..): the held
+-        //        descriptor is itself a scene_obj_handler scene (its +0x10 def has unk0 = a real cart-
+-        //        code step callback e.g. 0x060125BC), so scene_run steps it without FATAL -- but
+-        //        func_02218038's play-enter bootstrap blanks VDP2 + tears down the demo actors, so the
+-        //        frame goes black (the clean round is downstream of that intro completing).
+-        //   (ii) STV_LIVEROUND=vb + STV_SYNTHDEF="3:SRC:1210": hold the FAITHFUL scene 3, and AFTER
+-        //        the morph (attract no longer using scene 3) overwrite scene 3's +0x10 with a real
+-        //        play-def from scene SRC. scene_run -> scene_obj_handler steps SRC's content over scene
+-        //        3's still-rendering skyline/stage bg: NO FATAL, the INSERT COIN/CONTINUE overlay is
+-        //        GONE, the scene animates, TWO actors spawn and respond to injected input. SRC=2 ->
+-        //        POLICE-helicopter intro; SRC=6/8 -> the two player fighters (Kris + McClane) rendered
+-        //        over the skyline. Cosmetic residue: VDP1 sprite overdraw at screen-top (the unfinalized
+-        //        live-stage camera/VDP1-local anchor -- same item the notes track). Evidence:
+-        //        run/TASK_EVIDENCE_playdesc/.
+     }
+     if (e_adv) {
+         static bool parsed = false;

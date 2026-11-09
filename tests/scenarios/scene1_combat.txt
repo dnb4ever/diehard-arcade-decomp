@@ -1,0 +1,13 @@
+# Paid Scene 1 (director scene ID 3): insert coin, start, walk right, punch.
+frames 2100
+expect paid
+expect scene=3
+600 605 0 0 01
+700 705 0 0 10
+1650 1749 200 0 0
+1750 1751 1 0 0
+1800 1801 1 0 0
+1850 1851 1 0 0
+1900 1901 1 0 0
+1950 1951 1 0 0
+2000 2001 1 0 0

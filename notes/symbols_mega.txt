@@ -1,0 +1,21 @@
+# symbols_mega.txt - VDP colour/geometry "mega" builders + their helper ABIs
+# (SH-2 addresses; cart offset = addr - 0x02000000). Written by the mega-builder pass.
+
+# --- mega builders (this cluster) ---
+0x02234b58 vdp_colour_build_a        # DONE - template, src_functional/02234b58.c
+0x02235198 vdp_colour_build_b        # sibling, similar shape, NOT yet decompiled
+0x02235dc0 func_235dc0               # per-block hook called by builder A (and B's unit); undecompiled
+# NOTE: 0x0223577c is NOT a function. It is literal-pool/body data inside the
+# 0x02235198 compilation unit (find_entry snaps it back to 0x235198; m2c disasm
+# shows .byte garbage). The "three builders" premise is wrong: there are TWO
+# (0x234b58, 0x235198). Unit map: 234b58-235198 = 1 func; 235198-235f0c = 3 funcs.
+
+# --- shared helper ABIs resolved for these builders (all pre-existing in src_functional) ---
+0x022149aa mtx_load_abc              # copy_longs(0x06098abc -> *0x06098878, 12)
+0x02214a40 mtx_apply_vec_at8         # vec3_array_matmul of obj+8/+12/+16
+0x02214a06 mtx_rotate_zyx_at24       # rotate active mtx by u16 angles at obj+0x24/0x26/0x28
+0x02214a2e mtx_stack_push_dup        # *p += 0x30; copy_longs(old,new,12)
+0x02213474 matrix_copy_reverse       # 2 matrices row-swapped into 0x060da040 + translate
+0x022149e4 mtx_rotate_zyx            # jsr @r9 : rotate active mtx by u16 angles[0..2]
+0x02213ca4 vec3_array_matmul         # jsr @r8 : func_02213ca4(x,y,z) transform-in-place
+0x0224a360 ashl_var                  # func_0224a360(value,count)=value<<count; ABI r0=val,r1=cnt

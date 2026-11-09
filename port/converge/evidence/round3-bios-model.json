@@ -1,0 +1,253 @@
+{
+  "cart_sha256": "309603533747f9e235c57576ec04b4c6274338b4a46efcf1a834fdd4f7d88ea9",
+  "runtime_bios_sha256": "6c0dff7dc48f4971abbe7c775877175a0acaada32f4423922827b8a1a42ea8c1",
+  "rom_load_bytes": {
+    "06018a46": "56e455e354e203236ef6",
+    "06018a56": "56e255e164e203236ef6"
+  },
+  "source_sha256": "b85b1c61f77d82173e0f545265ceb214219d7f4e3a1bdc881b879c0bb3c805b7",
+  "proposal_sha256": "0776210e3fd400adad11d8276c6c8b3e3efafa5feae14bd3c9f68ad80962daec",
+  "python_cases": [
+    [
+      false,
+      "00000208",
+      4,
+      "rejected"
+    ],
+    [
+      false,
+      "20000210",
+      4,
+      "rejected"
+    ],
+    [
+      false,
+      "0000020c",
+      2,
+      "rejected"
+    ],
+    [
+      false,
+      "00000213",
+      1,
+      "rejected"
+    ],
+    [
+      false,
+      "00000212",
+      4,
+      "rejected"
+    ],
+    [
+      false,
+      "00000207",
+      2,
+      "rejected"
+    ],
+    [
+      false,
+      "00100000",
+      1,
+      "rejected"
+    ],
+    [
+      true,
+      "00000208",
+      4,
+      "read",
+      0
+    ],
+    [
+      true,
+      "20000210",
+      4,
+      "read",
+      0
+    ],
+    [
+      true,
+      "0000020c",
+      2,
+      "read",
+      0
+    ],
+    [
+      true,
+      "00000213",
+      1,
+      "read",
+      0
+    ],
+    [
+      true,
+      "00000212",
+      4,
+      "rejected"
+    ],
+    [
+      true,
+      "00000207",
+      2,
+      "rejected"
+    ],
+    [
+      true,
+      "00100000",
+      1,
+      "rejected"
+    ],
+    [
+      true,
+      "00000208",
+      4,
+      "write rejected"
+    ],
+    [
+      true,
+      "20000210",
+      4,
+      "write rejected"
+    ]
+  ],
+  "c_model": {
+    "reads": {
+      "exit": 0,
+      "stderr": ""
+    },
+    "write": {
+      "exit": 73,
+      "stderr": "unmapped C memory 00000210/4\n"
+    },
+    "mmio": {
+      "exit": 73,
+      "stderr": "unmapped C memory 00100000/1\n"
+    }
+  },
+  "vector_wrappers": [
+    {
+      "address": "02214a40",
+      "data": "stock-hle",
+      "metadata": {
+        "r0_checked": false,
+        "call_specs": {
+          "100760740": 3
+        },
+        "indirect_counts": [],
+        "inferred_prototypes": {},
+        "narrow_args": {},
+        "stack_locals": [],
+        "entry_arg_count": 1,
+        "narrow_params": {},
+        "typed_pointer_globals": []
+      },
+      "reference": [
+        2553677085,
+        {},
+        [
+          [
+            100760740,
+            0,
+            0,
+            0
+          ]
+        ],
+        []
+      ],
+      "candidate": "C 06017ca4 00000000 00000000 00000000\nR 00000000\n"
+    },
+    {
+      "address": "02214a50",
+      "data": "stock-hle",
+      "metadata": {
+        "r0_checked": false,
+        "call_specs": {
+          "100760740": 3
+        },
+        "indirect_counts": [],
+        "inferred_prototypes": {},
+        "narrow_args": {},
+        "stack_locals": [],
+        "entry_arg_count": 1,
+        "narrow_params": {},
+        "typed_pointer_globals": []
+      },
+      "reference": [
+        2553677085,
+        {},
+        [
+          [
+            100760740,
+            0,
+            0,
+            0
+          ]
+        ],
+        []
+      ],
+      "candidate": "C 06017ca4 00000000 00000000 00000000\nR 00000000\n"
+    },
+    {
+      "address": "02214a40",
+      "data": "nonzero-fixture",
+      "metadata": {
+        "r0_checked": false,
+        "call_specs": {
+          "100760740": 3
+        },
+        "indirect_counts": [],
+        "inferred_prototypes": {},
+        "narrow_args": {},
+        "stack_locals": [],
+        "entry_arg_count": 1,
+        "narrow_params": {},
+        "typed_pointer_globals": []
+      },
+      "reference": [
+        3153421725,
+        {},
+        [
+          [
+            100760740,
+            66051,
+            67438087,
+            134810123
+          ]
+        ],
+        []
+      ],
+      "candidate": "C 06017ca4 00010203 04050607 08090a0b\nR 00000000\n"
+    },
+    {
+      "address": "02214a50",
+      "data": "nonzero-fixture",
+      "metadata": {
+        "r0_checked": false,
+        "call_specs": {
+          "100760740": 3
+        },
+        "indirect_counts": [],
+        "inferred_prototypes": {},
+        "narrow_args": {},
+        "stack_locals": [],
+        "entry_arg_count": 1,
+        "narrow_params": {},
+        "typed_pointer_globals": []
+      },
+      "reference": [
+        3153421725,
+        {},
+        [
+          [
+            100760740,
+            66051,
+            67438087,
+            134810123
+          ]
+        ],
+        []
+      ],
+      "candidate": "C 06017ca4 00010203 04050607 08090a0b\nR 00000000\n"
+    }
+  ],
+  "physical_bios_dump": false
+}

@@ -1,0 +1,25 @@
+{
+  "PASS": {
+    "total": 118,
+    "with_poll": 74,
+    "no_poll": 44,
+    "no_poll_no_observed_effects": 27,
+    "no_poll_with_calls": 4
+  },
+  "PASS-void": {
+    "total": 730,
+    "with_poll": 557,
+    "no_poll": 173,
+    "no_poll_no_observed_effects": 5,
+    "no_poll_with_calls": 63
+  },
+  "SKIP": {
+    "total": 251,
+    "no_port_entry": 2,
+    "no_poll": 63,
+    "no_poll_no_observed_effects": 60,
+    "with_poll": 186,
+    "no_poll_fixed_frame": 1,
+    "no_poll_with_calls": 9
+  }
+}

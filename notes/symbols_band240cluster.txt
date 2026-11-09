@@ -1,0 +1,160 @@
+# symbols_band240cluster.txt - worker: band240cluster
+# The deferred 0x240622..0x24124e blob-sibling cluster (per-state actor handlers)
+# inside the func_02402c0 census blob [0x2402c0, 0x241556), plus func_02240054.
+# Appended discoveries only; notes/symbols.txt left untouched per task.
+# Every SHIPPED TU compiles `gcc -O1 -c -Wall -Wextra -I project/src_functional`
+# with ZERO output. All braf/bsrf resolved via braf_resolve (NO phantoms).
+#
+# Bounding method: the blob is ONE census unit (fn.extent(0x2402c0)=0x1296, the
+# whole merged body) because every sibling shares one literal pool and the
+# compiler tail-merges shared epilogues. Each sibling was bounded individually by
+# its real prologue (watching the scratch-first variant where the entry is two
+# insns BEFORE the register push) and its rts/bra-tail+delay-slot, then decoded
+# with tools/decomp/decomp_bounded.py --end <real end> and hand-verified against
+# the raw listing. Internal literal pools (mid-function .byte runs) were skipped;
+# the linear fn.listing branch targets inside pool regions are PHANTOM and were
+# ignored.
+
+# ================================================================
+# SHIPPED - standalone driver
+# ================================================================
+0x02240054 func_02240054   # s32(s32 arg0, void *obj). [0x240054,0x2401d6) (census
+#   0x24003e pool-contaminated). Per-actor state tick/transition driver.
+#   M8(0x48)=0; M8(0x41)=1; M32(0x88)=0;
+#   idx=M16(0xBA)&0x3F; fn=g_060918a0[idx][M32(0x108)]; fn(obj,&out_val);  // 2-level table
+#   if(g_060e0ddc) sound_queue_push((g_0608da48[idx]<<8)|0xA00000FF);
+#   if(M8(0x4F)==0){ d=M16(0x56);
+#     if(d<0x96){ save34=M8(0x34); M8(0x6D)=4; func_02245c88(obj,d); M8(0x6D)=0;
+#                 M8(0x4F)=1; M32(0xFC)=0; M8(0x46)=1; func_0222ca54(obj);
+#                 func_0223ed94(arg0,obj);
+#                 e=func_0220ff54(arg0,(void*)0x0223EE1A); M8(M32(e,8),0x34)=M8(0x34);
+#                 if(func_0223e4a0(e)){ q=M32(func_0223cbb0(5,3,0),8);
+#                     rec=(s32*)(0x06097E08+(save34<<8));
+#                     M32(q,8)=rec[0];M32(q,12)=rec[1];M32(q,16)=rec[2];
+#                     func_0223a924(M8(q,0x34),3,(u8*)q+8,obj); } }
+#     else if(d<0xD6) func_0223edce(arg0,obj,7&~((d-0x40)>>3)); }
+#   func_022418fa(arg0,obj,out_val); func_02241b2c(obj);
+#   M32(0x14)=0;M32(0x18)=0;M32(0x1C)=0; return out_val;
+#   NOTE: 0x0223EE1A is a fixed ROM data pointer (mova 0x240100 + -0x12E6),
+#   passed to func_0220ff54; symbol unknown, kept as a raw cast.
+
+# ================================================================
+# SHIPPED - 0x240622..0x24124e cluster handlers (all (void *obj, s32 *out))
+# ================================================================
+0x02240622 func_02240622   # (A, pushes r8..r14) [0x240622,0x24078e). Facing/aggro
+#   handler. p=M32(0x180); kind=M8(0x4A); near=(M16(0x64)>=M16(0x146));
+#   if((M32(0xE0)&0x2000000)||((M32(0x38)&0x7800)&&(rng()&7)==0)){
+#       if(!(1<=kind<=2)) ->func_02402c0; M16(0x5C)=M16(p,8); M32(0xE0)|=0x2000000;
+#   } else { if(kind<1||kind>2||g_0608d824[(u8)M8(0x49)]==1) ->func_02402c0;
+#       b=M32(g_060995b0[kind],8); neg=(M32(b,8)-M32(0x8))<0;
+#       if(M8(0x44)!=neg||(near&&(rng()&3))) ->func_02402c0; M16(0x5C)=M16(p,near*2); }
+#   func_0224174e(obj); if(g_060e0ddc) sound_queue_push((g_0608da40[near]<<8)|0xA00000FF);
+#   M16(0xBA)|=0x100; M32(0x84)=0x800; *out=0;
+0x022407b0 func_022407b0   # (A) [0x2407b0,0x24080e). func_022ab18; cond func_227704;
+#   func_0224174e; actor_motion_init; M32(0xEC)*=2; M32(0xF0)+=0x600; M32(0x108)=1;
+#   M32(0x84)=0x1000; *out=2; -> func_0224124e(obj,out,3).
+0x0224080e func_0224080e   # leaf [0x24080e,0x24081e). g_060e0f2c[M32(0x94)]=1; ->func_022407b0.
+0x0224081e func_0224081e   # (A) [0x24081e,0x24086c). if(M32(0xE4)==9) ->func_02402c0;
+#   else if(M32(0xE4)==13 && (M32(0xE0)&3) && !(M32(0xE0)&0x2010000)){
+#       func_022408a0(obj,out); M32(0x108)=6; } else ->func_02241164.
+0x0224086c func_0224086c   # leaf [0x24086c,0x24087c). g_060e0f2c[M32(0x94)]=1; ->func_0224081e.
+0x022408a0 func_022408a0   # (A) [0x2408a0,0x240976). facing-resolve helper (bsr by
+#   func_0224081e). if(M32(0xE4)!=13) ->func_02241164. sel=g_0608d824[(u8)M8(0x49)];
+#   kind=M8(0x4A); near=(M16(0x64)>=M16(0x146));
+#   if(kind<1||kind>2||sel==1){func_022ab18; ->func_02241164;}
+#   b=M32(g_060995b0[kind],8); if(M8(0x44)!=((M32(b,8)-M32(0x8))<0)){func_022ab18; ->func_02241164;}
+#   func_0224174e; M16(0x5C)=M16(p,near*2); if(g_060e0ddc) sound_queue_push(0xA01249FF);
+#   M16(0xBA)|=0x100; M32(0x84)=0x800; M32(0x108)=6; *out=0.
+0x022409a0 func_022409a0   # (A) [0x2409a0,0x240a3a). enter-statewalk-else-face (arg 3,
+#   table g_0608d884, fall unk84=0x800/out=0). See 02240e54/efe (clones, other tables).
+0x02240a3a func_02240a3a   # leaf [0x240a3a,0x240a4a). g_060e0f2c[M32(0x94)]=1; ->func_022409a0.
+0x02240bba func_02240bba   # (B) [0x240bba,0x240c3c). func_022ab18; a=(u16)rec_delta_angle_neg;
+#   facing split (0x4000<=a<0xC000 -> M8(0x44)=0/M16(0x26)=0xC000 else 1/0x4000);
+#   -> func_022413e6(obj,out).
+0x02240c3e func_02240c3e   # (B) [0x240c3e,0x240c6a). func_022ab18; g_060e0f2c[M32(0x94)]=1;
+#   -> func_022413e6(obj,out).
+0x02240c6a func_02240c6a   # (B) [0x240c6a,0x240c9a). func_022ab18; cond func_227704;
+#   -> func_022414ee(obj,out).
+0x02240c9a func_02240c9a   # (B) [0x240c9a,0x240cca). func_022ab18; func_022417ea;
+#   func_022414ee(obj,out) (bsr); M32(0xE0)|=0x400000; rts.
+0x02240cca func_02240cca   # (B) [0x240cca,0x240cf6). func_022ab18; g_060e0f2c[M32(0x94)]=1;
+#   -> func_022414ee(obj,out).
+0x02240d1c func_02240d1c   # (A, pushes r11..r14) [0x240d1c,0x240e0e). kind=M8(0x4A);
+#   if(kind<1||kind>2) ->func_02402c0;
+#   if(func_0224158c(obj,3)==0||M16(0x56)<=0){func_022ab18; M32(0xE0)|=0x40000;
+#       M32(0x108)=1; M32(0x84)=0x1000; *out=1; ->func_0224124e(obj,out,0);}
+#   if(g_0608d824[(u8)M8(0x49)]==2 && !(M32(0x38)&0x520)){func_022ab18;
+#       if(g_060e0ddc) sound_queue_push(0xA01224FF); f=(u16)M16(0x62)>>15; if(M8(0x44))f=~f;
+#       M16(0x5C)=g_0608d888[f&1]; M32(0x84)=0x800; M32(0x108)=0;
+#       M32(0x114)=g_060987bc+0x3C; *out=0;}
+#   else ->func_02402c0.
+0x02240e0e func_02240e0e   # leaf [0x240e0e,0x240e1e). g_060e0f2c[M32(0x94)]=1; ->func_02240d1c.
+0x02240e54 func_02240e54   # (A) [0x240e54,0x240eee). statewalk-else-face clone of
+#   func_022409a0, facing table g_0608d88c.
+0x02240eee func_02240eee   # leaf [0x240eee,0x240efe). g_060e0f2c[M32(0x94)]=1; ->func_02240e54.
+0x02240efe func_02240efe   # (B) [0x240efe,0x240fc8). statewalk-else-face clone of
+#   func_022409a0, facing table g_0608d890.
+0x02240fc8 func_02240fc8   # leaf [0x240fc8,0x240fd8). g_060e0f2c[M32(0x94)]=1; ->func_02240efe.
+0x02240fd8 func_02240fd8   # (A) [0x240fd8,0x241024). func_022ab18; cond func_227704;
+#   M32(0xE0)|=0x40000; M32(0x108)=1; M32(0x84)=0x1000; *out=1; ->func_0224124e(obj,out,0).
+0x02241024 func_02241024   # leaf [0x241024,0x241034). g_060e0f2c[M32(0x94)]=1; ->func_02240fd8.
+0x02241034 func_02241034   # (A) [0x241034,0x2410fe). statewalk-else-face variant:
+#   func_02241556 limit 6, facing table g_0608d894, fallthrough M32(0x84)=0x1000/*out=3.
+0x022410fe func_022410fe   # leaf [0x2410fe,0x24110e). g_060e0f2c[M32(0x94)]=1; ->func_02241034.
+0x0224110e func_0224110e   # (B) [0x24110e,0x241164). func_022ab18; M32(0x108)=1;
+#   actor_motion_init; M32(0xEC)=(M16u(0x62)<0x8000)?-0x2000:0x2000; M32(0xF4)=-0x2000;
+#   M32(0x84)=0x1000; *out=2; -> func_0224124e(obj,out,3).
+0x02241164 func_02241164   # (A, pushes r8,r11,r12,r13,r14) [0x241164,0x24124e). Shared
+#   tail-call target of func_0224081e/022408a0. func_022ab18; cond func_227704;
+#   if(func_02241556(obj,6)==0 && M16(0x56)>0){statewalk: M32(0x10C)=1;M32(0x108)=1;
+#       M32(0x84)=0x1000; M32(0xE0)|=0x40000; *out=1; ->func_0224124e(obj,out,0);}
+#   M32(0x108)=0; f=(u16)M16(0x62)>>14; if(M8(0x44))f=~f;
+#   M16(0x5C)=g_06086720[(f&2)+(rng()&1)]; M32(0x84)=0x800; *out=0.
+
+# ================================================================
+# callees referenced (extern; all resolved, no phantoms)
+# ================================================================
+0x0222ab18 func_022ab18       # void(obj, s32 amount); amount = M16(obj,0x64)
+0x00227704 func_227704        # void(obj)
+0x02210020 func_02210020      # s32(void). rng_next; NO args (ignore m2c's phantom arg)
+0x02215f6c func_02215f6c      # void(s32 cmd). sound_queue_push / PIC trigger
+0x0224174e func_0224174e      # void(obj)                                   [shipped]
+0x022415ee actor_motion_init  # void(obj)                                   [shipped]
+0x0224158c func_0224158c      # s32(obj, s32 limit)                         [shipped]
+0x022417ea func_022417ea      # void(obj)                                   [shipped]
+0x02241556 func_02241556      # s32(obj, s32 arg)                           [shipped]
+0x0224124e func_0224124e      # void(obj, s32 *out, s32 arg)                [shipped]
+0x022413e6 func_022413e6      # void(obj, s32 *out)                         [shipped]
+0x022414ee func_022414ee      # void(obj, s32 *out)                         [shipped]
+0x022402c0 func_02402c0       # void(obj, s32 *out). expire/lock-on check   [shipped]
+0x02244df2 rec_delta_angle_neg # s32(obj)                                   [shipped]
+# func_02240054 cross-band callees (resolved via braf_resolve, no phantoms):
+0x0220ff54 func_0220ff54      # void*(s32, void*)
+0x0222ca54 func_0222ca54      # void(obj)
+0x0223a924 func_0223a924      # void(s32 kind, s32, void*, void* obj)
+0x0223cbb0 func_0223cbb0      # void*(s32, s32, s32)
+0x0223e4a0 func_0223e4a0      # s32(void*)
+0x0223ed94 func_0223ed94      # void(s32 arg0, void* obj)
+0x0223edce func_0223edce      # void(s32 arg0, void* obj, s32 arg2)
+0x022418fa func_022418fa      # void(s32 arg0, void* obj, s32 v)
+0x02241b2c func_02241b2c      # void(obj)
+0x02245c88 func_02245c88      # void(obj, s16)
+
+# ================================================================
+# globals referenced
+# ================================================================
+0x060918a0 g_060918a0       # table of per-type state-fn arrays; g_060918a0[obj->0xBA&0x3F][obj->0x108]
+0x06086720 g_06086720       # s16 facing table (func_02241164; idx (f&2)+(rng&1))
+0x0608d824 g_0608d824       # s32 table, idx (u8)obj->0x49 (func_02240622/022408a0/02240d1c)
+0x0608d884 g_0608d884       # s16 facing table (func_022409a0)
+0x0608d888 g_0608d888       # s16 facing table (func_02240d1c)
+0x0608d88c g_0608d88c       # s16 facing table (func_02240e54)
+0x0608d890 g_0608d890       # s16 facing table (func_02240efe)
+0x0608d894 g_0608d894       # s16 facing table (func_02241034)
+0x0608da40 g_0608da40       # s16 table, idx 'near' (func_02240622; sound_queue_push arg)
+0x0608da48 g_0608da48       # s16 table, idx obj->0xBA&0x3F (func_02240054; sound_queue_push arg)
+0x060987bc g_060987bc       # s32 base/counter (func_02240d1c; M32(0x114)=g_060987bc+0x3C)
+0x06097e08 g_06097e08       # s32 record table, idx (s8)obj->0x34 (func_02240054; stride 0x100)
+0x060995b0 g_060995b0       # pointer table, idx obj->0x4A (func_02240622/022408a0)
+0x060e0ddc g_060e0ddc       # s32 gate flag (guards the sound_queue_push calls)
+0x060e0f2c g_060e0f2c       # s32 flag table, idx obj->0x94 (the leaf flag-setters)

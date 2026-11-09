@@ -1,0 +1,231 @@
+060051B0  # learned
+060098A8  # learned
+06013990  # learned
+06013B58  # learned
+06013C18  # learned
+06013DC8  # learned
+0601726C  # learned
+0601727C  # learned
+06017404  # learned
+06017BA0  # learned
+06017BF4  # learned
+06017C4C  # learned
+060187CC  # learned
+06018818  # learned
+060188CA  # learned
+060189A0  # learned
+06018A7A  # learned
+06019000  # learned
+06019F24  # learned
+06026E44  # learned
+06026ED6  # learned
+06032CC4  # learned
+0603C6C6  # learned
+0603D64E  # learned
+0604E280  # learned
+06027AC0  # learned (cartrom)
+060170B4  # learned (cartrom)
+06017164  # learned (cartrom)
+06032B72  # learned (cartrom)
+0601AC38  # learned (cartrom)
+060260BE  # learned (cartrom)
+06025BD4  # learned (cartrom)
+06026574  # learned (cartrom)
+0600B360  # learned (cartrom)
+06024828  # learned (cartrom)
+060189AA  # learned (cartrom)
+06017538  # learned (cartrom)
+06018A50  # learned (cartrom)
+060189E4  # learned (cartrom)
+060174D8  # learned (cartrom)
+060140F8  # learned (cartrom)
+06026C08  # learned (cartrom)
+06030A54  # learned (cartrom)
+060423D0  # learned (cartrom)
+060175A0  # learned (cartrom)
+06017CE4  # learned (cartrom)
+06018A40  # learned (cartrom)
+06032C98  # learned (cartrom)
+06017B5C  # learned (cartrom)
+0604E06C  # learned (cartrom)
+0603CDDE  # learned (cartrom)
+06017434  # learned (cartrom)
+06017A70  # learned (cartrom)
+060179B8  # learned (cartrom)
+06041F30  # learned (cartrom)
+0602BC5C  # learned (cartrom)
+0602E5CA  # learned (cartrom)
+0602BC22  # learned (cartrom)
+060141CE  # learned (cartrom)
+0604A052  # learned (cartrom)
+060118D0  # learned (cartrom)
+0601198E  # learned (cartrom)
+0604A3B8  # learned (cartrom)
+06017354  # learned (cartrom)
+06013B98  # learned (cartrom)
+06032EE4  # learned (cartrom)
+060177A0  # slave sound sub-fn (freeze_diagnosis probe)
+060171FC  # slave sound sub-fn (freeze_diagnosis probe)
+06019386  # slave sound sub-fn (freeze_diagnosis probe)
+0604E1C8  # join-path seed (spawn_diagnosis push)
+0604E120  # join-path seed (spawn_diagnosis push)
+06009812  # stv start-path (stv_input_gameplay push)
+06049C88  # learned (paid path)
+06048AA8  # learned (paid path)
+0604A2BC  # learned (paid path)
+06049DCC  # learned (paid path)
+06049E80  # learned (paid path)
+0604892C  # learned (paid path)
+060172D4  # learned (paid path)
+0601730C  # learned (paid path)
+0602ED7A  # learned (paid path)
+0602FDF2  # learned (paid path)
+0600B2CE  # learned (bootmode 1)
+0601F330  # learned (bootmode 1)
+06008308  # learned (bootmode 1)
+06018A60  # learned (bootmode 1)
+0602C106  # learned (bootmode 1)
+06008258  # learned (bootmode 1)
+06049E58  # learned (bootmode 1)
+0604A0C8  # learned (bootmode 1)
+06014858  # learned (bootmode 1)
+0603594A  # learned (bootmode 1)
+06035A1C  # learned (bootmode 1)
+06045B2C  # learned (bootmode 1)
+0602D4B4  # learned (bootmode 1)
+06006DFA  # learned (bootmode 1)
+0601DC44  # learned (bootmode 1)
+0604DFB0  # learned (cold+cfg798=60)
+06041D28  # learned (cold+cfg798=60)
+
+# 2026-10-19 (panel-input session): no new seeds -- cold+cfg798=60 path with coin/start/face-dir
+#   tokens runs clean to 3000 VBlanks, no missing-function walls. Start flag 0x06098688 is set
+#   by a player-actor FSM (cart 0x2229cac), not the panel path -- see stv_panel_input_status.md.
+
+# 2026-10-19 play_transition investigation: no new PIC-call walls reached. The cold-boot+credit
+#   path is already code-complete (see notes/port/play_transition_status.md). The attract->play
+#   blocker is a game-scene/player-actor spawn CYCLE, not a missing seed. No seeds added.
+06032B84  # learned (scene-probe)
+06032BA8  # learned (scene-probe)
+060246AE  # learned (scene-probe)
+
+# 2026-10-20 (scene-content-completion session): attract reel now advances past scene 3 in steady
+#   attract (3->4->5->6->7->8). NEW WALL at scene 8: content handler f_2332d4 called but not a
+#   registered module entry. Seed it to let scene 8 proceed.
+060372D4  # learned (scene 8 content handler f_2332d4, cart 0x022332d4)
+0604A282  # learned (scene 8 sub-task handler, cart 0x02246282)
+060144F6  # learned (scene 8 content sub-handler, cart 0x022104f6)
+# 2026-10-20 (coin_arm_and_reel session): after the deliver_coin coin-detect-gate fix, autolearn
+#   seeded the scene-8 content chain to completion. The attract reel now cascades the FULL demo
+#   loop 2->3->4->5->6->7->8->9->10->(loop to 2), both with and without coins, no walls/park.
+#   7 new scene-8+ content-handler seeds (for main merge):
+060407BA  # learned (scene-probe)
+06035336  # learned (scene-probe)
+06034E34  # learned (scene-probe)
+06021302  # learned (scene-probe)
+06022256  # learned (scene-probe)
+0601D984  # learned (scene-probe)
+06006DDA  # learned (scene-probe)
+0602863E  # player main-state func_022863e (cart 0x0222863e) -- surfaced when a spawned
+           #   player actor is driven into its main state; real fn reachable via a300->a418->228508->22863e
+
+# 2026-10-21 (round-slog session): forced-walk wall grind, STV_BOOTMODE=1 STV_SCENEADV=1100:90:25, 1 P1 coin
+0604A27E  # slog wall 1 @scene8: content sub-task (cart 0x0224627E, pr 06013E0E task_list_run)
+060464C4  # slog wall 2 @scene15: content sub-task (cart 0x022604C4, pr 06013E0E)
+06020368  # slog wall 3 @scene17: content sub-task (cart 0x0221C368, pr 06013E0E)
+0604074A  # slog wall 4 @scene32: content sub-task (cart 0x0223C74A, pr 06033F76)
+0600B8AA  # slog wall 5 @scene34: content sub-task (cart 0x022078AA, pr 06037294)
+0601ED06  # slog wall 6 @scene67: content sub-task (cart 0x0221AD06, pr 06013E0E)
+06043700  # slog wall 7 @scene69: content sub-task (cart 0x0223F700, pr 06013E0E)
+
+# 2026-10-21 (fully-faithful routing session, dh-portB): the ONLY recomp wall on the faithful
+#   scene-1 credit-wait path. func_0220600e (credit-wait handler) spawns this aux object on entry;
+#   without it the director cannot DWELL on scene 1 so STV_FORCEARM was the stand-in. Seed it ->
+#   credit-wait runs its own real START commit (sets g_06098670 + join byte 0x06098674[0]) ->
+#   STV_FORCEARM no longer needed.
+0600A86A  # scene-1 credit-wait aux object (cart 0x0220686A, pr 06013E0E task_list_run)
+
+
+# 2026-10-22 (cooked-input / scene-75 session, dh-portB): scene-75 (func_02232bc4) state-6
+#   cleanup callee func_0222a0ec. Hit as a 'call to 0602E0EC, not an entry' FATAL when the
+#   director enters scene 75 from the faithful 74->75 advance (pr 06037070, cart 0x02233070).
+#   The seed-75-direct path avoided it; the 74->75 path reaches the state-6 cleanup. Real cart fn.
+0602E0EC  # scene-75 state-6 cleanup (cart 0x0222a0ec, pr 06037070)
+
+# 2026-10-22 (routing/setup-chain session): scene-75 2-fighter HP/signature compare callee
+#   func_0222a04e. Hit as call to 0602E04E, not an entry when the 74->75 advance reaches the
+#   round-intro self-advance compare (pr 06036FF6). Real cart fn; needed for the seeded 73->81 walk.
+0602E04E  # scene-75 fighter-compare (cart 0x0222a04e, pr 06036FF6)
+
+# 2026-11-06 (P4.4): Scene 9 combat hit FATAL call to 060359B2, not an entry (pr 06013E0E,
+#   task-step func_022319b2 installed by data pointer, never reached by static call discovery).
+#   Same class: every project/src_functional/<addr>.c function absent from the generated table.
+06007EC2  # cart 0x02203ec2 (src_functional)
+0600D814  # cart 0x02209814 (src_functional)
+0600DA8C  # cart 0x02209a8c (src_functional)
+0600DD70  # cart 0x02209d70 (src_functional)
+0601229E  # cart 0x0220e29e (src_functional)
+060122D8  # cart 0x0220e2d8 (src_functional)
+060130EE  # cart 0x0220f0ee (src_functional)
+06013C16  # cart 0x0220fc16 (src_functional)
+06013E98  # cart 0x0220fe98 (src_functional)
+06017248  # cart 0x02213248 (src_functional)
+06017D18  # cart 0x02213d18 (src_functional)
+06018E2E  # cart 0x02214e2e (src_functional)
+060194FA  # cart 0x022154fa (src_functional)
+0601966E  # cart 0x0221566e (src_functional)
+0601DAD2  # cart 0x02219ad2 (src_functional)
+0601DBA4  # cart 0x02219ba4 (src_functional)
+0601DC22  # cart 0x02219c22 (src_functional)
+0602477E  # cart 0x0222077e (src_functional)
+06025800  # cart 0x02221800 (src_functional)
+060263B2  # cart 0x022223b2 (src_functional)
+060267AA  # cart 0x022227aa (src_functional)
+06027780  # cart 0x02223780 (src_functional)
+0602FD90  # cart 0x0222bd90 (src_functional)
+06032C3C  # cart 0x0222ec3c (src_functional)
+060341AC  # cart 0x022301ac (src_functional)
+060359B2  # cart 0x022319b2 (src_functional)
+0603E888  # cart 0x0223a888 (src_functional)
+0603EC50  # cart 0x0223ac50 (src_functional)
+060410C6  # cart 0x0223d0c6 (src_functional)
+060425BC  # cart 0x0223e5bc (src_functional)
+06045D6E  # cart 0x02241d6e (src_functional)
+06049C76  # cart 0x02245c76 (src_functional)
+0604A026  # cart 0x02246026 (src_functional)
+0604A17A  # cart 0x0224617a (src_functional)
+0604A1D8  # cart 0x022461d8 (src_functional)
+0604A3C8  # cart 0x022463c8 (src_functional)
+0604E39C  # cart 0x0224a39c (src_functional)
+0604E3B0  # cart 0x0224a3b0 (src_functional)
+0604E3C4  # cart 0x0224a3c4 (src_functional)
+0604E3D2  # cart 0x0224a3d2 (src_functional)
+0604E3E0  # cart 0x0224a3e0 (src_functional)
+0604E3EC  # cart 0x0224a3ec (src_functional)
+0604E3F6  # cart 0x0224a3f6 (src_functional)
+0604E4AA  # cart 0x0224a4aa (src_functional)
+0604E4C0  # cart 0x0224a4c0 (src_functional)
+0604E4D4  # cart 0x0224a4d4 (src_functional)
+0604E4E6  # cart 0x0224a4e6 (src_functional)
+0604E4F6  # cart 0x0224a4f6 (src_functional)
+0604E504  # cart 0x0224a504 (src_functional)
+0604E510  # cart 0x0224a510 (src_functional)
+0604E518  # cart 0x0224a518 (src_functional)
+
+# 2026-11-06 (P4.4): Scene 21 hit FATAL call to 0604E928, not an entry (pr 06014C4C): soft-float
+#   helper (cart 0x0224a928, after itod 0x0224a830) reached only by "mov.l @(pool),r0 ... bsrf r0"
+#   at 06014C48/06014E50/06014EF8, a pattern the recompiler's bsrf resolver does not follow.
+#   port/run/P44/tools/scan_unresolved_bsrf.py lists it as the only such unresolved code target.
+0604E928  # cart 0x0224a928 (bsrf r0 target)
+
+# 2026-11-06 (P4.5): with the real BIOS area code (USA, 0x06000248 = 0x4008) the attract runs the
+#   US-only screens and hit FATAL call to 06026EE2, not an entry (pr 06027D24): a draw callback
+#   installed into g_06090298 by 02222d3c through a PIC pointer. A scan for prologues right after
+#   rts/braf/jmp that are not table entries finds two more real functions; seeded together.
+06014298  # cart 0x02210298 (task step, prologue after braf)
+06026EE2  # cart 0x02222ee2 (g_06090298 draw callback, installed by 02222d3c)
+0604E268  # cart 0x0224a268 (leaf, prologue after rts)
+#   Second game loop of the P4.5 autoplay run (VB 165861, Scene 8): FATAL call to 0601FC1C, not an
+#   entry (pr 06013E0E, the task dispatcher): a task step after rts, referenced by pointer at
+#   0x06004596/0x06004BFE. A scan of pointer literals to post-rts addresses found no other real entry.
+0601FC1C  # cart 0x0221bc1c (task step installed by pointer)

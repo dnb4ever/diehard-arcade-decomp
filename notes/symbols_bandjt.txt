@@ -1,0 +1,33 @@
+# Symbols discovered/used by band-jt worker (0x237-0x240 jump-table trio).
+# Append-only side list; does NOT modify notes/symbols.txt.
+
+## Functions (shipped-file callees)
+0x02153f6   func_02153f6            # draw_child_sprite (obj, u14, 1); 239462 braf tail target
+0x0247d6e   func_0247d6e            # actor_block_setup; (actor)->s32
+0x02469f2   func_02469f2            # 23fcb6 case: (actor), tail
+0x0245d1c   func_0245d1c            # (actor)->target ptr or 0
+0x0249836   func_0249836            # (actor, target); 23fcb6 tail
+0x0244e2e   func_0244e2e            # actor_state_dispatch (actor)->s32 switch 0..3
+0x02470a2   func_02470a2            # actor_set_state_0x12 (actor)
+0x0247036   func_0247036            # (actor), tail
+0x0243fe0   func_0243fe0            # (actor)->s32 switch 0..2
+0x024840a   func_024840a            # actor_set_state_7 (actor)
+0x0249fb0   func_0249fb0            # (actor), tail
+0x0245fc4   func_0245fc4            # (actor_ptr, entity)->s32
+
+## Functions (deferred 2399bc callees of note)
+0x022179c0  func_022179c0           # has NONSTANDARD alt-entry @0x022179e4 (+0x24);
+                                     # inputs in r13/r14 (+r5). Blocks 2399bc.
+0x0213bf4   mtx_rotate_y            # legit separate callable entry in 0x213ba0 unit
+
+## Globals
+0x06097d58  g_06097d58             # cel/record table (16-byte-ish entries); used by 239462
+0x06099584  g_06099584             # actor descriptor table; fields @+12/+44/+76 (arrays); 23fcb6
+0x0609740c  g_0609740c             # s32 slot; low 16 bits gated 10..14; 23fcb6
+0x060995b0  g_060995b0             # RAM pointer table indexed by obj->unk34; 2399bc
+0x06096328  (angle table)          # 0x06096328 + unk34*108 + cmd*6 -> u16[3] angles; 2399bc
+0x06096c58  (ptr table)            # indexed by obj->unk34<<2; 2399bc
+0x0607976c  (vec table)            # 0x0607976c + 180*e[0x5e] + b*12; 2399bc 2nd loop
+0x0608c5d2  (cmd-string base 2)    # +unk38*8; 2399bc 2nd loop
+0x0608c622  (cmd-string base 1)    # +unk38*8; 2399bc 1st loop
+0x06098b1c  g_06098b1c             # mtx_apply_vec output vector [3 longs @b1c/b20/b24]

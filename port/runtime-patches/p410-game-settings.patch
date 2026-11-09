@@ -1,0 +1,76 @@
+--- a/runtime/src/host/settings.cpp
++++ b/runtime/src/host/settings.cpp
+@@ -34,6 +34,8 @@
+ vitality = 3
+ lives = 1
+ free_play = false
++pause_button = false
++violence = false
+ 
+ [audio]
+ ; percent
+@@ -118,6 +120,8 @@
+ p2_start = 2
+ p2_coin = 6
+ test = F2
++; Cabinet pause switch, subject to the game soft DIP (host menu pause is separate)
++cabinet_pause = F3
+ service = 9
+ pause = P, Pause
+ pad_coin = back
+--- a/runtime/src/host/launcher.cpp
++++ b/runtime/src/host/launcher.cpp
+@@ -312,8 +312,8 @@
+             }
+             ImGui::EndTable();
+         }
+-        for (const char* key : {"test", "service", "pause"}) {
+-            ImGui::TextUnformatted(key); ImGui::SameLine(); bind("arcade", key);
++        for (const char* key : {"test", "service", "cabinet_pause", "pause"}) {
++            ImGui::TextUnformatted(std::strcmp(key, "cabinet_pause") ? key : "Cabinet pause"); ImGui::SameLine(); bind("arcade", key);
+         }
+         ImGui::TextWrapped("Choose a P1/P2 pad binding, then press that player's pad. Layouts follow player slots and are saved separately. Guide opens pause.");
+         if (ImGui::Button("Default arcade controls")) {
+@@ -382,6 +382,13 @@
+         if (ImGui::Checkbox("Free play", &free)) {
+             set_.set("stv", "free_play", free ? "true" : "false"); save();
+         }
++        for (auto item : {std::pair{"pause_button", "Enable cabinet pause (F3)"},
++                          std::pair{"violence", "Violence (blood)"}}) {
++            bool on = set_.flag("stv", item.first);
++            if (ImGui::Checkbox(item.second, &on)) {
++                set_.set("stv", item.first, on ? "true" : "false"); save();
++            }
++        }
+         ImGui::PopItemWidth();
+         ImGui::TextWrapped("Saved for the next game launch. Free play also allows continues without coins.");
+         if (ImGui::Button("Factory game settings")) {
+--- a/runtime/src/host/host.cpp
++++ b/runtime/src/host/host.cpp
+@@ -303,6 +303,7 @@
+                 g_arcade_keys.push_back({(SDL_Scancode)k, p, b.raw, (uint16_t)(b.sys << p)});
+     for (int k : names(g_settings, "arcade", "test", scancode_of)) g_arcade_keys.push_back({(SDL_Scancode)k, -1, 0, 0x04});
+     for (int k : names(g_settings, "arcade", "service", scancode_of)) g_arcade_keys.push_back({(SDL_Scancode)k, -1, 0, 0x08});
++    for (int k : names(g_settings, "arcade", "cabinet_pause", scancode_of)) g_arcade_keys.push_back({(SDL_Scancode)k, -1, 0, 0x4000});
+     g_pause_keys.clear();
+     for (int k : names(g_settings, "arcade", "pause", scancode_of)) g_pause_keys.push_back((SDL_Scancode)k);
+ 
+--- a/runtime/src/machine/bios.cpp
++++ b/runtime/src/machine/bios.cpp
+@@ -233,7 +233,7 @@
+         uint16_t raw = 0;
+         int kind = tok == "START1" || tok == "START" ? 1 : tok == "START2" ? 2
+                  : tok == "COIN" || tok == "COIN1"   ? 3 : tok == "COIN2"  ? 4
+-                 : tok == "SERVICE" || tok == "SVC"  ? 5 : tok == "TEST" ? 8 : 0;
++                 : tok == "SERVICE" || tok == "SVC"  ? 5 : tok == "TEST" ? 8 : tok == "PAUSE" ? 9 : 0;
+         // P1/P2 face-button + direction tokens: "P1A".."P1C","P1UP".."P1RIGHT" (and P2*), or a bare
+         // face/dir token (defaults to P1). Preserve the physical button/direction mask;
+         // VB:TOKEN:FRAMES holds it for FRAMES VBlanks (default 2).
+@@ -450,6 +450,7 @@
+         if (vb < event.vb || vb - event.vb >= event.duration) continue;
+         static const uint16_t kSysBit[] = {0, 0x10, 0x20, 0x01, 0x02, 0x08};
+         if (event.kind >= 1 && event.kind <= 5) sys |= kSysBit[event.kind];
++        if (event.kind == 9) sys |= 0x4000; // Cabinet pause switch.
+         if (event.kind == 8) sys |= 0x04; // Physical TEST switch (still exits to unimplemented BIOS menus).
+     }
+     g_stv_physical_sys = sys | live_sys;

@@ -1,0 +1,83 @@
+# Symbols discovered - band 0x240 GIANTS pass (worker: band240giants)
+# Format: addr(SH2)  name  notes
+# Band-local notes only; NOT merged into notes/symbols.txt.
+
+# ============================================================
+# SHIPPED this pass
+# ============================================================
+02243628  func_02243628   per-frame team/pairing resolver (void)(void); 5 phases.
+                          DONE (src_functional/02243628.c), compiles -O1 -Wall -Wextra clean.
+02242a10  func_02242a10   per-object state machine switch(*(s8)(ctx+0x10)) 0..4.
+                          DONE (src_functional/02242a10.c), compiles clean.
+
+# ---- callees of func_02243628 (confirmed from prologues / call sites) ----
+0223e530  func_23e530     void(void) sort/assign helper. Consumes bucket array
+                          @0x06096EC4 (count @0x06097050), emits result array
+                          @0x06097070. Called @0x24388c and @0x2439f0 (no args).
+022131c8  func_22131c8    s32(s32 a, s32 b) 16.16 fixed-point multiply.
+                          Prologue: dmuls.l r4,r5 / sts mach,r1 / sts macl,r0 /
+                          rts / xtrct r1,r0  ==  ((s64)a*(s64)b) >> 16 (mid 32).
+                          In 243628 both call sites pass r4==r5 (square a coord).
+02243be0  func_243be0     s32(void *obj, s32 which, void *listCursor)
+02243e22  func_243e22     void(void *obj)
+02243d78  func_243d78     void(void *a, void *b, s32 pairIdx, s32 flag)
+02243db4  func_243db4     void(void *a, void *b, s32 pairIdx, s32 flag)
+02243590  func_243590     void(void *ctx, void *obj, s32 arg)  (already 02243590.c)
+
+# ---- 243628 obj/entry/bucket field offsets ----
+# slotActive 0x06099590 s32[] (slot idx); slotPtrs 0x060995B0 void*[] (+8 -> inner)
+# pairMark   0x06096EC0 u8[4]; activeList 0x060970A8 stride 32 (+0 obj,+4 flag,
+#            +8..+31 coord data filled by func_243be0); bucket 0x06096EC4 stride 44
+#            (+0,+4 id,+8 count, entries from +12 each 8B: +0 playerIdx,+4 metric);
+#            bucketCount 0x06097050; result 0x06097070 stride 8 (+0 status,+4 idx)
+# obj: +0x34 s8 playerIdx, +0x46 s8, +0x84 s32, +0x8C s32 flags, +0xE0 s32 flags,
+#      +0xFC s32 mask, +0x128 s32, +0x12C s32, +0x130/+0x134 s32
+# globals: 0x060E0E88 gate, 0x060E0F0C[] group, 0x060E0F2C[] enable,
+#          0x0604EBE4[] mask-by-group, 0x060E0F4C[] slot-by-group, 0x060E0F6C metric tbl
+
+# ---- callees of func_02242a10 (confirmed from prologues) ----
+02228106  func_228106     s32(void)   scans a table (overwrites r4 on entry -> NO args)
+02245b48  func_245b48     void*(void *p)  reads a global dispatch selector; arg = obj+8
+02215f6c  func_215f6c     void(s32 code)  PIC jsr target = mova(0x242a30)+0xFFFD353C;
+                          called with codes 0xA01313FF/14FF/15FF/16FF/17FF (gated on
+                          *(0x060e0ddc)).  TAKES one arg (r4), unlike func_210020.
+0221c368  func_21c368     void(void *obj)  shared tail call (braf) of func_242a10
+02242cb8  func_242cb8     void(void *ctx, void *obj)  LOCAL helper (deferred, below)
+# 242a10 globals: 0x060987bc g, 0x060e0ddc effect-enable, 0x06097410 abort,
+#   0x06097418, 0x06098670, 0x06098830 counter, 0x0609882c record(+8 inner,+0x0D flag)
+
+# ============================================================
+# DEFERRED (decoded CFG / jump table; reason: zero-error risk)
+# ============================================================
+
+# --- func_242cb8 [0x242cb8, ~0x242f4e) ~370 insn ---
+#   The "2nd function" the band240big note placed at ~0x242caa is actually this
+#   local helper (a 14-byte literal pool sits between func_242a10's tail and it).
+#   No subroutine calls; a single INLINE jump table. Entry: switch on *(s8)(ctx+0x13),
+#   values 0..9 (idx>=10 -> default @0x242f4e). mova table @0x242d00, braf @0x242cfa,
+#   target = 0x242cfe + table[idx]:
+#     case 0 -> 0x242d14   case 1 -> 0x242d2a   case 2 -> 0x242d42
+#     case 3 -> 0x242d6a   case 4 -> 0x242dde   case 5 -> 0x242e02
+#     case 6 -> 0x242e94   case 7 -> 0x242eee   case 8 -> 0x242f30
+#     case 9 -> 0x242f3e   default -> 0x242f4e
+#   Operates on obj via r10=obj+8, r13=obj, r12=obj+24, r14=obj+20 (sets +0x14
+#   velocity, +0x18, +0x80 flags, etc). Dense per-case physics; defer.
+
+# --- func_02246ab8 [0x246ab8, ...] 785 insn ---
+#   Decrement-counter state machine, switch(*(s32)(obj+0xC8)) states 0..3 (plus a
+#   (temp!=0 && state!=0) guard wrapping the whole dispatch). NO table dispatch:
+#   braf_resolve reports 32 computed branches; 31 resolve to real functions, the
+#   lone TABLE flag @0x246e68 is the pool phantom (mov.b @(r0,r8) of 0x0003FFFF).
+#   Universal tail call = func_225c2c (= mova(0x246ad0)+0xFFFE715C = 0x00225C2C).
+#   Resolved callees (all via bsrf/braf):
+02246208  func_246208     02249a82 func_249a82   02249f08 func_249f08
+02245bcc  func_245bcc     02245d1c func_245d1c   0224840a func_24840a
+02246180  func_246180     02247d6e func_247d6e   02210020 func_210020 (NO args)
+02244e2e  func_244e2e     0224492c func_24492c   02243fe0 func_243fe0
+022489d0  func_2489d0     02249fb0 func_249fb0 (braf x3)   02249836 func_249836 (braf)
+02225c2c  func_225c2c     universal tail call (also parent dispatcher of 0x225ee0 arm)
+#   Deferred: m2c collapses to 120 lines with 12 M2C_ERROR and loses the switch
+#   variable (renders `switch(0xC8)`); 785 insn of near-identical per-state call
+#   sequences - not safely reconstructable with a zero-error guarantee in one pass.
+
+# --- func_022402c0 (2379 insn) --- left deferred per instruction (unchanged).

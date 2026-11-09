@@ -1,0 +1,44 @@
+# Wave-1 symbols, band 0x220000-0x228000 (cart offsets) = runtime 0x02220000-0x02227fff
+# addr(runtime)  name                         confidence  notes
+0x0222078c  func_0222078c                      HIGH   ballistic sub-object task update (gravity+spin, 60-frame life); tail-calls renderer 0x022153f6
+0x02221460  func_02221460                      HIGH   configure interpolated transform slot 0 on *0x06098F08 (+0x70..0x7C); uses lerp helper 0x02213234
+0x022214d2  func_022214d2                      HIGH   configure interpolated transform slot 1 on *0x06098F08 (+0x80..0x8C); twin of 0x02221460
+0x02221f68  func_02221f68                      HIGH   mode 4/5 setup: reset transform (0x02221ffa) + run builder 0x0221636c (elem size 0x1C)
+0x02222052  func_02222052                      HIGH   mode 6/7 setup: clear work buffer (0x02213290) + builder 0x0221636c; 5th stack arg recovered
+0x022220b0  func_022220b0                      HIGH   thin wrapper -> func_02213290(handle, count>>2)
+0x02222494  func_02222494                      HIGH   display_apply_cmdlist: {cmd,val} list -> packed bitfields 0x3A/0xB2/0xB4 of *0x06098F08
+0x022225f6  func_022225f6                      HIGH   build view transform (rotation via sin/cos 0x02213190/0x022131a8 + camera-relative pos) -> 0x060B8B90/94
+0x02222d3c  func_02222d3c                      HIGH   VDP2 setup (text mode): DMA palette/gradient to CRAM, upload tiles, install 4 draw callbacks
+0x02222e44  func_02222e44                      HIGH   VDP2 setup (large-font mode); sibling of 0x02222d3c
+0x02222ecc  func_02222ecc                      HIGH   draw-callback thunk: clear 0x400-word buffer at 0x060997B0 (tail-call 0x02213290)
+0x02222fe0  func_02222fe0  (text_write_tilemap) HIGH   string -> VDP2 nametable, persistent cursor (col 0x060997A4/blk 0x060997A8), returns glyph count
+0x02223080  func_02223080  (text_write_big)     HIGH   large-font sibling of 0x02222fe0 (tile base +0xC00, 32-col half-rows, 16 blocks)
+0x02223c74  func_02223c74                      HIGH   pulse-width timing calibration over polled byte 0x060986AF (gated by 0x060986AE)
+0x02227602  func_02227602                      HIGH   per-entity animation/interaction step (frame tables 0x06096EA0/CA0/EB0/E90, data 0x060862F4)
+0x02227790  func_02227790                      HIGH   construct entity system: alloc owner, publish to 0x06099580, clear table, reset (0x02227a84)
+0x02227906  func_02227906                      HIGH   "handoff/throw" body task: 4-phase state machine; tail-calls 0x022154fc
+0x02227a84  func_02227a84                      HIGH   full reset of entity system at 0x06099584 (slots, 8x8 relation matrix, aux words)
+0x02227b60  func_02227b60                      HIGH   register spawned object into entity table (first free slot 3..7; max 5 live)
+0x02227bc4  func_02227bc4                      HIGH   register spawned object at fixed id (arg0+1) in entity table
+
+# Shared/reused globals identified in this band
+0x06098F08  g_06098F08    void*  active display/transform object (fields 0x20 mode-bits, 0x3A/0xB2/0xB4 packed, 0x70..0x8C transform slots, 0xA8)
+0x060997A4  g_060997A4    s32    text cursor column
+0x060997A8  g_060997A8    s32    text cursor block/row
+0x060997AC  g_060997AC    s32    current palette index / mode-ready flag
+0x060997B0  g_060997B0    u8[]   VDP2 text nametable / work buffer
+0x060756C8  g_060756C8    u32[]  per-palette tile attribute words
+0x06099580  g_06099580    void*  entity-system context pointer
+0x06099584  g_06099584    u8[]   entity table: +8 count, +0xC id[], +0x2C ptr[], +0x4C 8x8 relation matrix
+0x06090294..0x060902A0  g_06090294..  void*  four per-mode draw-callback slots
+0x0609882C  g_0609882C    void*  camera/viewpoint root (->unk8 = current source object)
+0x060755D4  g_060755D4    s8[]   camera position vectors (A at +0, B at +0xC)
+0x06096EA0/CA0/EB0/E90   u16[]  per-entity animation state tables
+0x060862F4  g_060862F4    void*[] animation frame-set data pointers
+
+# Out-of-band callees referenced (extern, NOT decompiled here)
+0x02213190 sine  0x022131a8 cosine  0x02213234 lerp  0x02213290 buffer-clear/dma  0x0221636c builder
+0x022145d0 dma-copy  0x0220ff0a spawn  0x02214bb8 alloc  0x022153f6 renderer  0x022154fc renderer
+0x022149aa 0x02214a50 0x02222c08 0x0223c95c   (helpers)
+
+# EXCLUDED per task: 0x02221354 / 0x02221384 (non-standard r0/r1/r2 ABI into 0x24a360 dispatch band)

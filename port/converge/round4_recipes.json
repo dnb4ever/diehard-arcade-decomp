@@ -1,0 +1,86 @@
+{
+  "02213190": {
+    "body_sha256": "8a3884cc7f56a8d4e7e8194cf15944eea022f29d35ea9aa58060b968bd33df0d",
+    "code": "c.r[4]=args[0]+8; c.r[3]=0x06075718u; c.t=result>>31;"
+  },
+  "022131a8": {
+    "body_sha256": "67e0b23c481b140f8f9112ded73d560546094cfab45408f7cf2307923e014435",
+    "code": "c.r[4]=args[0]+8; c.r[1]=0x800u; c.r[3]=0x06075F18u; c.t=result>>31;"
+  },
+  "022131c8": {
+    "body_sha256": "4503a190251afad801ea927be46b62817223560e6777191a1cf5e1047c5839b3",
+    "code": "uint64_t p=(uint64_t)((int64_t)(int32_t)args[0]*(int32_t)args[1]);\nc.mach=p>>32; c.macl=p; c.r[1]=c.mach;"
+  },
+  "0223e5bc": {
+    "body_sha256": "0db1c9070e2bbe30c8ad3231a135cb54a37f57a850b4f5289c8039ee0add5017",
+    "code": "c.r[4]=(args[0]-args[1])&0x8000u; c.r[3]=0x8000u; c.t=result;"
+  },
+  "0224617a": {
+    "body_sha256": "c9fa87a44b949ff53eeb71422070a173c1e1fd40ecf45ee07309ac5d6d983b4c",
+    "code": ""
+  },
+  "0222f3ea": {
+    "body_sha256": "2ecc99ac7344b4e95556e4ab93aa0d712e7351e8325e09ab426efa88eae59329",
+    "code": "c.r[3]=(uint32_t)(int32_t)(int16_t)converge::abi_read(args[0]+0x58,2);\nc.t=(int32_t)c.r[3]>0;\nif(c.t) { c.r[3]=0x43800u; c.r[2]=converge::effect_read(args[1]+0x84,4); c.t=(c.r[2]&c.r[3])==0; }"
+  },
+  "0222f40e": {
+    "body_sha256": "7c4cbfb7fc5fde88ac4b201664882e90a69e8aacaaff92a156b4bb091131cc5e",
+    "code": "c.r[3]=(uint32_t)(int32_t)(int16_t)converge::abi_read(args[0]+0x58,2);\nc.t=(int32_t)c.r[3]>0;\nif(c.t) { c.r[3]=0xb800u; c.r[2]=converge::effect_read(args[1]+0x84,4); c.t=(c.r[2]&c.r[3])==0; }"
+  },
+  "0222f432": {
+    "body_sha256": "d324ecb7940111f4c38269a366fe0fecea28bfb51ca0feecce3f2f6dddaba703",
+    "code": "c.r[3]=(uint32_t)(int32_t)(int16_t)converge::abi_read(args[0]+0x58,2);\nc.t=(int32_t)c.r[3]>0;\nif(c.t) { c.r[3]=0x3800u; c.r[2]=converge::effect_read(args[1]+0x84,4); c.t=(c.r[2]&c.r[3])==0; }"
+  },
+  "0222f456": {
+    "body_sha256": "a38418f25c90080cc9906acf61e2d38d0ea5246d49c253657b3af6783710f927",
+    "code": "c.r[3]=(uint32_t)(int32_t)(int16_t)converge::abi_read(args[0]+0x58,2);\nc.t=(int32_t)c.r[3]>0;"
+  },
+  "02241556": {
+    "body_sha256": "2a85895db5ed1c3150e2788033f23508e88b71ae33be800010dfea0c49d4f6a6",
+    "code": "c.r[2]=0x060987bcu; c.r[6]=converge::abi_read(c.r[2],4);\nc.r[1]=c.r[6]-converge::abi_read(args[0]+0x110,4); c.r[3]=60;\nc.t=c.r[1]>60;\nif(c.t) c.r[1]=1;\nelse { c.r[1]=converge::abi_read(args[0]+0x10c,4)+1; c.t=(int32_t)c.r[1]>=(int32_t)args[1]; }"
+  },
+  "0224158c": {
+    "body_sha256": "0357f734680aa9a1b2cf0993e6dd31103e7e3c45a408fd5ffe94f82a996a9a79",
+    "code": "c.r[3]=0x060987bcu; c.r[6]=converge::abi_read(c.r[3],4);\nc.r[1]=c.r[6]-converge::abi_read(args[0]+0x110,4); c.r[2]=90;\nc.t=c.r[1]>90;\nif(c.t) c.r[1]=1;\nelse { c.r[1]=converge::abi_read(args[0]+0x10c,4)+1; c.t=(int32_t)c.r[1]>=(int32_t)args[1]; }"
+  },
+  "02243fba": {
+    "body_sha256": "3b29b85c67109f3fdeac2f40cd7366c3bb3fa1d551a4de2902d21b8421223cce",
+    "code": "c.r[3]=converge::abi_read(args[1]+16,4); c.r[2]=converge::abi_read(args[0]+16,4);\nc.t=(int32_t)c.r[2]>=(int32_t)c.r[3]; c.r[6]=result;"
+  },
+  "022131d4": {
+    "body_sha256": "a4af0725e14ddef475d1b9f6f69a7f567dedbd2eb6c631864303a73c1e6863ca",
+    "code": "uint32_t dx=converge::abi_read(args[0],4)-converge::abi_read(args[1],4);\nuint32_t bz=converge::abi_read(args[1]+8,4), dz=converge::abi_read(args[0]+8,4)-bz;\nuint64_t px=(uint64_t)((int64_t)(int32_t)dx*(int32_t)dx), pz=(uint64_t)((int64_t)(int32_t)dz*(int32_t)dz);\nc.r[1]=px>>32; c.r[2]=dz; c.r[3]=bz; c.mach=pz>>32; c.macl=pz;\nc.r[4]=c.mach; c.r[5]=uint32_t(pz>>16);"
+  },
+  "022131fc": {
+    "body_sha256": "f80ba8c4f6e470b6509c213d238c248a298dff64baa237bebd1e912bb2f2e258",
+    "code": "uint32_t dx=converge::abi_read(args[0],4)-converge::abi_read(args[1],4);\nuint32_t dy=converge::abi_read(args[0]+4,4)-converge::abi_read(args[1]+4,4);\nuint32_t dz=converge::abi_read(args[0]+8,4)-converge::abi_read(args[1]+8,4);\nuint64_t py=(uint64_t)((int64_t)(int32_t)dy*(int32_t)dy), pz=(uint64_t)((int64_t)(int32_t)dz*(int32_t)dz);\nc.r[1]=dz; c.r[2]=pz>>32; c.r[3]=uint32_t(pz>>16); c.r[4]=args[0]+12; c.r[5]=args[1]+12;\nc.r[6]=py>>32; c.r[7]=uint32_t(py>>16); c.mach=pz>>32; c.macl=pz;"
+  },
+  "02213d24": {
+    "body_sha256": "903aae046bc056f0f96bcc6349d40af2085fef913d04f777ac98487ccc34379b",
+    "code": "// Four indices are latched before machine stores. C read samples retain\n// the source values at their chronological use, including supported aliases.\nconverge::private_store(c.r[15]-4,4,c.r[10]);\nconverge::private_store(c.r[15]-8,4,c.r[9]);\nc.r[1]=args[2]+16*converge::effect_sample(0);\nc.r[2]=args[2]+16*converge::effect_sample(4);\nc.r[3]=args[2]+16*converge::effect_sample(8);\nc.r[6]=args[2]+16*converge::effect_sample(12);\nc.r[4]=args[0]+4;c.r[7]=args[2];\nc.r[0]=0u-converge::effect_sample(14);"
+  },
+  "02214818": {
+    "body_sha256": "783284afff8e226037948382b5e35c340900c77979fedb2161a557f9077106da",
+    "code": "uint32_t p=converge::abi_read(0x06098558u,4);\nc.r[7]=0x06098558u;c.r[3]=p;c.r[2]=p+12;"
+  },
+  "02213fb4": {
+    "body_sha256": "e4c9fc50fa3c1515c44713d290a3fc5b7c368099480fde901698c4c147f69305",
+    "code": "c.r[3]=0x06098878u;c.r[1]=0x0604ec94u;\nc.r[2]=converge::effect_sample(0)+44;\nc.r[0]=converge::effect_sample(11);c.r[4]=converge::effect_sample(12);"
+  },
+  "02215000": {
+    "body_sha256": "e1d7f4475458cf2f94198f337030ff69be3d2250d82618d26272f0e6a99baa0c",
+    "code": "c.r[0]=0;c.r[6]=0x003ff000u;c.r[7]=0;c.r[5]=0x06053dbau;\nauto a=converge::effect_store(28), b=converge::effect_store(29);\nc.r[4]=b.address;c.r[2]=(uint32_t)(int32_t)(int16_t)a.value;\nc.r[3]=(uint32_t)(int32_t)(int16_t)b.value;"
+  },
+  "02245e58": {
+    "body_sha256": "9ffb3ccb45294d747be7e3366e3a9d1a5b71d6026bc93c5b3492b01d4f1718ed",
+    "code": "c.r[0]=0x4d;c.r[2]=0x4000;c.r[3]=converge::effect_sample(1);\nc.r[5]=converge::effect_store(0).value&255;c.t=c.r[3]==0x4000;\nif(c.t)c.r[1]=2;"
+  },
+  "02213f90": {
+    "body_sha256": "1f211e636e12bf50a7634428b3464c727da3263f50178f9706dc3c72d171050d",
+    "code": "c.r[0]=(((args[0]+8)&0xffffu)>>4)*2;c.r[1]=0x800;\nc.r[4]=converge::register_output(4);c.r[5]=converge::register_output(5);c.t=c.r[5]>>31;"
+  },
+  "02213d90": {
+    "body_sha256": "fc30cd87b8c169f5bbeae658d09d80adbbee6287aac0ed03dce144d9ccff9d2e",
+    "code": "c.r[0]=0x06017d9cu;c.r[9]=args[0]*4;\nc.r[2]=converge::abi_read(c.r[0]+c.r[9],4);\nif(args[0]==3) {c.r[2]=args[1]-48;}\nelse {\n  c.r[3]=converge::abi_read(args[1]+20,4);c.r[6]=converge::abi_read(args[1]+24,4);c.r[7]=converge::abi_read(args[1]+28,4);\n  int32_t partial=(int32_t)converge::abi_read(args[1]+16,4);\n  if(args[0]==0) {partial=std::max(partial,(int32_t)c.r[3]);partial=std::max(partial,(int32_t)c.r[6]);c.t=(int32_t)c.r[7]>partial;}\n  if(args[0]==1) {partial=std::min(partial,(int32_t)c.r[3]);partial=std::min(partial,(int32_t)c.r[6]);c.t=(int32_t)c.r[7]>=partial;}\n}"
+  }
+}

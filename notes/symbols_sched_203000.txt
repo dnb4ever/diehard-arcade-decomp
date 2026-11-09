@@ -1,0 +1,29 @@
+# Sched band 0x203000-0x206000 (cart) functional-decomp symbols - attract->play transition cluster.
+# addr(SH2)  name  confidence  # note
+0x022045f8  attract_credit_join_service  high   # per-frame coin/join edge handler; called first by attract_handler + both round controllers. P1/P2 symmetric coin-accept (g_0609880c/0e, g_06098810/12) and join-confirm (counter g_06098674/75). Calls func_0220aa70/0220ab34/0223dcc2/0228168, (*g_06000640/0600066c/06000688)
+0x02204868  attract_handler              high   # THE MORPH PIVOT. Attract/coin-wait task. If start flag g_06098688(P1)/g_06098689(P2) set: *task <- round controller (0x204afa if g_06099598+g_06099594!=0 else 0x205232), then per-player start bring-up (join=3, arm entity->unk40/44=0x27f, notify *g_06000688). Else services the insert-coin countdown digit (g_06090304 table) per unjoined player
+0x02204afa  round_controller_join        high   # "credits present" morph target. Per-player join countdown (entity->unk40=P1/unk44=P2). join==4 or expire -> *task=attract(0x204868); other player start -> *task=round_controller_dual(0x205232). Late-join spawn seeds actor->unkB0/B2 via func_02210020 (rng). NO jump table (deferred "table-dispatch" was pool misread)
+0x02205232  round_controller_dual        high   # free-play/both-players morph target. Countdown expire -> *task=scene_run_handler(0x205812) == ENTER PLAY. Tail: player in state 2 -> *task=round_controller_join(0x204afa) if counting else attract(0x204868). f_238176 via r11; rng spawn; func_0216066. NO jump table
+0x02205812  scene_run_handler            high   # THE live-play task handler. 4-insn thunk: tail-calls (*g_0609867c)() each frame. Installed into *task by round_controller_dual and scene_director_build; installing it == game scene runs as the task
+0x0220581a  player_slot_reset            high   # clears one player's attract/join state (indexed by p=0/1): start flag, timers g_0609975c/60=30, region/lang mirrors. NOTE verbatim odd store base=(u8)g_0609868c
+0x022058a8  scene_bootstrap              high   # BOOTSTRAP: brings up scene system, sets scene step g_0609867c (0x204370/0x2044cc), builds descriptor g_0609866c=0x06072660+idx*0x50, INSTALLS attract_handler(0x204868) into (*g_06098678)->unk0. Starts the whole attract->play state machine. Calls func_0215f24/0220f990/0223dcc2/0220581a
+#
+# Cross-refs (OUT OF BAND, declared extern - resolved via braf_resolve/ptr_resolve):
+#   0x02210020 rng_next            (existing C)   0x0220aca8 resident_cmd_issue_108 (existing C)
+#   0x02215f6c sound_queue_push    (existing)     0x02216066 sound_reemit_latched   (existing)
+#   0x0220aa70/0220ab34 resident_cmd_reg_coords_70/74 (existing C)  0x022044cc warning_hud_blink (existing C)
+#   0x02238134 f_238134  med  # HUD/join helper, args seen: (0),(1)
+#   0x02238176 f_238176  med  # HUD/countdown display, args (7,n); loaded into r11 and jsr'd in 0x205232
+#   0x02228168 func_0228168  low   0x0223dcc2 func_0223dcc2  low   0x0220f990 func_0220f990 (scene init)
+#   0x0215f24 func_0215f24  low
+#   0x02204370 scene_step_A  low  # per-frame attract scene stepper (pool-contaminated unit; not decompiled)
+#
+# Key globals (HWRAM):
+#   g_06098688/89  P1/P2 START edge flag        g_06098674/75  P1/P2 join state byte
+#   g_0609866c     active scene descriptor ptr  g_0609867c     per-frame scene-step fn ptr
+#   g_06098668     scene index (desc = 0x06072660 + idx*0x50, stride 0x50)
+#   g_06098678     resident game object (*it = handler slot, ->unk8 = player entity)
+#   g_0609882c     camera/viewpoint root (->unk8 = current/player actor)
+#   g_060987bc     frame timer   g_0609979a mode flag   g_06098670 scene-armed   g_06098830 spawn gate
+#   g_0609029c/060902a0  HUD print thunks (cursor g_060997a4=color, g_060997a8=mode)
+#   g_06000634/40/60/64/6c/88 BIOS/system fn-ptr slots

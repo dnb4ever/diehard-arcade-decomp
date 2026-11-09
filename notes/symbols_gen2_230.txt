@@ -1,0 +1,21 @@
+# Gen2 band 0x230000-0x23ffff - functions decompiled this pass (addr = SH2 = cart+0x02000000)
+# conf: HIGH = logic+fields+branches hand-verified vs m2c_fn --asm; MED = logic verified, one modelled detail noted.
+
+0x02230006 projectile_fire_seed_task   # HIGH init: reserve ammo func_0223c74a(src), seed motion/anim from owner, pos via func_022301c4; next -> func_022300e8
+0x022300e8 projectile_sustain_fire_task # HIGH every-4th-frame emit while firing; reserve ammo; reposition func_022301c4; all exits -> func_022301ac (m2c failed: branch-into-branch, hand-decoded)
+0x022304b4 projectile_emit_task        # HIGH spray child spark entities (spawn_from_template func_0220ff28, child handler 0x022305e2) until expiry/owner collision
+0x02231864 projectile_fly_task         # HIGH per-frame launched-projectile motion: optional func_0222f3c0, lifetime unk5A, integrate+drag, drawlist func_0222eea2, tail func_060193f6(ent,unk6C,1)
+0x02232178 muzzle_spark_task           # HIGH camera-anchored spark attached to actor; slot alloc func_02228106, orient func_0221080a, pos = cam g_06098B1C + src; tail func_0222eea2
+0x0223820c gfx_vram_dma_setup          # HIGH no-arg: bulk ROM->VDP transfers via func_022145d0(src,dst,len) + one func_02213290(dst,len)
+0x02238f46 effect_flash_scale_task     # HIGH 3-state scale pop (unk34/36/38 + timer unk40); tail func_022386fc(&unk34) (m2c failed on tail bra, hand-decoded)
+0x02238fdc effect_pulse_scale_task     # HIGH 3-state scale pulse (unk34/36/38 + timer unk40); tail func_022386fc(&unk34) (m2c failed on tail bra, hand-decoded)
+0x0223cfe4 actor_start_action          # HIGH begin hit/action state; checks func_0223e4a0/func_0223cbb0; anim swap g_06096248<->g_060e11ea, g_060e10a8; returns 0/-1
+0x0223d2a0 effect_tumble_task          # HIGH 3-phase gravity/tumble debris; func_02173f4 + matrix-draw cluster (func_022149aa/02214a40/02214a06/02215a2c, g_06098878 +-0x30). MED on draw-helper args (same cluster as func_0223d1b6)
+0x0223dd96 actor_apply_action_record   # HIGH apply queued record g_060e0e38[(id-1)] to g_060995b0[id]->unk8; func_0223cfe4/func_0223cf70 (m2c failed on bsr, hand-decoded)
+0x0223de20 players_special_refresh     # HIGH no-arg: per-frame refresh of both players' active special (pm g_06099584); func_0223a9d0(actor,3)
+0x0223e2ea hud_score_slots_init        # HIGH per-player HUD slot init; func_022380c0(4,idx,mode,0) sequence; record g_0609860c; clears g_060e0e58[idx*16]
+0x0223e5e0 actor_update_dispatch       # HIGH per-frame update: func_0245dcc gate, dispatch g_0608d624[unkD4](task,ent), func_022ca98, tail func_0222eee4
+0x0223e632 actor_render_dispatch       # HIGH (shares unit with 0x0223e5e0): func_0246208/unk4C gate, dispatch g_0608d7b4[unk6D](ent), tail func_0223dc2c
+0x0223f054 chain_hit_task              # HIGH multi-hit chain vs locked target g_060995b0[slot]; spawn child func_0220feec every 4th count; damage func_022ab18
+0x0223fc06 actor_update_dispatch2      # HIGH twin of 0x0223e5e0 with table g_0608d764[unkD4]
+0x0223fc58 actor_render_dispatch2      # HIGH twin of 0x0223e632 (shares unit with 0x0223fc06) with table g_0608d808[unk6D]

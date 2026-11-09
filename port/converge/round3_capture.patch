@@ -1,0 +1,13 @@
+--- a/runtime/src/video/video.cpp
++++ b/runtime/src/video/video.cpp
+@@ -88,7 +88,9 @@
+ }
+ static bool scenario_memory() {
+     const char* value = std::getenv("STV_SCENARIO_MEMORY");
+-    return !value || std::strcmp(value, "0");
++    const char* interval = std::getenv("CONVERGE_RAM_INTERVAL");
++    unsigned every = interval ? std::strtoul(interval, nullptr, 10) : 1;
++    return (!value || std::strcmp(value, "0")) && (!every || g_vblanks % every == 0);
+ }
+ static bool scenario_pointer(uint32_t p) {
+     return p >= 0x06000000u && p <= 0x060FFE00u && !(p & 3);

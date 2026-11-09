@@ -1,0 +1,35 @@
+# Gen-2 symbols, band 0x220000-0x228000 (cart offsets) = runtime 0x02220000-0x02227fff
+# Added by the gen-2 single worker (disjoint from siblings). All HIGH fidelity,
+# hand-verified vs m2c_fn.py --asm, compile clean (gcc -c -fsyntax-only -Wall -Wextra).
+# addr(runtime)  name                              confidence  notes
+
+0x022201d8  func_022201d8                          HIGH   scanline/strip VDP1 upload task state machine; dest 0x25F00000 + (rec.off>>1)*4; cell uploader bsrf 0x0221632e. NB: work->unk64 aliases record-ptr then VRAM-ptr (reproduced verbatim)
+0x022202ca  func_022202ca                          HIGH   preset-driven launch/animation task; snapshots g_060755A4(s16[4])/g_060755AC(4x{s32,s32}) by preset idx; 4 states; tail-call renderer 0x022154fc
+0x022203ce  func_022203ce                          HIGH   scripted camera + SFX-cue timeline task; frame-indexed sound cues (62/122/182/360/422/425/430) via 0x0215f6c gated by g_060E0DDC; installs handler 0x0222078c; tail 0x0221b330
+0x022205fc  func_022205fc                          HIGH   projectile/animated-object physics task; calls 0x0221400c, integrates unk60/unk8/unk64/unk24, tail 0x0221b330. (This ROM unit's extent also spans 0x022206ae.)
+0x022206ae  func_022206ae                          HIGH   phased swing/rotate animation task (hidden sibling of 0x022205fc, NOT a separate triage entry); preset from g_060755CC[*g_06098668-76]; 4 states; tail 0x022154fc
+0x02223142  func_02223142  (printf_text)           HIGH   formatted text printer (normal font) -> local line buffer -> text_write_tilemap (0x02222fe0); %%/%d/%u/%b/%x/%X/%s; width parsed-but-unused; newline flush 0x02222f16
+0x02223460  func_02223460  (printf_text_big)       HIGH   large-font twin of 0x02223142; final render text_write_big (0x02223080), newline flush 0x02222f34; shares formatters
+0x02223862  func_02223862  (fmt_decimal)           HIGH   signed/unsigned decimal (%d/%u) backend; digits via unsigned div/mod helpers 0x0224a120 (x/10) & 0x0224a1c8 (x%10); left-pads to ctx field width
+0x02225fac  func_02225fac                          HIGH   append up to two per-slot interaction/shot records (arrays g_06096E90/EA0/EB0/C74, buffer g_06096CB0 stride 0x3C); overflow flag arg0+0x52
+
+# Helpers identified (out of band, declared extern only)
+0x0224a120  udiv10_helper   u32(u32 dividend,u32 divisor)   unsigned divide (div0u/div1), args r1/r0 -> r0 (quotient)
+0x0224a1c8  umod_helper     u32(u32 dividend,u32 divisor)   unsigned remainder (div0u/div1), args r1/r0 -> r0 (remainder)
+0x0224a420  ashr_var_helper s32(s32 val r0, s32 count r1)   variable arithmetic shift-right by r1 (0<=r1<32), sat for r1>=32, no-op for r1<0
+
+# Globals identified in / referenced from this band
+0x06096C74  g_06096C74    s32[]  per-slot attribute word (hit/shot subsystem)
+0x06096CB0  g_06096CB0    u8[]   per-slot 0x3C-byte record region, 6-byte entries
+0x06096E90  g_06096E90    s16[]  per-slot entry count
+0x06096EA0  g_06096EA0    s16[]  per-slot last next-index
+0x06096EB0  g_06096EB0    s16[]  per-slot capacity-consumed / limit
+0x060755A4  g_060755A4    s16[]  launch preset table A (func_022202ca)
+0x060755AC  g_060755AC    ?[]    launch preset records, 8-byte stride (func_022202ca)
+0x060755CC  g_060755CC    s16[]  swing/rotate preset table (func_022206ae)
+0x060755EC  g_060755EC    u8[]   printf error/fallback buffer
+0x06098668  g_06098668    s32    index source for func_022206ae preset (value-76)
+0x06098794  g_06098794    u16    status bits (0x10|0x20 = camera-ready) for func_022203ce
+0x060987BC  g_060987BC    s32    gate flag (bit0) for func_022203ce handler install
+0x06098B1C  g_06098B1C    s32[3] per-frame camera position deltas (func_022203ce)
+0x060E0DDC  g_060E0DDC    s32    SFX-enable gate flag (func_022203ce)

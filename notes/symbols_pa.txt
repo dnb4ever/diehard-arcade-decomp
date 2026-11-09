@@ -1,0 +1,6 @@
+# Player-actor / round-cycle cluster symbols (range 0x229000..0x22e000, cart offsets)
+# Added by player-actor FSM worker. SH2 addresses (= cart offset + 0x02000000).
+0x0222bd54 actor_state_enter_mode_dispatch  # state-entry: setup + set anim id (unk5C) from g_06086304[unk4D&1], then dispatch via per-game-mode fn table g_060911bc[g_0609979a](entity, unk64)
+0x0222ae40 actor_facing_anim_select         # per-frame facing/anim selector; picks unk5C from a 2-D table via (unk62 octant, unk60 pitch); sets state flag unk84 (0x1000/0x2000), unk78 facing-velocity; installs hit boxes via func_02227704/func_02223e70; publishes g_06099780[unk34-1]
+0x0222baf8 actor_jump_anim_select           # airborne/special-move anim selector (sibling of 0x0222ae40); 4-way classify of unk84 (0x82000/0x318000/0x60000/else) -> 3-level anim table g_060866f8[group][sub][dir*4+col]; unk74=0x3000, unk14*=2
+0x0222bdf2 player_input_anim_select         # walk/turn anim selector driven by per-player input record g_06098734 (stride 0x18); picks unk5C from g_06086308 by directional/attack flags; tail animation_update(g_060995b0[unk34], entity)

@@ -1,0 +1,93 @@
+diff --git a/runtime/src/video/vdp2.cpp b/runtime/src/video/vdp2.cpp
+--- a/runtime/src/video/vdp2.cpp
++++ b/runtime/src/video/vdp2.cpp
+@@ -415,10 +415,10 @@
+     s.page_bytes = (s.cell2x2 ? 0x800u : 0x2000u) * (s.word1 ? 1 : 2);
+     uint32_t mpofr = reg(0x3E) & 7;            // RAMPOF
+     uint32_t mask = (uint32_t)(s.plane_w * s.plane_h - 1);
+-    // the 16 plane numbers: MPABRA..MPOPRA (0x48..0x56), each word = two bytes (low byte first,
++    // the 16 plane numbers: MPABRA..MPOPRA (0x50..0x5E), each word = two bytes (low byte first,
+     // as the scroll-screen map registers), A..P.
+     for (int i = 0; i < 16; ++i) {
+-        uint16_t w = reg(0x48 + (i / 2) * 2);
++        uint16_t w = reg(0x50 + (i / 2) * 2);
+         uint32_t pn = w >> ((i & 1) * 8) & 0xFF;
+         uint32_t m = ((mpofr << 6) | pn) & ~mask;
+         s.plane[i] = m * s.page_bytes;
+@@ -431,14 +431,9 @@
+     s.offset = reg(0x110) >> 4 & 1;
+     s.offset_b = reg(0x112) >> 4 & 1;
+ 
+-    // DIAGNOSTIC/FORCED (STV_RBG_PLANE="hex", default off): override every RBG0 plane-map entry to a
+-    // single VRAM page. On the credit-route scene 3 the stage-floor upload only partially populates the
+-    // RBG0 floor planes (plane 0x38 @0x070000 ~65%; plane 0x2E @0x05C000 empty) and the live camera My
+-    // (~1991) samples the empty far planes -> black floor. Forcing all 16 planes at the populated floor
+-    // page (e.g. STV_RBG_PLANE=070000) lets the whole rotation screen sample the loaded floor tiles for a
+-    // labelled FORCED floor demo (pairs with STV_RBG_MY + STV_RBG_FLATK). Byte-identical when unset. This
+-    // is a FORCED render aid, NOT a faithful fix (the real fix is the full stage-setup floor upload +
+-    // coefficient table + camera anchor, which the credit route does not run).
++    // Legacy forced rendering aid, default off. P4.2 corrects the map-register banks;
++    // the faithful route already uploads the floor and maps it to plane M.
++    // Keep this override only for explicitly labelled renderer diagnostics.
+     if (const char* pf = std::getenv("STV_RBG_PLANE")) {
+         uint32_t pa = (uint32_t)std::strtoul(pf, nullptr, 16) & 0x7FFFFu;
+         for (int i = 0; i < 16; ++i) s.plane[i] = pa;
+@@ -481,9 +476,9 @@
+     s.page_bytes = (s.cell2x2 ? 0x800u : 0x2000u) * (s.word1 ? 1 : 2);
+     uint32_t mpofr = reg(0x3E) >> 4 & 7;        // RBMPOF (parameter B map offset)
+     uint32_t mask = (uint32_t)(s.plane_w * s.plane_h - 1);
+-    // parameter B's 16 plane numbers: MPABRB..MPOPRB (0x58..0x66), low byte first, A..P
++    // parameter B's 16 plane numbers: MPABRB..MPOPRB (0x60..0x6E), low byte first, A..P
+     for (int i = 0; i < 16; ++i) {
+-        uint16_t w = reg(0x58 + (i / 2) * 2);
++        uint16_t w = reg(0x60 + (i / 2) * 2);
+         uint32_t pn = w >> ((i & 1) * 8) & 0xFF;
+         uint32_t m = ((mpofr << 6) | pn) & ~mask;
+         s.plane[i] = m * s.page_bytes;
+diff --git a/runtime/tests/vdp2_test.cpp b/runtime/tests/vdp2_test.cpp
+--- a/runtime/tests/vdp2_test.cpp
++++ b/runtime/tests/vdp2_test.cpp
+@@ -264,3 +264,43 @@
+     CHECK_EQ(at(f, 11, 0), 0x007420);            // blue, black, black: a quarter
+     CHECK_EQ(at(f, 12, 0), 0x007400);
+ }
++
++// Sample each of A..P independently for both rotation parameter sets. The normal
++// screen map registers deliberately contain different addresses: they must not
++// leak into the rotation maps.
++TEST(rotation_maps_use_the_complete_parameter_a_and_b_register_banks) {
++    for (int bank = 0; bank < 2; ++bank) {
++        red_screen();
++        reg(0x20, bank ? 0x20 : 0x10);
++        reg(bank ? 0x30 : 0x38, 0x8000); // one-word, 8x8, 16-colour names
++        reg(bank ? 0xF8 : 0xFC, 1);
++        reg(0xBE, 0x4000);             // rotation table at byte 0x8000
++        uint32_t param = 0x8000 + bank * 0x80;
++        auto fixed = [&](uint32_t off, uint32_t value) {
++            vram16(param + off, value >> 16);
++            vram16(param + off + 2, value);
++        };
++        fixed(0x10, 0x10000);          // dYst
++        fixed(0x14, 0x10000);          // dX
++        fixed(0x1C, 0x10000);          // A
++        fixed(0x2C, 0x10000);          // E
++        for (int slot = 0; slot < 16; ++slot) {
++            uint32_t plane = 0x20000 + slot * 0x2000;
++            uint32_t chr = 0x200 + slot;
++            std::memset(g_vdp2_vram + chr * 32, 0x11, 32);
++            // Palette is selected in the pattern name, making every slot unique.
++            vram16(plane, ((slot & 15) << 12) | (chr & 0x3FF));
++            cram16(slot * 16 + 1, slot + 1);
++        }
++        for (int pair = 0; pair < 8; ++pair)
++            reg((bank ? 0x60 : 0x50) + pair * 2,
++                (16 + pair * 2) | ((17 + pair * 2) << 8));
++        for (int slot = 0; slot < 16; ++slot) {
++            fixed(0x44, (slot % 4) * 512u * 65536u); // Mx
++            fixed(0x48, (slot / 4) * 512u * 65536u); // My
++            Frame f;
++            vdp2_compose(f);
++            CHECK_EQ(at(f, 0, 0), (slot + 1) * 8u << 16);
++        }
++    }
++}

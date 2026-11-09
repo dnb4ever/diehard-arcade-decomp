@@ -1,0 +1,17 @@
+# Wave-2 symbols, band 0x240000-0x248000 (cart offsets) = runtime 0x02240000-0x02247fff
+# Actor-combat logic. addr(runtime)  name  confidence  notes
+0x022401d6  func_022401d6                      HIGH   actor behaviour re-entry: reset flags, dispatch sub-state handler g_060918A0[unkBA&0x3F][unk108] via (actor,&frame), run post-steps 0x2418a0/ce, pending-hit reaction 0x245c88, return frame[0]
+0x02241a10  func_02241a10                      HIGH   spawn & aim muzzle-flash/shot effect (alloc 0x0220feec tmpl 0x0221279c); sin/cos/fixmul 0x213190/0x2131a8/0x2131c8; rng jitter into unk2A/2C/2E
+0x022434ae  func_022434ae                      HIGH   spawn a burst of projectiles from arg2 list (count,src) using allocator 0x0220ff28 (template 0x022324da); copies velocity/position from actor
+0x02243590  func_02243590                      HIGH   spawn one falling item/pickup (allocator 0x0220ff28, template 0x02232526); position from actor unk40..48, velocity.z = -arg2
+0x02243db4  func_02243db4                      HIGH   commit a dodge/step in dir arg2 (blocked-lane flip via g_06096EC0), set unk124/128/130/134, spawn move actor 0x02244820, park handle in g_06097128[unk34]
+0x0224519e  func_0224519e                      HIGH   per-frame attack trigger vs latched target (slot unk120); distance table unk168; returns 0/1(commit)/2(throw)
+0x02244e54  func_02244e54                      HIGH   attack selector keyed on facing side (sibling of 0x0224519e); returns action 0..3; kinds 1/2/7/3 commit paths, func_02245fc4 gate
+0x022452be  func_022452be                      HIGH   range/aim reach test: builds a probe block and calls segment-query 0x02217838; returns struck object or 0 (combat-box array g_060B6D9C, 0x48 stride)
+0x022454e4  func_022454e4                      HIGH   choose next motion/action index; facing from unk4D, special idle case (unkE4==6), peer-side turn via 0x02245a6a; feeds func_02244988; returns action 0..6
+0x02245a6a  func_02245a6a                      HIGH   resolve active facing/side flag per global combat mode g_06098564 and actor slot g_060995D0[unk34*0x20]
+0x02245d1c  func_02245d1c                      HIGH   strike the target latched in slot unk12C (arrays g_060E0F0C/2C/4C), point_in_box 0x0224492c; returns target or 0
+0x02246180  func_02246180                      HIGH   rng-driven facing/direction pick from actor->unk154 table; falls back to unk148; sets unkE0 bit 8
+0x02242fde  func_02242fde                      HIGH   lunge/attack permission test: z-window, timing gate 0x02245fc4, grabbed-enemy reject via target-select 0x022452be
+0x02246254  func_02246254                      HIGH   sound/voice task state-step entry: pack unkF/unk12 into obj->unk30, install next-handler 0x0224627e, run shared body
+0x0224627e  func_0224627e                      HIGH   shared body of 0x02246254 (internal entry): depth-guard g_06098878 and fan object out to 0x022149aa/0x02214a50/0x022149e4/0x02215a2c

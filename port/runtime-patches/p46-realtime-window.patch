@@ -1,0 +1,397 @@
+--- a/runtime/src/machine/saturn.h
++++ b/runtime/src/machine/saturn.h
+@@ -83,6 +83,11 @@
+     std::string progress_keep;      // "ADDR:BYTES,...": the ranges
+     std::string resume_label;       // what the window says while --resume plays
+     std::string after;              // with it, the menu has Save files, which writes "saves" here and quits
++    bool arcade = false;            // an ST-V board: the window's [arcade] keys and the gamepads drive its control panel
++                                    // (host_stv_panel) instead of a Saturn pad
++    bool unpaced = false;           // with a window: run as fast as the host can (virtual time still), for measuring
++    int stats = 0;                  // with a window: every this many seconds of the host's time, the speed and the audio queue
++    std::string title;              // the window's title; empty: saturn-recomp
+ };
+ extern SaturnConfig g_cfg;
+ extern SH2Context g_master, g_slave;
+--- a/runtime/src/host/host.h
++++ b/runtime/src/host/host.h
+@@ -19,6 +19,10 @@
+ };
+ uint16_t host_pad(int slot);                         // buttons held on that player's controllers, smpc.cpp's bits
+ bool host_pad_connected(int slot);                   // a controller drives it: the keyboard always drives the first
++// An ST-V control panel (g_cfg.arcade, with a window): P1's and P2's raw words (A 0x001, B 0x002, C 0x004,
++// UP 0x040, DOWN 0x080, LEFT 0x100, RIGHT 0x200) and the system switches (COIN1 0x01, COIN2 0x02, TEST 0x04,
++// SERVICE 0x08, START1 0x10, START2 0x20), as held at the last present; false (all zero) without them.
++bool host_stv_panel(uint16_t raw[2], uint16_t& sys);
+ 
+ bool host_audio_open();                              // with a window; false: no device
+ void host_audio_push(const int16_t* lr, int frames); // interleaved stereo, 44 100 Hz
+--- a/runtime/src/host/host_null.cpp
++++ b/runtime/src/host/host_null.cpp
+@@ -18,6 +18,7 @@
+ bool host_wants_frame() { return false; }
+ uint16_t host_pad(int) { return 0; }
+ bool host_pad_connected(int) { return false; }
++bool host_stv_panel(uint16_t raw[2], uint16_t& sys) { raw[0] = raw[1] = sys = 0; return false; }
+ 
+ bool host_audio_open() { return false; }
+ void host_audio_push(const int16_t*, int) {}
+--- a/runtime/src/host/host.cpp
++++ b/runtime/src/host/host.cpp
+@@ -16,6 +16,9 @@
+ //             player 1 beside the keyboard: d-pad or left stick, Start, south A,
+ //             east B, right shoulder C, west X, north Y, left shoulder Z, triggers L and R
+ // unless the settings (settings.h) bind them otherwise.
++// An arcade board (ST-V, g_cfg.arcade) has a control panel instead: the [arcade] keys and the first two
++// gamepads give its players' levers and buttons, coins, START, TEST and SERVICE (host_stv_panel), a
++// gamepad's back button is a coin rather than the menu, and P or Pause opens the menu too.
+ // The touchscreen has a Saturn pad of its own for player 1 (touch_pad.h). Android's Back, Escape, a
+ // gamepad's Back or Guide, or the menu button at the top of a touchscreen opens a menu that pauses
+ // the game, sets the touch pad, and quits. F12 saves the picture (out/shot-VBLANK.png); F11 or Alt+Enter switches
+@@ -56,7 +59,6 @@
+ static Clock::time_point g_base;                // host time of virtual time 0
+ static bool g_paced;
+ 
+-bool host_wants_frame() { return g_win && (!sat_resuming() || sat_vblanks() % 30 == 0); }
+ uint16_t host_pad(int slot) { return g_buttons[slot]; }
+ bool host_pad_connected(int slot) { return g_win && (slot == 0 || g_slots.taken(slot)); }
+ 
+@@ -98,6 +100,24 @@
+ 
+ Settings& host_settings() { return g_settings; }
+ 
++// A picture at each VBlank-IN, but none while --resume plays, bar one in 30; and with [display]
++// frameskip, none for up to two VBlanks in a row while the host is more than a field behind, so that the
++// game keeps its speed and its sound when composing and showing every field takes too long.
++static int g_skipped_run, g_skipped;            // pictures left out in a row, and in all
++
++bool host_wants_frame() {
++    if (!g_win) return false;
++    if (sat_resuming()) return sat_vblanks() % 30 == 0;
++    if (g_paced && g_skipped_run < 2 && g_settings.flag("display", "frameskip") &&
++        Clock::now() > g_base + std::chrono::nanoseconds(sat_now() + video_frame_ns())) {
++        ++g_skipped_run;
++        ++g_skipped;
++        return false;
++    }
++    g_skipped_run = 0;
++    return true;
++}
++
+ bool host_settings_save() {
+     if (g_settings_path.empty()) return true;
+     std::string text = g_settings.write_over(g_settings_text);
+@@ -123,7 +143,7 @@
+     SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
+     full = true;
+ #endif
+-    if (!SDL_CreateWindowAndRenderer("saturn-recomp", 320 * s, 240 * s, SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY |
++    if (!SDL_CreateWindowAndRenderer(cfg.title.empty() ? "saturn-recomp" : cfg.title.c_str(), 320 * s, 240 * s, SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY |
+                                      (full ? SDL_WINDOW_FULLSCREEN : 0), &g_win, &g_ren)) {
+         sat_note("SDL: %s", SDL_GetError());
+         return false;
+@@ -151,7 +171,7 @@
+     SDL_free(SDL_GetTouchDevices(&touch_devices));
+     g_touchscreen = touch_devices > 0;
+     g_base = Clock::now();
+-    g_paced = !g_cfg.realtime;
++    g_paced = !g_cfg.realtime && !g_cfg.unpaced;
+     return true;
+ }
+ 
+@@ -225,14 +245,49 @@
+ 
+ static std::vector<std::pair<SDL_Scancode, uint16_t>> g_keys;
+ 
++static int scancode_of(const std::string& n) {
++    SDL_Scancode c = SDL_GetScancodeFromName(n.c_str());
++    return c == SDL_SCANCODE_UNKNOWN ? -1 : (int)c;
++}
++
++// An arcade board's control panel (g_cfg.arcade): the [arcade] keys, each a player's raw-word bit or a
++// system switch (host.h gives both layouts), the keys that pause, and the gamepad button that inserts a coin.
++struct ArcadeKey { SDL_Scancode key; int player; uint16_t raw, sys; };
++static std::vector<ArcadeKey> g_arcade_keys;
++static std::vector<SDL_Scancode> g_pause_keys;
++static int g_pad_coin = -1;
++static uint16_t g_stv_raw[2], g_stv_sys;           // as read at the last present
++
++static void bind_arcade() {
++    static const struct { const char* name; uint16_t raw, sys; } kPanel[] = {
++        {"up", 0x040, 0}, {"down", 0x080, 0}, {"left", 0x100, 0}, {"right", 0x200, 0},
++        {"a", 0x001, 0}, {"b", 0x002, 0}, {"c", 0x004, 0}, {"start", 0, 0x10}, {"coin", 0, 0x01}};
++    g_arcade_keys.clear();
++    for (int p = 0; p < 2; ++p)
++        for (auto& b : kPanel)
++            for (int k : names(g_settings, "arcade", "p" + std::to_string(p + 1) + "_" + b.name, scancode_of))
++                g_arcade_keys.push_back({(SDL_Scancode)k, p, b.raw, (uint16_t)(b.sys << p)});
++    for (int k : names(g_settings, "arcade", "test", scancode_of)) g_arcade_keys.push_back({(SDL_Scancode)k, -1, 0, 0x04});
++    for (int k : names(g_settings, "arcade", "service", scancode_of)) g_arcade_keys.push_back({(SDL_Scancode)k, -1, 0, 0x08});
++    g_pause_keys.clear();
++    for (int k : names(g_settings, "arcade", "pause", scancode_of)) g_pause_keys.push_back((SDL_Scancode)k);
++    std::vector<int> coin = names(g_settings, "arcade", "pad_coin", [](const std::string& n) {
++        SDL_GamepadButton btn = SDL_GetGamepadButtonFromString(n.c_str());
++        return btn == SDL_GAMEPAD_BUTTON_INVALID ? -1 : (int)btn;
++    });
++    g_pad_coin = coin.empty() ? -1 : coin[0];
++}
++
++static bool is_pause_key(SDL_Scancode k) {
++    return g_cfg.arcade && std::find(g_pause_keys.begin(), g_pause_keys.end(), k) != g_pause_keys.end();
++}
++
+ static void bind_keyboard() {
+     g_keys.clear();
+     for (auto& b : kSaturn)
+-        for (int k : names(g_settings, "keyboard", b.name, [](const std::string& n) {
+-                 SDL_Scancode c = SDL_GetScancodeFromName(n.c_str());
+-                 return c == SDL_SCANCODE_UNKNOWN ? -1 : (int)c;
+-             }))
++        for (int k : names(g_settings, "keyboard", b.name, scancode_of))
+             g_keys.push_back({(SDL_Scancode)k, b.bit});
++    bind_arcade();
+ }
+ 
+ // A gamepad's bindings: its buttons and trigger axes, with the stick's and the triggers' travel.
+@@ -274,6 +329,55 @@
+ static uint16_t g_held_over[kHostSlots];        // held as the menu closed: ignored until let go
+ static uint16_t touch_read();
+ 
++// Panel keys pressed since the last read, so a tap let go before it (quicker than a frame) still presses
++// its control for that one read.
++static uint16_t g_tap_raw[2], g_tap_sys;
++
++static void panel_tap(SDL_Scancode key) {
++    for (auto& a : g_arcade_keys)
++        if (a.key == key) {
++            if (a.player >= 0) g_tap_raw[a.player] |= a.raw;
++            g_tap_sys |= a.sys;
++        }
++}
++
++// The ST-V panel from the [arcade] keys and the first two players' gamepads, through [gamepad]'s bindings.
++static void read_panel(const bool* k) {
++    uint16_t raw[2] = {g_tap_raw[0], g_tap_raw[1]}, sys = g_tap_sys;
++    g_tap_raw[0] = g_tap_raw[1] = g_tap_sys = 0;
++    for (auto& a : g_arcade_keys)
++        if (k[a.key]) {
++            if (a.player >= 0) raw[a.player] |= a.raw;
++            sys |= a.sys;
++        }
++    static const struct { uint16_t saturn, raw; } kPadToPanel[] = {
++        {B_UP, 0x040}, {B_DOWN, 0x080}, {B_LEFT, 0x100}, {B_RIGHT, 0x200}, {B_A, 0x001}, {B_B, 0x002}, {B_C, 0x004}};
++    for (auto& p : g_pads) {
++        int s = g_slots.slot_of(p.id);
++        if (s < 0 || s > 1) continue;
++        uint16_t b = gamepad_buttons(p.pad, p.map);
++        for (auto& m : kPadToPanel)
++            if (b & m.saturn) raw[s] |= m.raw;
++        if (b & B_START) sys |= (uint16_t)(0x10 << s);
++        if (g_pad_coin >= 0 && SDL_GetGamepadButton(p.pad, (SDL_GamepadButton)g_pad_coin)) sys |= (uint16_t)(0x01 << s);
++    }
++    for (auto& r : raw) {                       // not on a real lever
++        if ((r & 0x300) == 0x300) r &= (uint16_t)~0x300;
++        if ((r & 0x0C0) == 0x0C0) r &= (uint16_t)~0x0C0;
++    }
++    g_stv_raw[0] = raw[0];
++    g_stv_raw[1] = raw[1];
++    g_stv_sys = sys;
++}
++
++bool host_stv_panel(uint16_t raw[2], uint16_t& sys) {
++    bool on = g_win && g_cfg.arcade;
++    raw[0] = on ? g_stv_raw[0] : 0;
++    raw[1] = on ? g_stv_raw[1] : 0;
++    sys = on ? g_stv_sys : 0;
++    return on;
++}
++
+ static void read_pads() {
+     uint16_t b[kHostSlots] = {};
+     b[0] |= touch_read();
+@@ -291,6 +395,7 @@
+         g_held_over[s] &= b[s];
+         g_buttons[s] = b[s] & (uint16_t)~g_held_over[s];
+     }
++    if (g_cfg.arcade) read_panel(k);
+ }
+ 
+ static bool virtual_owns(SDL_JoystickID id);
+@@ -778,12 +883,13 @@
+         break;
+     case SDL_EVENT_KEY_DOWN: {
+         SDL_Scancode k = e.key.scancode;
++        if (g_cfg.arcade && !g_menu_open && !e.key.repeat) panel_tap(k);
+         if (k == SDL_SCANCODE_F12 && !e.key.repeat) save_shot();
+         if ((k == SDL_SCANCODE_F11 || (k == SDL_SCANCODE_RETURN && (e.key.mod & SDL_KMOD_ALT))) && !e.key.repeat) {
+             SDL_SetWindowFullscreen(g_win, !(SDL_GetWindowFlags(g_win) & SDL_WINDOW_FULLSCREEN));
+             break;
+         }
+-        bool back = k == SDL_SCANCODE_AC_BACK || (k == SDL_SCANCODE_ESCAPE && !escape_is_a_button());
++        bool back = k == SDL_SCANCODE_AC_BACK || (k == SDL_SCANCODE_ESCAPE && !escape_is_a_button()) || is_pause_key(k);
+         if (!g_menu_open) {
+             if (back && !e.key.repeat) menu_open();
+             break;
+@@ -796,7 +902,9 @@
+     case SDL_EVENT_GAMEPAD_BUTTON_DOWN: {
+         int b = e.gbutton.button;
+         if (!g_menu_open) {
+-            if (b == SDL_GAMEPAD_BUTTON_BACK || b == SDL_GAMEPAD_BUTTON_GUIDE) menu_open();
++            bool coin = g_cfg.arcade && b == g_pad_coin;    // an arcade board's coin, not the menu
++            if (int s = g_slots.slot_of(e.gbutton.which); coin && (s == 0 || s == 1)) g_tap_sys |= (uint16_t)(0x01 << s);
++            if ((b == SDL_GAMEPAD_BUTTON_BACK || b == SDL_GAMEPAD_BUTTON_GUIDE) && !coin) menu_open();
+             break;
+         }
+         on_menu_key(b == SDL_GAMEPAD_BUTTON_DPAD_UP ? -1 : b == SDL_GAMEPAD_BUTTON_DPAD_DOWN ? 1 : 0,
+@@ -1057,8 +1165,32 @@
+     read_pads();
+ }
+ 
++// --stats: every g_cfg.stats seconds of the host's time, how fast the run went and how full the audio
++// stream was, sampled at each present.
++static void stats_tick() {
++    static Clock::time_point since = Clock::now();
++    static uint64_t from = sat_vblanks();
++    static int least = 1 << 30, most = 0, skipped_from = 0;
++    if (g_audio) {
++        int queued = SDL_GetAudioStreamQueued(g_audio) / 4;
++        least = std::min(least, queued);
++        most = std::max(most, queued);
++    }
++    double s = std::chrono::duration<double>(Clock::now() - since).count();
++    if (s < g_cfg.stats) return;
++    sat_note("host: %.2f VBlanks/s over %.1f s (VB %llu), %d pictures left out; audio queued %d..%d ms, %d times empty, %d chunks dropped",
++             (double)(sat_vblanks() - from) / s, s, (unsigned long long)sat_vblanks(), g_skipped - skipped_from,
++             g_audio ? least * 1000 / 44100 : 0, g_audio ? most * 1000 / 44100 : 0, g_underruns, g_dropped);
++    since = Clock::now();
++    from = sat_vblanks();
++    skipped_from = g_skipped;
++    least = 1 << 30;
++    most = 0;
++}
++
+ static void present(const Frame& f) {
+     g_last = &f;
++    if (g_cfg.stats > 0) stats_tick();
+     if (SDL_GetWindowFlags(g_win) & (SDL_WINDOW_MINIMIZED | SDL_WINDOW_OCCLUDED | SDL_WINDOW_HIDDEN)) {
+         events();
+         if (g_menu_open) menu_loop();
+@@ -1068,10 +1200,12 @@
+         if (g_tex) SDL_DestroyTexture(g_tex);
+         g_tex = SDL_CreateTexture(g_ren, SDL_PIXELFORMAT_XRGB8888, SDL_TEXTUREACCESS_STREAMING, f.w, f.h);
+         if (!g_tex) sat_fatal("SDL: no %dx%d texture: %s", f.w, f.h, SDL_GetError());
+-        SDL_SetTextureScaleMode(g_tex, SDL_SCALEMODE_LINEAR);
+         g_tex_w = f.w;
+         g_tex_h = f.h;
+     }
++    std::string integer_mode = g_settings.get("display", "integer");
++    bool integer = integer_mode == "true" || (integer_mode == "auto" && g_cfg.arcade);
++    SDL_SetTextureScaleMode(g_tex, integer ? SDL_SCALEMODE_PIXELART : SDL_SCALEMODE_LINEAR);
+     SDL_UpdateTexture(g_tex, nullptr, f.px.data(), f.w * 4);
+     int ww = 0, wh = 0;
+     SDL_GetCurrentRenderOutputSize(g_ren, &ww, &wh);
+@@ -1080,6 +1214,11 @@
+     int sw = ww, sh = ww * 3 / 4;
+     if (sh > wh) { sh = wh; sw = wh * 4 / 3; }
+     int tv_lines = bios_pal() ? std::max(256, f.h) : f.h;
++    if (integer) {                              // each line the same whole number of pixels tall, the width 4:3 of that
++        int n = std::max(1, std::min(wh / tv_lines, ww * 3 / (4 * tv_lines)));
++        sh = tv_lines * n;
++        sw = sh * 4 / 3;
++    }
+     int ph = sh * f.h / tv_lines;
+     g_dst = {(float)((ww - sw) / 2), (float)((wh - ph) / 2), (float)sw, (float)ph};
+     draw();
+--- a/runtime/src/host/settings.cpp
++++ b/runtime/src/host/settings.cpp
+@@ -16,6 +16,12 @@
+ fullscreen = false
+ ; the window is 320x240 times this
+ scale = 3
++; true: the picture is its lines times the largest whole number that fits, 4:3 and sharp; false: as
++; large as fits, smoothed; auto: true for an arcade board (ST-V), false for a disc
++integer = auto
++; while the computer cannot keep up, leave out up to two pictures in a row, so that the game keeps its
++; speed and its sound
++frameskip = true
+ 
+ [audio]
+ ; percent
+@@ -73,6 +79,34 @@
+ ; the menu's button at the top of a touchscreen, shown with the pad or without it
+ menu_button = true
+ 
++; An arcade board's (ST-V) control panel, by SDL's key names as in [keyboard], which it is read
++; instead of. Gamepads drive it too, a player each in the order they connect: [gamepad]'s up, down,
++; left, right, a, b, c and start, and pad_coin (a gamepad button's name) inserts that player's coin.
++; Escape, a gamepad's guide button or pause opens the menu, which pauses the game.
++[arcade]
++p1_up = Up
++p1_down = Down
++p1_left = Left
++p1_right = Right
++p1_a = Z
++p1_b = X
++p1_c = C
++p1_start = 1
++p1_coin = 5
++p2_up = R
++p2_down = F
++p2_left = D
++p2_right = G
++p2_a = A
++p2_b = S
++p2_c = Q
++p2_start = 2
++p2_coin = 6
++test = F2
++service = 9
++pause = P, Pause
++pad_coin = back
++
+ ; What the launcher (saturn --launcher) last started with.
+ [launcher]
+ ; 6-player multitaps: 0 for none, 1 on port 1, 2 on both ports
+@@ -81,7 +115,7 @@
+ 
+ // The values a word may take, by key.
+ static const struct { const char* key; const char* values[3]; } kChoices[] = {
+-    {"controls", {"auto", "on", "off"}}, {"style", {"western", "japanese"}}};
++    {"controls", {"auto", "on", "off"}}, {"style", {"western", "japanese"}}, {"integer", {"auto", "true", "false"}}};
+ 
+ // The range a number may take, by key.
+ static const struct { const char* key; int lo, hi; } kRanges[] = {
+--- a/runtime/src/machine/bios.cpp
++++ b/runtime/src/machine/bios.cpp
+@@ -19,6 +19,7 @@
+ // --save's or one per game in the user's data directory; see the BUP section
+ // for what is and is not implemented.
+ #include "saturn.h"
++#include "host.h"
+ #include "state.h"
+ #include <cctype>
+ #include <climits>
+@@ -408,6 +409,12 @@
+         if ((event.kind == 6 || event.kind == 7) && vb >= event.vb &&
+             vb - event.vb < event.duration)
+             raw_controls[event.kind - 6] |= event.raw;
++    // A player at the window (g_cfg.arcade): the host's panel, read at the last present, joins the
++    // timeline's presses; STV_AUTOPLAY then plays P1 only while the player leaves P1's controls alone.
++    uint16_t live_raw[2], live_sys;
++    host_stv_panel(live_raw, live_sys);
++    raw_controls[0] |= live_raw[0];
++    raw_controls[1] |= live_raw[1];
+     stv_autoplay(vb, raw_controls[0]);
+     st16(0x06000708u, raw_controls[0]);
+     st16(0x06000710u, raw_controls[1]);
+@@ -427,6 +434,11 @@
+             deliver_coin(event.kind - 3);
+         }
+     }
++    static uint16_t live_prev;                 // a coin switch closing at the window inserts one coin
++    if (live_sys & ~live_prev & 0x01) deliver_coin(0);
++    if (live_sys & ~live_prev & 0x02) deliver_coin(1);
++    live_prev = live_sys;
++    sys |= live_sys;
+     uint16_t sys_prev = (uint16_t)ld16(0x06000728u);
+     st16(0x06000728u, sys);
+     st16(0x0600072Au, sys_prev);

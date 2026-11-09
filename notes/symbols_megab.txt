@@ -1,0 +1,36 @@
+# symbols_megab.txt - mega colour/geometry builders B and C (SH-2 addrs).
+# cart offset = addr - 0x02000000. Written by the builder-B pass.
+# (symbols.txt / symbols_mega.txt left untouched per task scope.)
+
+# --- builders decompiled this pass ---
+0x02235198 vdp_colour_build_b        # DONE - src_functional/02235198.c
+                                     #   non-uniform unroll: 15 vec3 blocks, only
+                                     #   13 with matrix_copy_reverse+hook (blocks
+                                     #   4,5 skip them). regs: vtab=r14 atab=r11
+                                     #   itab=r9 SPptr=r12 matmul=r10 rotate=r8.
+0x0223579c vdp_colour_build_c        # DONE - src_functional/0223579c.c
+                                     #   third sibling in B's unit (starts right
+                                     #   after B's trailing pool 0x23577c-0x2379c;
+                                     #   the "0x23577c not-a-function" note was an
+                                     #   off-by-pool read). uniform 15 blocks all
+                                     #   with copy+hook. regs: vtab=r14 atab=r11
+                                     #   itab=r10 SPptr=r12 matmul=r8 rotate=r9.
+
+# --- deferred (in B's unit, not trivial) ---
+0x02235dc0 func_235dc0               # per-block hook called by builders A/B/C.
+                                     #   DEFERRED (extern): multi-loop, 4 new
+                                     #   tables (0x0609EBD0 id->rec map, 0x0609D7D0
+                                     #   stride-0x14 recs, 0x060DA0C8 out, counter
+                                     #   0x06098818), ~5 unresolved bsrf + 1 braf
+                                     #   tail, obj fields +0x98/+0x9C/+0x20. Needs
+                                     #   its own trace; out of the builder scope.
+
+# --- shared helper ABIs (unchanged, already in src_functional) ---
+0x022149aa mtx_load_abc              # copy_longs(0x06098abc -> *0x06098878, 12)
+0x02214a40 mtx_apply_vec_at8         # vec3_array_matmul of obj+8/+12/+16
+0x02214a06 mtx_rotate_zyx_at24       # rotate active mtx by u16 angles obj+0x24/26/28
+0x02214a2e mtx_stack_push_dup        # *p += 0x30; copy_longs(old,new,12)
+0x02213474 matrix_copy_reverse       # 2 matrices row-swapped -> 0x060da040 + translate
+0x022149e4 mtx_rotate_zyx            # rotate active mtx by u16 angles[0..2]
+0x02213ca4 vec3_array_matmul         # func_02213ca4(x,y,z) transform-in-place
+0x0224a360 ashl_var                  # func_0224a360(value,count)=value<<count; r0=val,r1=cnt

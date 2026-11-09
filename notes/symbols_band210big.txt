@@ -1,0 +1,49 @@
+# Band 0x210000-0x220000 (SH2 0x02210000-0x02220000) - worker 210big symbols
+# The large still-undone functions from the 0x210-0x220 band. All FUNCTIONAL, HIGH
+# fidelity, zero-warning (gcc -O1 -Wall -Wextra). Header: dh_band21.h.
+
+0x0221f088 func_0221f088   evt_sequence_step        # (u32 task) 5-state scripted-event: scene_value_select->unk30, process_spawn_list, func_0222a708 reset, *0x06098580|=0x60, slots 3..6 cleared
+0x0221c690 func_0221c690   boss_intro_director      # (u32 task) 9-state timed spawn/aim sequence; spawns handlers 0x237828/0x207bcc/0x219c44; ashl_var-scaled timer; crosshair func_0221af30
+0x0221c4ac func_0221c4ac   prop_open_close_sweep    # (u32 task) 2-panel door swing between poses; trigger mask g_060748BC[unk12]; draws 2 models in one matrix frame
+0x0221a1a0 func_0221a1a0   hud_input_prompt         # (u32 task) HUD timer sibling of 0221a452 + 2-button poll (mask 0x3C0) via ptrs unk64/unk68; SFX cadence unk70&7
+0x0221f26  func_0219f26    prompt_hud_orbit         # (u32 task) orbiting prompt HUD (sin/cos of unk74) + 3-button poll; spawns reaction 0x21a6a8; tail unk70++/unk74+=0x2000
+0x0221c44  func_0219c44    prompt_hud_rng           # (u32 task) variant of 0219f26; rng_next&4 picks accept key (threshold unk60); inputs A/B mutually exclusive
+0x0221898c func_0221898c   gate_swing_update        # (u32 task) 7-state sin-driven gate swing (step sin_lookup>>5); draws main + optional second model (state>2 && unk12==1)
+0x0221bf72 func_0221bf72   setpiece_director        # (u32 task) 9-state encounter director; spawns 0x207bcc/0x219f26/0x237828/0x238fdc/0x21c2aa; per-slot motion deltas (slots 1..2); SFX via r10 fn-ptr
+0x0221d6b6 func_0221d6b6   launch_arc_segment       # (u32 task) ballistic segment walker (table 0x06074E4C/0x06074E76 stride 6); gravity arc, bounce/advance; tail-calls func_02246282
+0x0216c38  func_0216c38    stage_init_dispatch      # (s32 stage, s32 variant) latch params, seed camera rec 0x0609742C from 0x0606080C[stage]; calls func_0216c88, tail func_0216f7a
+0x0221a80c func_0221a80c   oscillator_arm_phase1    # (u32 task) sinusoidal swing arm; rec 0x060548BC[unkF] stride 8; fixmul(unk6C, sin(unk58)); tail-calls func_02246282
+0x0221e256 func_0221e256   coop_lever_director      # (u32 task) 2-player lever; owner unk44; grab/turn SFX; spawns 0x219984; tail actor_anim_frame_update + func_0222ca98
+
+# Referenced externs confirmed this session (decompiled elsewhere / other bands):
+#   func_0222a878 scene_value_select(void)->s32      process_spawn_list(entity) [0x22a5d0]
+#   func_0222a708 reset_active_actor_slots(void)      func_0221af30 crosshair_aim_step(s32)
+#   func_0220fece/func_0220ff54/func_0220feec/func_0220ff72 object constructors (parent,template)
+#   func_0224a360 ashl_var(value,count)   func_0224a420 ashr_var(value,count)
+#   sin_lookup 0x213190   cos_lookup 0x2131a8   func_022131c8 fixmul_16_16(a,b)
+#   func_022153f6 draw_child_sprite(obj,scale,flags)  func_022154fc draw_billboard_quad(obj,sx,sy,mode)
+#   func_02215f6c sound_queue_push(cmd)   func_02216018 sound_if_enabled(id)
+#   func_0221a5f6 menu_set_text_ptrs(obj)  func_02210020 rng_next(void)->u32
+#   mtx_load_abc 0x2149aa  mtx_apply_vec_at0 0x214a50  mtx_rotate_zyx 0x2149e4  submit_model_culled 0x215a2c
+#   func_0221707c actor_slot_register(entity,a1,a2,a3,a4)  func_0222db44 actor_load_pose_buffers(entity)
+#   func_0222dc2c actor_anim_frame_update(arg0,entity)->s32
+#   func_02246282 shared_integrate_draw_tail(ent)   func_0222ca98 shared_draw_finalise_tail(ent)
+#   func_0216c88 / func_0216f7a stage-init workers   func_0221c8a0 sequence sub-step(task)
+#   Task-handler templates (address-taken): 0x237828 0x207bcc 0x219c44 0x21a6a8 0x238fdc 0x21c2aa 0x219984 0x219984
+
+# Globals touched (new/confirmed this session):
+0x06098580  g_event_flags            # event/trigger bitfield (gated and cleared throughout)
+0x0609856c  g_selection_flags        # player-selection latch (bit0 = active player, |1/|2/|4/&~4)
+0x06098568  g_player_active_mask      # per-player active bits (vs 0x0604EBE4 masks)
+0x06098570  g_difficulty_level        # clamped 0..4 counter
+0x060e0ddc  g_sound_enable            # SFX gate
+0x06096c90  g_frame_shift             # ashl/ashr frame-rate scale shift
+0x0609882c  g_ref_obj_ptr            # reference object (->unk8->unk3C=0x10 reset)
+0x06098878  g_matrix_stack_depth      # byte cursor +0x30 per pushed matrix frame
+0x06099590  g_slot_flags / 0x060995B0 g_slot_ptrs / 0x060995B4/B8 slot-record pointers
+0x0604ebe4  g_player_bit_masks        # per-player event-bit masks (stride 4)
+0x0606080c  g_stage_table             # stage records (stride 0x2C) -> camera anchor
+0x0609742c  g_camera_anchor_rec       # x/y/z anchor seeded by func_0216c38
+0x060b3d54  g_cur_stage / 0x060b3d58 g_cur_variant
+0x06074e4c/0x06074e76  launch-segment tables (stride 6)
+0x060548bc  oscillator param records (stride 8)   0x06074f38/0x06098734/0x06074ee4/0x06074f40  coop-lever tables

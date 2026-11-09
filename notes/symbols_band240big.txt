@@ -1,0 +1,62 @@
+# Symbols discovered - band 0x02240000-0x0248c000 "big residue" (worker: band240big)
+# Format: addr(SH2)  name  notes
+# Band-local notes only; NOT merged into notes/symbols.txt.
+
+# --- decompiled this pass ---
+02247106  func_02247106   per-object state handler; switch(obj->0xD8) states 0..3;
+                          tail-calls func_22dc2c(other,obj). DONE (src_functional/02247106.c)
+
+# --- callees of func_02247106 (named, signatures confirmed from prologues) ---
+022489d0  func_2489d0     (obj) -> void            reads r4 only
+02244988  func_244988     (obj, s32) -> void       case0 arg = *(s32*)obj->0x170
+022449b2  func_2449b2     (obj) -> void
+0222dc2c  func_22dc2c     (other, obj) -> s32       reads r4,r5 (r5=obj); return used as predicate
+02245382  func_245382     (obj, inner, s32,s32,s32) -> s32   reads r4,r5,r6; caller also sets r7=0x10000
+                          and pushes stack long 0x4000 (modelled as 5 ABI slots)
+02210020  func_210020     (void) -> s32            takes NO args (overwrites r4/r6 on entry)
+022453de  func_2453de     (obj) -> void*           returns object ptr or NULL
+022469f2  func_2469f2     (obj) -> void             tail-/called when (u16)obj->0x54 & 2
+
+# --- obj struct field offsets used by func_02247106 (arg1) ---
+# +0x08 s32    +0x34 s8 playerIdx   +0x41 s8 flag=1   +0x44 s8 flag
+# +0x4B s8     +0x4C s8 early-out flag   +0x54 u16 flags(&2)   +0x5C s16 want-dir
+# +0x84 s32    +0x88 s32   +0x8C s32 flags(&0x3FFFF)   +0xD4 s32   +0xD8 s32 STATE
+# +0xE0 s32 flags   +0x104 s32 slot-idx   +0x108 s32   +0x118 ptr   +0x11C u16 idx
+# +0x170 ptr -> param record (read at +4,+6,+0x0A,+0x0C)
+# inner-obj (slot) fields: +0x08 s32 coord   +0x48 s8 flag   +0x84 s32 flags
+
+# --- HWRAM tables (shared with func_243628) ---
+06099590  g_slot_active   s32[]  slot "active" flag, byte-indexed (idx*4)
+060995b0  g_slot_ptrs     void*[] slot pointers; deref +8 -> inner object
+
+# ======================================================================
+# DEFERRED entries - decoded callee symbols (named, not decompiled)
+# ======================================================================
+
+# func_243628 (739 insn) computed calls, all resolved:
+0223e530  func_23e530     bsrf targets 0x24388c, 0x2439f0 (team/group sort step)
+022131c8  func_22131c8    bsrf targets 0x24397e, 0x243996 (coord transform; result pair summed)
+# PC-relative bsr callees (m2c-named): func_243be0, func_243d78, func_243db4, func_243e22
+
+# func_246ab8 (785 insn) computed calls, all resolved (NO table dispatch):
+0222dc2c  func_22dc2c     universal tail call = mova(0x246ad0)+0xFFFE715C = 0x2225c2c
+                          NOTE: tail target is func_225c2c (see below), not 22dc2c -- recompute:
+                          0x246ad0 + 0xFFFE715C mod 2^32 = 0x00225C2C
+02225c2c  func_225c2c     *** likely parent dispatcher of the 0x225ee0 arm (frame-setup owner) ***
+# other 246ab8 bsrf targets: 2489d0 246208 249a82 249f08 245bcc 24840a 246180
+#   247d6e 210020 244e2e 24492c 243fe0 245d1c ; braf jumps: 249fb0(x3) 249836
+
+# func_242a10 (census 680 = actually 2+ functions):
+0221c368  func_21c368     tail-braf target of the REAL func_242a10 (ends ~0x242ca8)
+02228106  func_228106     bsrf @0x242a82
+02245b48  func_245b48     bsrf @0x242ab0
+02243590  func_243590     bsr @0x242bd8 (already decompiled: 02243590.c exists)
+02215f6c  func_215f6c     jsr @r11, r11 = mova(0x242a30)+0xFFFD353C = 0x215F6C (PIC trap)
+02242f60  func_242f60     bsr inside the 2nd (jump-table) function
+
+# func_2402c0 (2379 insn) heavy computed calls, all resolved:
+0222ab18  func_22ab18     called ~30x (format/draw-ish helper)
+02227704  func_227704     called ~15x (paired with 22ab18)
+02215f6c  func_215f6c     ; 02244df2 func_244df2 ; 02210020 func_210020
+0224174e  func_24174e  ; 02241556 func_241556 ; 022415ee func_2415ee
+0224158c  func_24158c  ; 022417a4 func_2417a4 ; 022416c4 func_2416c4
