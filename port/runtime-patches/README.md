@@ -646,3 +646,34 @@ are Linux `$XDG_CONFIG_HOME/saturn-recomp/mods` (otherwise
 Reconstruction: `python3 port/p422_verify_patches.py`. Complete evidence,
 artifact hashes, reproduction commands and platform limits:
 [P4.22 integration](../../notes/port/p422_mods_integration.md).
+
+## P4.24 tear-free presentation (2026-11-11)
+
+Apply `p424-vsync.patch` inside `tools/saturn-recomp`, incrementally **after
+`p421-mod-runtime.patch`** (P4.22 integration):
+
+```sh
+patch --batch --fuzz=0 -p1 < ../../port/runtime-patches/p424-vsync.patch
+```
+
+The launcher Display setting **Sync to display (VSync)** saves `[display]
+vsync = true` by default, including for old files that omit the key. The host
+prefers `SDL_RENDERER_VSYNC_ADAPTIVE`, falls back to interval 1, and preserves
+unsynchronised presentation when off. One gate handles game, network-wait,
+rewind, pause and both ImGui loops. Hidden/occluded/minimised windows suspend
+sync; three consecutive presents over 40 ms trigger unsynchronised recovery,
+30 normal visible presents and a 2–30 second retry backoff. Visibility recovery
+also requires 30 normal presents and at least 500 ms. Network-wait redraws and
+explicit unpaced/resume/fast-forward game presentation bypass sync.
+
+Guest-time absolute pacing and audio ratio control are unchanged. Frameskip
+credits at most one field of measured synchronized-present time. The policy
+and clocks are host-only and never enter machine snapshots, guest pixels,
+traces or WAVs. A synchronous SDL driver call cannot be cancelled safely;
+recovery acts on slow **returns**, with native compositor testing still needed.
+
+Use the ordinary Linux/window/Windows/Mac wrappers; no extra Mac patch or
+platform fork is needed. `port/p424_verify_patches.py` reconstructs the complete
+runtime/Windows chain with zero fuzz/offsets. Tests and release evidence,
+including the sandbox's Xvfb socket restriction and PM native checks, are in
+[the P4.24 note](../../notes/port/p424_vsync.md).

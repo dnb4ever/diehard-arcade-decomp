@@ -109,8 +109,8 @@ with (contents / 'Info.plist').open('wb') as f:
                       CFBundleDisplayName='Die Hard Arcade',
                       CFBundleIdentifier='org.saturn-recomp.diehard-arcade',
                       CFBundleIconFile='DieHardArcade.icns',
-                      CFBundlePackageType='APPL', CFBundleShortVersionString='1.06',
-                      CFBundleVersion='106', CFBundleInfoDictionaryVersion='6.0',
+                      CFBundlePackageType='APPL', CFBundleShortVersionString='1.07',
+                      CFBundleVersion='107', CFBundleInfoDictionaryVersion='6.0',
                       CFBundleSupportedPlatforms=['MacOSX'], LSMinimumSystemVersion=args.min_macos,
                       LSApplicationCategoryType='public.app-category.arcade-games',
                       NSHighResolutionCapable=True), f)

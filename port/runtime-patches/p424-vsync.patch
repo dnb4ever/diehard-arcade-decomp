@@ -1,0 +1,396 @@
+--- a/runtime/src/host/host.cpp
++++ b/runtime/src/host/host.cpp
+@@ -38,6 +38,7 @@
+ #include "p421_mods.h"
+ #include "host_sdl.h"
+ #include "pace.h"
++#include "presentation.h"
+ #include "pad_slots.h"
+ #include "settings.h"
+ #include "touch_pad.h"
+@@ -68,6 +69,8 @@
+ static bool g_rewind_key, g_forward_key;
+ bool host_fast_forward() { return !netplay_active() && g_cfg.arcade && (g_forward_key || g_cfg.fast_forward); }
+ static bool g_paced;
++static Presentation g_presentation;
++static bool g_present_allow_sync = true;
+ 
+ uint16_t host_pad(int slot) { return g_buttons[slot]; }
+ bool host_pad_connected(int slot) { return g_win && (slot == 0 || g_slots.taken(slot)); }
+@@ -127,7 +130,7 @@
+     if (sat_resuming()) return sat_vblanks() % 30 == 0;
+     if (host_fast_forward()) return sat_vblanks() % 4 == 0;
+     if (g_paced && g_skipped_run < (g_cfg.rewind_seconds ? 5 : 2) && g_settings.flag("display", "frameskip") &&
+-        Clock::now() > g_base + std::chrono::nanoseconds(sat_now() + video_frame_ns())) {
++        Clock::now() > g_base + std::chrono::nanoseconds(sat_now() + video_frame_ns() + presentation_skip_credit(g_presentation, video_frame_ns()))) {
+         ++g_skipped_run;
+         ++g_skipped;
+         return false;
+@@ -192,9 +195,8 @@
+     }
+     sat_note("SDL: drawing with %s", SDL_GetRendererName(g_ren));
+     ui_open(g_ren);
+-    // host_pace keeps real time; a present that waited for the display would stall the whole machine
+-    // whenever the compositor stops sending frames, as KWin does for a window that is out of sight
+     SDL_SetRenderVSync(g_ren, 0);
++    host_display_update();
+     return true;
+ }
+ 
+@@ -222,6 +224,47 @@
+     explicit HostCall(const char* what) { g_host_call = what; }
+     ~HostCall() { g_host_call = ""; }
+ };
++
++// All game, menu, launcher and network-wait presents pass through this gate.
++// SDL renderer operations remain on the owning thread. A synchronous driver
++// call cannot be cancelled; slow-return fallback bounds subsequent exposure.
++static uint64_t present_now() {
++    return uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now().time_since_epoch()).count());
++}
++void host_display_update(bool allow_sync) {
++    if (!g_ren) return;
++    bool hidden = SDL_GetWindowFlags(g_win) & (SDL_WINDOW_HIDDEN | SDL_WINDOW_MINIMIZED | SDL_WINDOW_OCCLUDED);
++    auto previous = g_presentation.mode;
++    g_presentation.prepare(g_settings.flag("display", "vsync"), hidden, allow_sync, present_now(),
++                          [](int interval) { return SDL_SetRenderVSync(g_ren, interval == -1 ? SDL_RENDERER_VSYNC_ADAPTIVE : interval); });
++    if (previous != g_presentation.mode) {
++        const char* names[] = {"off", "suspended (window hidden/occluded/minimized)",
++            "suspended (network wait / unpaced presentation)", "off (recovering; retry after normal visible presents)",
++            "adaptive", "on", "unavailable (renderer rejected VSync)"};
++        sat_note("display: VSync %s", names[int(g_presentation.mode)]);
++    }
++}
++void host_display_event(const SDL_Event& e) {
++    switch (e.type) {
++    case SDL_EVENT_WINDOW_HIDDEN: case SDL_EVENT_WINDOW_SHOWN:
++    case SDL_EVENT_WINDOW_MINIMIZED: case SDL_EVENT_WINDOW_RESTORED:
++    case SDL_EVENT_WINDOW_OCCLUDED: case SDL_EVENT_WINDOW_EXPOSED:
++        if (g_win && e.window.windowID == SDL_GetWindowID(g_win)) host_display_update(g_present_allow_sync);
++        break;
++    default: break;
++    }
++}
++void host_sdl_present(bool allow_sync) {
++    HostCall in("SDL_RenderPresent");
++    g_present_allow_sync = allow_sync;
++    host_display_update(allow_sync);
++    if (g_presentation.mode == Presentation::Mode::Hidden) return;
++    auto start = present_now();
++    SDL_RenderPresent(g_ren);
++    g_presentation.completed(present_now() - start, present_now());
++    // Switch immediately after the third slow return, before any next draw.
++    host_display_update(allow_sync);
++}
+ 
+ // ---- sound ------------------------------------------------------------------------------------
+ static SDL_AudioStream* g_audio;
+@@ -1018,6 +1061,7 @@
+ }
+ 
+ static void on_event(const SDL_Event& e) {
++    host_display_event(e);
+     switch (e.type) {
+     case SDL_EVENT_QUIT:
+         menu_close();
+@@ -1287,7 +1331,7 @@
+ }
+ 
+ // The last picture and what goes over it.
+-static void draw() {
++static void draw(bool allow_sync = true) {
+     SDL_GetCurrentRenderOutputSize(g_ren, &g_out_w, &g_out_h);
+     SDL_SetRenderDrawColor(g_ren, 0, 0, 0, 255);
+     SDL_RenderClear(g_ren);
+@@ -1339,8 +1383,7 @@
+         host_save_picture(shot);
+         captured = true;
+     }
+-    HostCall in("SDL_RenderPresent");
+-    SDL_RenderPresent(g_ren);
++    host_sdl_present(allow_sync && !g_cfg.unpaced && !host_fast_forward() && !sat_resuming());
+ }
+ 
+ // The menu, open until it is closed; the game waits.
+@@ -1385,6 +1428,10 @@
+     sat_note("host: %.2f VBlanks/s over %.1f s (VB %llu), %d pictures left out; audio queued %d..%d ms, %d times empty, %d chunks dropped, %d resyncs",
+              (double)(sat_vblanks() - from) / s, s, (unsigned long long)sat_vblanks(), g_skipped - skipped_from,
+              g_audio ? least * 1000 / 44100 : 0, g_audio ? most * 1000 / 44100 : 0, g_underruns, g_dropped, g_resyncs);
++    if (g_paced)
++        sat_note("display: pace lag %.3f ms, last synchronized present %.3f ms",
++            std::chrono::duration<double, std::milli>(Clock::now() - g_base - std::chrono::nanoseconds(sat_now())).count(),
++            double(g_presentation.sync_wait) / 1e6);
+     if (g_cfg.internal_resolution > 1)
+         sat_note("video: %llu exact enhanced fields reused, %llu composed",
+             (unsigned long long)vdp2_cache_hits(),(unsigned long long)vdp2_cache_misses());
+@@ -1423,6 +1470,7 @@
+ static void present(const Frame& f) {
+     g_last = &f;
+     if (g_cfg.stats > 0) stats_tick();
++    host_display_update(!g_cfg.unpaced && !host_fast_forward() && !sat_resuming());
+     if (SDL_GetWindowFlags(g_win) & (SDL_WINDOW_MINIMIZED | SDL_WINDOW_OCCLUDED | SDL_WINDOW_HIDDEN)) {
+         events();
+         if (g_menu_open) menu_loop();
+@@ -1505,7 +1553,7 @@
+     if (!g_win) return;
+     events();
+     static auto next = Clock::now();
+-    if (Clock::now() >= next) { draw(); next = Clock::now() + std::chrono::milliseconds(16); }
++    if (Clock::now() >= next) { draw(false); next = Clock::now() + std::chrono::milliseconds(16); }
+ }
+ 
+ void host_quick_reset() {
+--- a/runtime/src/host/host_sdl.h
++++ b/runtime/src/host/host_sdl.h
+@@ -23,3 +23,8 @@
+ void host_save_picture(const std::string& path); // rendered window, including filters and overlays
+ 
+ void host_player_menu();
++
++// Shared renderer policy, including launcher/menu paths.
++void host_display_update(bool allow_sync = true);
++void host_display_event(const SDL_Event& e);
++void host_sdl_present(bool allow_sync = true);
+--- a/runtime/src/host/launcher.cpp
++++ b/runtime/src/host/launcher.cpp
+@@ -340,6 +340,7 @@
+         for (int frame = 0; going && !started_; ++frame) {
+             SDL_Event e;
+             while (SDL_PollEvent(&e)) {
++            host_display_event(e);
+                 if (e.type == SDL_EVENT_QUIT || (e.type == SDL_EVENT_KEY_DOWN && e.key.scancode == SDL_SCANCODE_AC_BACK))
+                     going = false;
+                 if (e.type == SDL_EVENT_KEY_DOWN && e.key.scancode == SDL_SCANCODE_F12) want_picture_ = true;
+@@ -367,7 +368,7 @@
+                 host_save_picture(shot);
+                 going = false;
+             }
+-            SDL_RenderPresent(ren);
++            host_sdl_present();
+             SDL_Delay(SDL_GetWindowFlags(win) & (SDL_WINDOW_MINIMIZED | SDL_WINDOW_OCCLUDED) ? 50 : 8);
+         }
+         ImGui_ImplSDLRenderer3_Shutdown();
+@@ -660,6 +661,11 @@
+     void display_and_sound() {
+         ImGui::SeparatorText("Display and sound");
+         internal_resolution();
++        bool vsync = set_.flag("display", "vsync");
++        if (ImGui::Checkbox("Sync to display (VSync)", &vsync)) {
++            set_.set("display", "vsync", vsync ? "true" : "false");
++            host_display_update(); save();
++        }
+         bool full = set_.flag("display", "fullscreen");
+         if (ImGui::Checkbox("Fullscreen (F11)", &full)) {
+             set_.set("display", "fullscreen", full ? "true" : "false");
+@@ -723,6 +729,7 @@
+     for (int frame = 0; open; ++frame) {
+         SDL_Event e;
+         while (SDL_PollEvent(&e)) {
++            host_display_event(e);
+             if (e.type == SDL_EVENT_QUIT) { open = false; quit = true; }
+             if (e.type == SDL_EVENT_KEY_DOWN && e.key.scancode == SDL_SCANCODE_ESCAPE) open = false;
+             host_pad_event(e); ImGui_ImplSDL3_ProcessEvent(&e);
+@@ -736,7 +743,7 @@
+         SDL_SetRenderDrawColor(ren, 15, 18, 24, 255); SDL_RenderClear(ren);
+         render_imgui_scaled(ImGui::GetDrawData(), ren);
+         if (const char* shot = SDL_getenv("SATURN_PLAYER_SHOT"); shot && frame == 3) host_save_picture(shot);
+-        SDL_RenderPresent(ren); SDL_Delay(16);
++        host_sdl_present(); SDL_Delay(16);
+     }
+     ImGui_ImplSDLRenderer3_Shutdown(); ImGui_ImplSDL3_Shutdown(); ImGui::DestroyContext();
+     if (quit) state_stop("the window was closed");
+--- /dev/null
++++ b/runtime/src/host/presentation.h
+@@ -0,0 +1,61 @@
++// Host-only present policy. No guest clock, state or audio data lives here.
++#pragma once
++#include <algorithm>
++#include <cstdint>
++
++struct Presentation {
++    enum class Mode { Off, Hidden, Waiting, Recovery, Adaptive, Sync, Unsupported };
++    Mode mode = Mode::Off;
++    int interval = 0;
++    bool supported = true;
++    bool requested = false;
++    unsigned slow = 0, normal = 0;
++    uint64_t retry_at = 0, backoff = 2000000000ULL;
++    uint64_t sync_wait = 0;
++    static constexpr uint64_t slow_ns = 40000000;
++
++    // set_interval returns whether the backend accepts the requested interval.
++    template<class Set> void prepare(bool enabled, bool hidden, bool allow_sync, uint64_t now, Set set_interval) {
++        if (enabled != requested) {
++            supported = true; slow = normal = 0; retry_at = 0; backoff = 2000000000ULL;
++            requested = enabled;
++        }
++        if (enabled && hidden && mode != Mode::Hidden) {
++            retry_at = std::max<uint64_t>(retry_at, now + 500000000ULL);
++            normal = 0;
++        }
++        Mode next = !enabled ? Mode::Off : hidden ? Mode::Hidden : !allow_sync ? Mode::Waiting :
++                    !supported ? Mode::Unsupported : retry_at && (now < retry_at || normal < 30) ? Mode::Recovery : Mode::Sync;
++        if (next == Mode::Sync) {
++            if (!interval) {
++                if (set_interval(-1)) interval = -1;
++                else if (set_interval(1)) interval = 1;
++                else supported = false;
++            }
++            next = !supported ? Mode::Unsupported : interval == -1 ? Mode::Adaptive : Mode::Sync;
++        } else if (interval) { set_interval(0); interval = 0; }
++        mode = next;
++        if (!interval) sync_wait = 0;
++        if (hidden) { normal = slow = 0; }
++    }
++
++    void completed(uint64_t elapsed, uint64_t now) {
++        sync_wait = interval ? elapsed : 0;
++        if (interval) {
++            slow = elapsed > slow_ns ? slow + 1 : 0;
++            if (slow >= 3) {
++                retry_at = now + backoff;
++                backoff = std::min<uint64_t>(backoff * 2, 30000000000ULL);
++                normal = slow = 0;
++            }
++        } else if (mode == Mode::Recovery) {
++            normal = elapsed <= slow_ns ? normal + 1 : 0;
++        }
++    }
++};
++
++// A normal display wait must not trigger frameskip. Credit only the measured
++// last synchronized wait, bounded by one guest field; off retains its old test.
++inline uint64_t presentation_skip_credit(const Presentation& p, uint64_t field_ns) {
++    return std::min(p.sync_wait, field_ns);
++}
+--- a/runtime/src/host/settings.cpp
++++ b/runtime/src/host/settings.cpp
+@@ -14,6 +14,8 @@
+ 
+ [display]
+ fullscreen = false
++; Adaptive VSync where supported, otherwise ordinary VSync; presentation only
++vsync = true
+ ; the window is 320x240 times this
+ scale = 3
+ ; CPU internal rendering; hardware framebuffer and guest timing remain original
+--- a/runtime/tests/CMakeLists.txt
++++ b/runtime/tests/CMakeLists.txt
+@@ -8,5 +8,5 @@
+   set(CMAKE_BUILD_TYPE Release)
+ endif()
+ include(${CMAKE_CURRENT_LIST_DIR}/../runtime.cmake)
+-add_executable(runtime_tests main.cpp net_audio_test.cpp net_traversal_test.cpp no_modules.cpp perf_test.cpp hires_test.cpp player_test.cpp player_training_test.cpp stv_bios_test.cpp vdp2_test.cpp onchip_test.cpp bup_test.cpp pads_test.cpp settings_test.cpp touch_test.cpp pace_test.cpp frame_change_test.cpp modem_test.cpp scu_test.cpp cdrom_test.cpp cdblock_test.cpp clock_test.cpp tasks_test.cpp scsp_test.cpp)
++add_executable(runtime_tests main.cpp presentation_test.cpp net_audio_test.cpp net_traversal_test.cpp no_modules.cpp perf_test.cpp hires_test.cpp player_test.cpp player_training_test.cpp stv_bios_test.cpp vdp2_test.cpp onchip_test.cpp bup_test.cpp pads_test.cpp settings_test.cpp touch_test.cpp pace_test.cpp frame_change_test.cpp modem_test.cpp scu_test.cpp cdrom_test.cpp cdblock_test.cpp clock_test.cpp tasks_test.cpp scsp_test.cpp)
+ target_link_libraries(runtime_tests saturn_core saturn_machine saturn_host Threads::Threads)
+--- /dev/null
++++ b/runtime/tests/presentation_test.cpp
+@@ -0,0 +1,83 @@
++#include "presentation.h"
++#include "pace.h"
++#include "test.h"
++#include <vector>
++
++TEST(present_prefers_adaptive_then_regular_and_does_not_retry_unsupported) {
++    for (int supported : {-1, 1, 0}) {
++        Presentation p; std::vector<int> calls;
++        auto set = [&](int n) { calls.push_back(n); return n == supported; };
++        p.prepare(true, false, true, 0, set);
++        CHECK_EQ(p.interval, supported);
++        CHECK_EQ(calls.size(), supported == -1 ? 1 : 2);
++        p.prepare(true, false, true, 1, set);
++        CHECK_EQ(calls.size(), supported == -1 ? 1 : 2);
++    }
++}
++
++TEST(present_hidden_wait_and_option_off_disable_sync) {
++    Presentation p;
++    auto set = [](int) { return true; };
++    p.prepare(true, false, true, 0, set); CHECK_EQ(p.interval, -1);
++    p.prepare(true, true, true, 1, set); CHECK_EQ(p.interval, 0);
++    CHECK_EQ(p.mode == Presentation::Mode::Hidden, true);
++    p.prepare(true, false, true, 2, set); CHECK_EQ(p.interval, 0);
++    for (int i=0; i<30; ++i) p.completed(1000000, 10000000+i*16666667ULL);
++    p.prepare(true, false, true, 600000000, set); CHECK_EQ(p.interval, -1);
++    p.prepare(true, false, false, 3, set); CHECK_EQ(p.interval, 0);
++    CHECK_EQ(p.mode == Presentation::Mode::Waiting, true);
++    p.prepare(false, false, true, 4, set); CHECK_EQ(p.interval, 0);
++    CHECK_EQ(p.mode == Presentation::Mode::Off, true);
++}
++
++TEST(fake_present_three_consecutive_slow_returns_fall_back_and_retry_after_normal_visible_frames) {
++    Presentation p; uint64_t now = 0;
++    auto set = [](int) { return true; };
++    auto frame = [&](uint64_t elapsed, bool hidden = false) {
++        p.prepare(true, hidden, true, now, set);
++        if (!hidden) p.completed(elapsed, now += elapsed);
++        p.prepare(true, hidden, true, now, set);
++    };
++    frame(41000000); frame(41000000); frame(16000000);
++    CHECK_EQ(p.interval, -1); // A normal return breaks the consecutive run.
++    frame(41000000); frame(41000000); frame(41000000);
++    CHECK_EQ(p.interval, 0);
++    CHECK_EQ(p.mode == Presentation::Mode::Recovery, true);
++    for (int i=0; i<200; ++i) frame(16666667, true);
++    CHECK_EQ(p.interval, 0); CHECK_EQ(p.normal, 0);
++    for (int i=0; i<29; ++i) frame(16666667);
++    CHECK_EQ(p.interval, 0);
++    now = p.retry_at;
++    frame(16666667); CHECK_EQ(p.interval, -1);
++    // Persistent slow VSync retries back off rather than probing every frame.
++    frame(50000000); frame(50000000); frame(50000000);
++    CHECK_EQ(p.interval, 0);
++    CHECK_EQ(p.retry_at - now, 4000000000ULL);
++}
++
++TEST(blocking_present_60hz_has_no_guest_pace_drift_or_frameskip_for_ten_minutes) {
++    using namespace std::chrono;
++    PaceClock::time_point base{}, origin{}, t{};
++    constexpr uint64_t field = 16715000, refresh = 16666667; // ~59.8277 vs 60 Hz
++    Presentation p;
++    auto set = [](int) { return true; };
++    for (uint64_t i=1; i<=36000; ++i) {
++        // Production order: guest work, wants-frame, present, absolute host_pace.
++        t += milliseconds(4);
++        uint64_t guest = i * field;
++        CHECK_EQ(t > base + nanoseconds(guest + field + presentation_skip_credit(p, field)), false);
++        p.prepare(true, false, true, uint64_t(duration_cast<nanoseconds>(t-origin).count()), set);
++        auto before = t;
++        auto ticks = duration_cast<nanoseconds>(t-origin).count() / refresh + 1;
++        t = origin + nanoseconds(ticks * refresh);
++        p.completed(uint64_t(duration_cast<nanoseconds>(t-before).count()), uint64_t(ticks*refresh));
++        t += pace_wait(base, guest, t);
++        CHECK_EQ(base == origin, true);
++        CHECK_EQ(t >= origin + nanoseconds(guest), true);
++        CHECK_EQ(t < origin + nanoseconds(guest + refresh), true);
++    }
++    CHECK_EQ(p.interval, -1);
++    CHECK_EQ(presentation_skip_credit(p, field) <= field, true);
++    p.prepare(false, false, true, 0, set);
++    CHECK_EQ(presentation_skip_credit(p, field), 0);
++}
+--- a/runtime/tests/settings_test.cpp
++++ b/runtime/tests/settings_test.cpp
+@@ -7,6 +7,7 @@
+ 
+ TEST(settings_default_to_the_documented_file) {
+     Settings s;
++    CHECK_EQ(s.flag("display", "vsync"), true);
+     CHECK_EQ(s.number("display", "scale"), 3);
+     CHECK_EQ(s.flag("display", "fullscreen"), false);
+     CHECK_EQ(s.get("keyboard", "start") == "Return", true);
+@@ -161,3 +162,14 @@
+     CHECK_EQ(s.number("stv", "lives"), 1);
+     CHECK_EQ(s.flag("stv", "free_play"), false);
+ }
++
++TEST(vsync_setting_roundtrips_and_old_files_default_on) {
++    Settings s; std::vector<std::string> problems;
++    s.read("[display]\nscale = 2\n", problems);
++    CHECK_EQ(s.flag("display", "vsync"), true);
++    s.set("display", "vsync", "false");
++    Settings back;
++    back.read(s.write_over("[display]\nscale = 2\n"), problems);
++    CHECK_EQ(back.flag("display", "vsync"), false);
++    CHECK_EQ(problems.size(), 0);
++}
